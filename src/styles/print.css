@@ -1,0 +1,191 @@
+/* A4 portrait, one-page executive report. Everything except the report sheet is removed. */
+@page {
+  size: A4 portrait;
+  margin: 9mm 11mm 10mm;
+}
+
+@media print {
+  :root {
+    --fs-xs: 7.1pt;
+    --fs-sm: 7.9pt;
+    --fs-base: 8.4pt;
+    --fs-md: 8.9pt;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .app-header,
+  .mobile-tabs,
+  .rail,
+  .intro,
+  .overview,
+  .dataset-notice,
+  .summary-head,
+  .summary-controls,
+  .report-toolbar,
+  .ready-sheet,
+  .notice:not(.print-keep),
+  .fab,
+  .backdrop,
+  .drawer,
+  .modal-wrap,
+  .toasts,
+  .no-print {
+    display: none !important;
+  }
+
+  .app,
+  .workspace,
+  .main,
+  .main-inner,
+  .summary-card {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    background: none !important;
+    box-shadow: none !important;
+    border: 0 !important;
+  }
+  /* On mobile the summary may be in the hidden tab; force it visible for print. */
+  .app[data-view='records'] .main {
+    display: block !important;
+  }
+
+  .print-only {
+    display: block;
+  }
+  .print-inline {
+    display: inline;
+  }
+  .print-empty {
+    font: 11pt/1.5 var(--font-ui);
+    padding: 20mm 0;
+    text-align: center;
+  }
+
+  .report {
+    box-shadow: none !important;
+    border-radius: 0;
+    padding: 0 !important;
+    gap: 2.3mm !important;
+    opacity: 1 !important;
+  }
+  .report-head {
+    gap: 1.1mm;
+    padding-bottom: 2mm;
+  }
+  .report-title {
+    font-size: 14pt;
+  }
+  .report-mode {
+    height: auto;
+    padding: 0.6mm 2.2mm;
+  }
+  .report-caveat {
+    max-width: none;
+  }
+  .report-meta {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 1.2mm 4mm;
+    margin-top: 0;
+  }
+  .report-meta .wide {
+    grid-column: span 2 !important;
+  }
+  .report-section {
+    gap: 1.2mm;
+    break-inside: avoid;
+  }
+  .report-section h3 {
+    font-size: 9.2pt;
+  }
+  .overview-text {
+    font-size: 8.6pt;
+    line-height: 1.42;
+    max-width: none;
+  }
+  .report-grid {
+    grid-template-columns: 1.25fr 1fr !important;
+    gap: 7mm !important;
+  }
+  .themes-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 1.6mm 6mm !important;
+  }
+  .excerpts {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 2mm;
+  }
+  .excerpt {
+    padding: 1.6mm 2.4mm;
+    break-inside: avoid;
+  }
+  .excerpt q {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    line-height: 1.55;
+  }
+  .cat-list {
+    gap: 0.7mm;
+  }
+  .cat-row {
+    grid-template-columns: 30mm minmax(0, 1fr) 11mm 12mm !important;
+    gap: 2.4mm;
+    line-height: 1.3;
+  }
+  .cat-row .cat-track {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    height: 2.4mm;
+  }
+  .report-list {
+    gap: 0.8mm;
+  }
+  .report-list > li {
+    line-height: 1.36;
+  }
+  .excerpt-label {
+    margin-top: -0.4mm;
+  }
+  .legend {
+    gap: 0.8mm;
+  }
+  .response-line {
+    margin-top: 1mm;
+    padding-top: 1.6mm;
+  }
+  .report-foot {
+    padding-top: 1.6mm;
+    gap: 0.6mm;
+    font-size: 6.8pt;
+  }
+  .report-foot .case-link {
+    font-size: 6.8pt;
+  }
+  .two-col-print {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6mm !important;
+  }
+  .case-link {
+    color: inherit !important;
+    text-decoration: none !important;
+    font-size: inherit;
+  }
+  .te {
+    line-height: 1.6;
+  }
+  a[href]::after {
+    content: none !important;
+  }
+}
