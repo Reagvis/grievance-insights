@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 function run(command, args, cwd = process.cwd()) {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const gitArgs = command === 'git' ? ['-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential', ...args] : args;
+  const result = spawnSync(command, gitArgs, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout || `Could not run ${command}`);
   return result.stdout.trim();
 }
