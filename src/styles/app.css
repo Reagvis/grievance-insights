@@ -1242,6 +1242,9 @@ button:disabled {
 .translation-bar .select { width: auto; max-width: 100%; }
 .translation-caption { color: var(--ink-500); font-size: var(--fs-xs); font-weight: 600; margin-bottom: 8px; }
 .text-body--translation .source-text { font-family: inherit; }
+.assistant-source { display: grid; gap: 10px; margin-top: 6px; }
+.assistant-source .text-body { padding: 0; border: 0; background: transparent; }
+.assistant-source .source-text { font-size: inherit; }
 .text-block-head {
   display: flex;
   align-items: center;

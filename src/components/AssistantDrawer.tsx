@@ -1,10 +1,12 @@
-﻿import { Bot, FileText, LoaderCircle, Lock, Send, X } from 'lucide-react';
+import { Bot, FileText, Languages, LoaderCircle, Lock, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useDialog } from '../app/useDialog';
 import type { GrievanceRecord } from '../domain/grievance';
+import type { TextView } from '../data/englishTranslations';
 import { useI18n } from '../i18n/strings';
 import type { AssistantAnswer } from '../services/localApiService';
 import { askAssistant, DATA_PRIVACY_HINT, PROCESSOR_LABEL } from '../services/runtimeServices';
+import { TranslatedText } from './TranslatedText';
 
 type Props = {
   records: GrievanceRecord[];
@@ -20,6 +22,7 @@ export function AssistantDrawer({ records, onOpenRecord, onClose, onGoToSummary 
   const [question, setQuestion] = useState('');
   const [asked, setAsked] = useState('');
   const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
+  const [sourceView, setSourceView] = useState<TextView>('original');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useDialog(true, onClose, ref);
@@ -67,10 +70,21 @@ export function AssistantDrawer({ records, onOpenRecord, onClose, onGoToSummary 
               {error && <p className="notice notice--error" role="alert">{error}</p>}
               {answer && <div className="assistant-bubble">
                 <strong>Local assistant</strong><span>{answer.answer}</span>
-                {answer.sources.length > 0 && <span>Source records{answer.totalMatches > answer.sources.length ? ` (first ${answer.sources.length} of ${answer.totalMatches})` : ''}:</span>}
+                {answer.sources.length > 0 && <>
+                  <div className="translation-bar">
+                    <div className="translation-bar-label"><Languages size={18} aria-hidden /><label htmlFor="assistant-source-language">Read source records in</label></div>
+                    <select id="assistant-source-language" className="select" value={sourceView} onChange={(event) => setSourceView(event.target.value as TextView)}>
+                      <option value="original">Original language</option>
+                      <option value="en">English</option>
+                      <option value="both">Original + English</option>
+                    </select>
+                    <p>English translations are available for sample records.</p>
+                  </div>
+                  <span>Source records{answer.totalMatches > answer.sources.length ? ` (first ${answer.sources.length} of ${answer.totalMatches})` : ''}:</span>
+                </>}
                 {answer.sources.map((source) => <div key={source.id}>
                   <button className="case-link" type="button" onClick={() => { onClose(); onOpenRecord(source.id); }}>{source.id}</button>
-                  <p className="assistant-source">{source.complaintText}</p>
+                  <div className="assistant-source"><TranslatedText text={source.complaintText} view={sourceView} /></div>
                 </div>)}
               </div>}
             </div>
