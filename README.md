@@ -24,6 +24,7 @@ Repository: `Reagvis/grievance-insights`. In Settings → Pages, use **Deploy fr
 | Search by case ID, Telugu/English text, category, issue type, department, district (Unicode/NFC-safe, AND terms) | Working |
 | Filter by category, status and response presence; reset; accurate counts | Working |
 | Record detail with complaint and response kept separate, prev/next, copy | Working |
+| Record translation bar: Original / English / Original + English | Bundled English translations for all sample templates; exact source-text matching also supports the expanded dataset. Imported text without a bundled translation retains its original with an availability message. Copy follows the selected view; note and ZIP exports keep the original. No translation requests leave the browser. |
 | Download one note (`GRV-000128-note.txt`, UTF-8) | Working |
 | Download all records as ZIP (notes + `manifest.csv` + README) | Working |
 | Export only the filtered records as ZIP (separate, clearly labelled action) | Working |

@@ -1,10 +1,12 @@
-import { ChevronLeft, ChevronRight, Copy, Download, FlaskConical, MessageSquareText, UserRound, X } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Copy, Download, FlaskConical, Languages, MessageSquareText, UserRound, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useDialog } from '../app/useDialog';
 import { categoryOf, hasResponse, UNCATEGORIZED, type GrievanceRecord } from '../domain/grievance';
 import { useI18n } from '../i18n/strings';
 import { formatCount, formatDate } from '../utils/format';
 import { StatusBadge } from './StatusBadge';
+import { displayedText, type TextView } from '../data/englishTranslations';
+import { TranslatedText } from './TranslatedText';
 
 type Props = {
   record: GrievanceRecord;
@@ -27,12 +29,12 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
   const { t, categoryLabel } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const [textView, setTextView] = useState<TextView>('original');
   useDialog(true, onClose, ref);
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: 0 });
   }, [record.id]);
   const responded = hasResponse(record);
-  const textLang = record.language === 'en' ? 'en' : 'te';
 
   const value = (v: string | null | undefined) =>
     v && v.trim() ? <dd>{v}</dd> : <dd className="not-recorded">{t('notRecorded')}</dd>;
@@ -123,22 +125,28 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
             </div>
           </dl>
 
+          <div className="translation-bar">
+            <div className="translation-bar-label"><Languages size={18} aria-hidden /><div><label htmlFor="text-language">Read in</label><span>Source: {LANGUAGE_LABEL[record.language]}</span></div></div>
+            <select id="text-language" className="select" value={textView} onChange={(event) => setTextView(event.target.value as TextView)}>
+              <option value="original">Original language</option>
+              <option value="en">English</option>
+              <option value="both">Original + English</option>
+            </select>
+            <p>English translations are available for sample records. Downloads keep the original text.</p>
+          </div>
+
           <section className="text-block text-block--complaint" aria-labelledby="complaint-h">
             <div className="text-block-head">
               <h3 id="complaint-h">
                 <UserRound size={16} aria-hidden />
                 {t('citizenComplaint')}
               </h3>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCopy(record.complaintText, 'Complaint')}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCopy(displayedText(record.complaintText, textView), 'Complaint')}>
                 <Copy size={13} aria-hidden />
                 {t('copy')}
               </button>
             </div>
-            <div className="text-body">
-              <p className="te source-text" lang={textLang}>
-                {record.complaintText}
-              </p>
-            </div>
+            <TranslatedText text={record.complaintText} view={textView} />
           </section>
 
           <section className="text-block text-block--response" aria-labelledby="response-h">
@@ -148,18 +156,14 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
                 {t('departmentResponse')}
               </h3>
               {responded && (
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCopy(record.responseText as string, 'Response')}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCopy(displayedText(record.responseText as string, textView), 'Response')}>
                   <Copy size={13} aria-hidden />
                   {t('copy')}
                 </button>
               )}
             </div>
             {responded ? (
-              <div className="text-body">
-                <p className="te source-text" lang="te">
-                  {record.responseText}
-                </p>
-              </div>
+              <TranslatedText text={record.responseText as string} view={textView} />
             ) : (
               <div className="text-body text-body--empty">{t('noResponse')}</div>
             )}
