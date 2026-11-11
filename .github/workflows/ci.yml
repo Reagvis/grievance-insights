@@ -45,3 +45,29 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 3
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.8
+
+      - name: Check Terraform formatting
+        run: terraform -chdir=infra fmt -check -recursive
+
+      - name: Initialize hosting configuration without backend
+        run: terraform -chdir=infra init -backend=false -input=false
+
+      - name: Validate hosting configuration
+        run: terraform -chdir=infra validate
+
+      - name: Initialize bootstrap configuration without backend
+        run: terraform -chdir=infra/bootstrap init -backend=false -input=false
+
+      - name: Validate bootstrap configuration
+        run: terraform -chdir=infra/bootstrap validate

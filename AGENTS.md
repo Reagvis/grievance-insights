@@ -10,6 +10,8 @@ Grievance Insights is a single-organization pilot for browsing and analyzing Tel
 - Use Node.js 22 (minimum supported versions are Node 20.19 or 22.12) and install from the lockfile with `npm ci`.
 - Standard checks: `npm run lint`, `npm test`, and `npm run build`.
 - Run locally with `npm run dev`; preview a production build with `npm run preview`.
+- Terraform hosting code is under `infra/`; bootstrap prerequisites are isolated under `infra/bootstrap/`. Use Terraform 1.14.x and the provider lock files.
+- For infrastructure-only changes run `terraform fmt -check -recursive`, initialize with the approved backend configuration (or `terraform init -backend=false` for validation only), and run `terraform validate`. Never apply, destroy, import, or modify AWS/GitHub configuration unless the task explicitly authorizes deployment.
 
 ## Engineering conventions
 
@@ -26,3 +28,4 @@ Grievance Insights is a single-organization pilot for browsing and analyzing Tel
 - Preserve unrelated worktree changes.
 - Update `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_STATUS.md`, and `docs/DECISIONS.md` when architecture or implementation status materially changes. Clearly distinguish implemented behavior from proposals.
 - The AI and HimParivar repositories are read-only references; never modify them as part of this project.
+- Do not reuse another project's Terraform state bucket, roles, or resource ownership assumptions without explicit approval. Never commit Terraform state, plans, populated variable files, credentials, or sensitive outputs.
