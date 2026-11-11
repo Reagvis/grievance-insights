@@ -12,6 +12,7 @@ Grievance Insights is a single-organization pilot for browsing and analyzing Tel
 - Run locally with `npm run dev`; preview a production build with `npm run preview`.
 - Terraform hosting code is under `infra/`; bootstrap prerequisites are isolated under `infra/bootstrap/`. Use Terraform 1.14.x and the provider lock files.
 - For infrastructure-only changes run `terraform fmt -check -recursive`, initialize with the approved backend configuration (or `terraform init -backend=false` for validation only), and run `terraform validate`. Never apply, destroy, import, or modify AWS/GitHub configuration unless the task explicitly authorizes deployment.
+- Frontend CD is manual and guarded by the `pilot-frontend` environment variable `PILOT_DEPLOY_ENABLED`. Keep it `false` and do not dispatch deployment until authentication and publication are explicitly approved.
 
 ## Engineering conventions
 

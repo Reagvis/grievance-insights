@@ -1,12 +1,12 @@
 # Infrastructure and security design
 
-This document describes the intended pilot architecture and the Terraform foundation in `infra/`. The code currently defines frontend hosting only; no Terraform has been applied and no AWS or GitHub configuration has been changed.
+This document describes the pilot architecture and Terraform foundation in `infra/`. The frontend hosting foundation, remote state, and GitHub OIDC roles are deployed; application publication remains disabled pending authentication.
 
 ## AWS resource boundaries
 
 | Boundary | Ownership and status |
 |---|---|
-| Frontend hosting | The current Terraform root defines a private, encrypted, versioned S3 asset bucket; CloudFront with Origin Access Control; a `us-east-1` ACM certificate; and Route 53 aliases for `telangana-gov-pilot.reagvis.com`. Not deployed. |
+| Frontend hosting | Deployed: private, encrypted, versioned S3 asset bucket; CloudFront with Origin Access Control; a `us-east-1` ACM certificate; and Route 53 aliases for `telangana-gov-pilot.reagvis.com`. The bucket remains empty. |
 | Authentication and API | A future API Gateway/Lambda backend will own Cognito authentication, sessions, authorization, presigned dataset operations, and job APIs. It is intentionally absent from this foundation. |
 | Datasets and results | Future private S3 storage will separate raw uploads from derived processing results. Browsers will receive only short-lived, authorized access. Not implemented. |
 | Metadata and jobs | Future DynamoDB tables will hold dataset metadata, session hashes with TTL, idempotency records, and job state; SQS and a dead-letter queue will control asynchronous work. Not implemented. |
@@ -21,13 +21,13 @@ The main configuration declares an encrypted S3 backend with native S3 locking (
 
 Read-only discovery found an existing encrypted, versioned, non-public bucket used by the HimParivar project, but it is an unrelated artifacts bucket and lacks a bucket policy. Its ownership and reuse have not been approved, so this project does not use it. `infra/bootstrap/` instead defines a dedicated state bucket with versioning, default encryption, public-access blocking, enforced bucket ownership, TLS-only access, and deletion protection.
 
-Bootstrap is deliberately separate because a remote-state configuration cannot create its own bucket or the role used to run it:
+Bootstrap is deliberately separate because a remote-state configuration cannot create its own bucket or the role used to run it. The bootstrap has been completed; these steps describe its reproducible lifecycle:
 
 1. Approve the dedicated globally unique bucket name, IAM permissions boundary (if required), hosted-zone ID, GitHub environments, and bootstrap operator.
 2. In `infra/bootstrap/`, copy `terraform.tfvars.example` to ignored `terraform.tfvars`. Supply the existing GitHub OIDC provider ARN and public `reagvis.com` zone ID through the operator's secure configuration.
-3. Run `terraform init`, `terraform fmt -check -recursive`, `terraform validate`, and create a saved bootstrap plan. Review it independently. An authorized later task may apply that exact plan; this task did not.
+3. Run `terraform init`, `terraform fmt -check -recursive`, `terraform validate`, and create a saved bootstrap plan. Review it independently before any authorized apply.
 4. Initialize the main root with `terraform -chdir=infra init -backend-config="bucket=<approved-dedicated-bucket>" -reconfigure`. The backend key, region, encryption, and lockfile behavior are fixed in source.
-5. Plan and apply the hosting foundation only after approval. Then provide its distribution ID to the bootstrap stack and run a second reviewed bootstrap change to create the narrowly scoped frontend publishing role.
+5. Plan and apply the hosting foundation only after approval. Provide its distribution ID to the bootstrap stack and run a second reviewed bootstrap change to create the narrowly scoped frontend publishing role. Both phases are now complete for the pilot.
 6. Protect or migrate the bootstrap's initial local state as an administrative artifact. Never commit state, plan files, `.terraform/`, or populated variable files.
 
 The state role can list only the exact default-workspace state-key prefix. It can read and write the state and lockfile objects, but `s3:DeleteObject` applies only to the `.tflock` object; the backend cannot delete state. Terraform workspaces are intentionally unsupported because each environment must use a separately reviewed state key and role. Native S3 lockfiles replace a DynamoDB lock table. Bucket versioning provides recovery from accidental state replacement; recovery remains an audited operator action.
@@ -37,9 +37,13 @@ The state role can list only the exact default-workspace state-key prefix. It ca
 The AWS account already has the account-wide `token.actions.githubusercontent.com` OIDC provider. It is an initial prerequisite and must not be duplicated. `infra/bootstrap/` defines repository-specific trust for `Reagvis/grievance-insights` and separates:
 
 - `pilot-infrastructure`: a Terraform role with state access and permissions for only the hosting foundation's S3 bucket, CloudFront resources, certificate, and `reagvis.com` hosted zone. It does not publish frontend objects.
-- `pilot-frontend`: a publishing role created only after the distribution ID is known. It can list and update the one frontend bucket and invalidate the one CloudFront distribution; it cannot provision infrastructure.
+- `pilot-frontend`: a deployed publishing role that can list and update only `grievance-insights-pilot-134857759074-frontend` and invalidate only distribution `E3B0B5R1HAYD1J`; it cannot provision infrastructure.
 
-Both trust policies require the GitHub OIDC audience and the exact protected environment subject. The GitHub environments are separate bootstrap objects: configure required reviewers and permit deployments only from `main`. A future deployment workflow should run only for approved commits on `main`, request `id-token: write` only in the deployment job, use pinned actions, build from the lockfile, publish immutable assets, update entry-point files last, and invalidate only the required paths. Pull requests must never deploy. No active deployment workflow or permanent AWS key exists in this repository.
+Both trust policies require the GitHub OIDC audience and the exact protected environment subject. The `pilot-infrastructure` and `pilot-frontend` GitHub environments permit deployments only from `main`; required reviewers are currently omitted because the pilot has one administrator.
+
+`.github/workflows/deploy-frontend.yml` is manual-only, uses Node.js 22, installs from the lockfile, assumes the frontend role through OIDC, publishes hashed assets with immutable caching, uploads `index.html` last with no-cache headers, and invalidates the pilot distribution. It cannot publish while the `pilot-frontend` environment variable `PILOT_DEPLOY_ENABLED` is `false`, which is the initial setting. No permanent AWS credentials are used.
+
+The AWS static build uses Vite's `pages` mode. That mode selects deterministic browser-local services and does not depend on `server/api.ts`. Development and preview use Vite's localhost-only middleware for `/api/*`; those endpoints do not exist in the deployed static origin. Keep publication disabled until authenticated production APIs replace the prototype-only runtime where required.
 
 The state bucket, existing account-wide OIDC provider, IAM roles, IAM permissions boundary decision, and protected GitHub environments require separate initial bootstrapping. Keeping them outside the main root avoids the circular dependency in which Terraform would need to assume a role and access state before either existed.
 
