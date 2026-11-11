@@ -4,7 +4,7 @@ Last updated: 2026-11-11
 
 ## Current state
 
-The React/TypeScript/Vite prototype is functional. Development and preview use an in-memory Vite-local API; static builds process records in the browser. AWS hosting, dedicated remote state, and separate infrastructure/frontend GitHub OIDC roles are deployed. A manual frontend deployment workflow exists but is disabled with `PILOT_DEPLOY_ENABLED=false`. There is no deployed production backend, authentication, persistence, or Bedrock integration, and no frontend assets have been published.
+The React/TypeScript/Vite prototype is functional. Development and preview use an in-memory Vite-local API; static builds process records in the browser. AWS hosting, dedicated remote state, and separate infrastructure/frontend GitHub OIDC roles are deployed. The infrastructure role now has bounded, project-scoped permissions for the planned backend, but no backend resources are deployed. A manual frontend deployment workflow exists but is disabled with `PILOT_DEPLOY_ENABLED=false`. There is no deployed production backend, authentication, persistence, or Bedrock integration, and no frontend assets have been published.
 
 ## Completed
 
@@ -19,6 +19,7 @@ The React/TypeScript/Vite prototype is functional. Development and preview use a
 - Corrected backend lockfile permissions, restricted shared-zone DNS writes by normalized name/type/action, narrowed CloudFront/ACM lifecycle permissions, and added credential-free Terraform CI validation for both roots.
 - Deployed the dedicated Terraform state bucket, infrastructure role, private frontend S3 origin, CloudFront distribution, ACM certificate, and pilot Route 53 aliases.
 - Added the distribution-scoped frontend publishing role and a manual, OIDC-based deployment workflow guarded by `PILOT_DEPLOY_ENABLED=false`.
+- Added and applied split, project-scoped backend provisioning policies plus a mandatory runtime-role permissions boundary; the deployer cannot invoke Bedrock models and streaming remains opt-in for future approved runtime resources.
 
 Task 1 merged as PR #1 at `9fe0e6d`; Task 2 merged as PR #2 at `7a4b271`.
 
