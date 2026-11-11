@@ -156,8 +156,12 @@ data "aws_iam_policy_document" "terraform" {
       "s3:CreateBucket",
       "s3:DeleteBucket",
       "s3:GetBucket*",
+      "s3:GetEncryptionConfiguration",
+      "s3:GetLifecycleConfiguration",
       "s3:ListBucket",
       "s3:PutBucket*",
+      "s3:PutEncryptionConfiguration",
+      "s3:PutLifecycleConfiguration",
       "s3:DeleteBucket*",
     ]
     resources = ["arn:aws:s3:::${local.frontend_bucket_name}"]
