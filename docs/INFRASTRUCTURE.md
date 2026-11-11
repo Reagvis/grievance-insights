@@ -28,7 +28,7 @@ Bootstrap is deliberately separate because a remote-state configuration cannot c
 3. Run `terraform init`, `terraform fmt -check -recursive`, `terraform validate`, and create a saved bootstrap plan. Review it independently before any authorized apply.
 4. Initialize the main root with `terraform -chdir=infra init -backend-config="bucket=<approved-dedicated-bucket>" -reconfigure`. The backend key, region, encryption, and lockfile behavior are fixed in source.
 5. Plan and apply the hosting foundation only after approval. Provide its distribution ID to the bootstrap stack and run a second reviewed bootstrap change to create the narrowly scoped frontend publishing role. Both phases are now complete for the pilot.
-6. Protect or migrate the bootstrap's initial local state as an administrative artifact. Never commit state, plan files, `.terraform/`, or populated variable files.
+6. Protect or migrate the bootstrap's initial local state as an administrative artifact. The current state is backed up under the versioned, encrypted `bootstrap/terraform.tfstate` object in the dedicated state bucket. Never commit state, plan files, `.terraform/`, or populated variable files.
 
 The state role can list only the exact default-workspace state-key prefix. It can read and write the state and lockfile objects, but `s3:DeleteObject` applies only to the `.tflock` object; the backend cannot delete state. Terraform workspaces are intentionally unsupported because each environment must use a separately reviewed state key and role. Native S3 lockfiles replace a DynamoDB lock table. Bucket versioning provides recovery from accidental state replacement; recovery remains an audited operator action.
 
@@ -36,10 +36,12 @@ The state role can list only the exact default-workspace state-key prefix. It ca
 
 The AWS account already has the account-wide `token.actions.githubusercontent.com` OIDC provider. It is an initial prerequisite and must not be duplicated. `infra/bootstrap/` defines repository-specific trust for `Reagvis/grievance-insights` and separates:
 
-- `pilot-infrastructure`: a Terraform role with state access and permissions for only the hosting foundation's S3 bucket, CloudFront resources, certificate, and `reagvis.com` hosted zone. It does not publish frontend objects.
+- `pilot-infrastructure`: a Terraform role with state access and permissions for the hosting foundation plus project-scoped Cognito, Lambda, HTTP API, DynamoDB, SQS/DLQ, private S3, CloudWatch Logs, runtime IAM, and Bedrock control-plane resources. It does not publish frontend objects or invoke Bedrock models.
 - `pilot-frontend`: a deployed publishing role that can list and update only `grievance-insights-pilot-134857759074-frontend` and invalidate only distribution `E3B0B5R1HAYD1J`; it cannot provision infrastructure.
 
 Both trust policies require the GitHub OIDC audience and the exact protected environment subject. The `pilot-infrastructure` and `pilot-frontend` GitHub environments permit deployments only from `main`; required reviewers are currently omitted because the pilot has one administrator.
+
+Backend permissions are split across managed policies to remain below IAM policy-size limits. Runtime IAM is limited to the exact API and worker execution-role and policy names. New roles must carry the project runtime permissions boundary, and `iam:PassRole` is restricted to those roles and `lambda.amazonaws.com`. The boundary contains no IAM administration, excludes deployment artifacts from runtime data access, and denies Bedrock inference until approved model or inference-profile ARNs are configured. Streaming invocation requires a separate opt-in.
 
 `.github/workflows/deploy-frontend.yml` is manual-only, uses Node.js 22, installs from the lockfile, assumes the frontend role through OIDC, preserves previously deployed content-hashed assets with immutable caching, uploads `index.html` last with no-cache headers, and invalidates the pilot distribution. Old hashed assets require a separately approved age/retention cleanup policy rather than deletion during release. It cannot publish while the `pilot-frontend` environment variable `PILOT_DEPLOY_ENABLED` is `false`, which is the initial setting. No permanent AWS credentials are used.
 
