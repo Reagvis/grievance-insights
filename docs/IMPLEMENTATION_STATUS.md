@@ -4,7 +4,7 @@ Last updated: 2026-11-11
 
 ## Current state
 
-The React/TypeScript/Vite prototype is functional. Development and preview retain the in-memory Vite-local API; static builds process records in the browser. AWS hosting and deployment foundations are operational. A tested Cognito/Lambda/DynamoDB authentication backend and its Terraform definitions now exist, but no backend resources are deployed. All deployment guards remain disabled, frontend login is not implemented, and no frontend assets have been published.
+The React/TypeScript/Vite prototype is functional. Development and preview retain the in-memory Vite-local API; static builds process records in the browser. AWS hosting and deployment foundations are operational. A tested Cognito/Lambda/DynamoDB authentication backend and its Terraform definitions now exist, but no backend resources are deployed. All deployment guards remain disabled, frontend authentication is implemented for AWS builds but not live-tested, and no frontend assets have been published.
 
 ## Completed
 
@@ -28,7 +28,7 @@ Task 1 merged as PR #1 at `9fe0e6d`; Task 2 merged as PR #2 at `7a4b271`.
 ## Outstanding
 
 - Review and deploy the implemented authentication infrastructure through the guarded infrastructure workflow; create administrator users separately only after deployment approval.
-- Implement frontend login/logout/session state against the same-origin authentication API.
+- Validate AWS frontend authentication against the deployed backend after separately approved infrastructure deployment.
 - Design and implement DynamoDB application metadata, private S3 datasets/results, SQS/DLQ, worker Lambda, and Bedrock access.
 - Define dataset schemas, retention rules, upload limits, job lifecycle, Bedrock model/prompt/evaluation strategy, and human-review controls.
 - Replace the local service implementation with authenticated production APIs while preserving the existing frontend contract and behavior.
@@ -39,8 +39,12 @@ Task 1 merged as PR #1 at `9fe0e6d`; Task 2 merged as PR #2 at `7a4b271`.
 - Current summaries and assistant answers are deterministic, not AI-generated. Telugu report generation, OCR, RAG, RBAC, audit logs, and production observability are absent.
 - The Vite build and tests emit a forward-compatibility warning for extensionless imports under Vite's future native config loader. It does not currently fail validation.
 - Qwen3 32B is active in `ap-south-1` and approved only for initial synthetic-data evaluation; Bedrock quotas, broader model suitability, data classification, retention policy, and production access controls remain undecided.
-- Authentication infrastructure is not deployed and frontend authentication is not implemented, so publication remains disabled and the hosting bucket remains empty.
+- Authentication infrastructure is not deployed and frontend authentication is implemented in code but not deployed, so publication remains disabled and the hosting bucket remains empty.
 
 ## Recommended next task
 
-Review PR infrastructure plans, then deploy the authentication backend through the guarded infrastructure workflow when explicitly authorized. Next implement frontend login/logout/session handling. Keep `PILOT_DEPLOY_ENABLED=false` until both layers are reviewed.
+Review PR infrastructure plans, then deploy the authentication backend through the guarded infrastructure workflow when explicitly authorized. Next validate frontend login/logout/session restoration after backend deployment. Keep `PILOT_DEPLOY_ENABLED=false` until both layers are reviewed.
+
+## Frontend authentication (PR #11)
+
+AWS builds now use a separate Vite `aws` mode and require the same-origin Cognito-backed session API before rendering the existing workspace. Login, logout, restoration, 401 expiry handling, periodic and visibility revalidation, accessible errors and focused client/UI tests are implemented. GitHub Pages and local development retain unauthenticated synthetic demos. UI gating is not data authorization; all future grievance endpoints require independent backend authorization. No backend or frontend deployment performed.

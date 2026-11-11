@@ -4,7 +4,7 @@
 
 Grievance Insights is a single-organization pilot for analyzing Telugu citizen grievances and department responses. Read [ARCHITECTURE.md](ARCHITECTURE.md), [INFRASTRUCTURE.md](INFRASTRUCTURE.md), [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md), [DECISIONS.md](DECISIONS.md), and [AGENTS.md](../AGENTS.md) before changing code.
 
-The repository is `Reagvis/grievance-insights`. PRs #1–#9 are merged; the authentication backend is under review in the next PR. Always fetch latest remote `main`, preserve unrelated changes, and use a focused feature branch.
+The repository is `Reagvis/grievance-insights`. PRs #1–#10 are merged. The backend and AWS-mode frontend authentication are implemented in code but not deployed. Always fetch latest remote `main`, preserve unrelated changes, and use a focused feature branch.
 
 ## Implemented and deployed
 
@@ -42,4 +42,4 @@ Bedrock worker invocation is authorized only for Qwen3 32B (`qwen.qwen3-32b-v1:0
 
 ## Not implemented and recommended next task
 
-Authentication API code, durable hashed sessions, Terraform, tests, and Lambda packaging are implemented but not deployed. Frontend login/logout, dataset/result storage, queues, Bedrock workers, and application APIs are not implemented. After a separately authorized authentication infrastructure deployment, implement frontend login/logout/session handling. Keep all deployment guards disabled while work is reviewed.
+Authentication API code, durable hashed sessions, Terraform, tests, and Lambda packaging are implemented but not deployed. Frontend AWS-mode login/logout and session restoration are implemented in code; dataset/result storage, queues, Bedrock workers, and application APIs are not implemented. After separately authorized authentication infrastructure deployment, verify the AWS-mode login/logout/session flow before any publication. Keep all deployment guards disabled. Do not place real grievance data in the frontend bucket; future data endpoints must independently authorize access. Keep all deployment guards disabled while work is reviewed.

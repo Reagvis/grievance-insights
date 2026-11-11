@@ -6,6 +6,8 @@ export type DatasetChoice = 'sample' | 'expanded' | 'imported';
 
 type Props = {
   datasetChoice: DatasetChoice;
+  authUser?: string;
+  onLogout?: () => void;
   importedLabel: string | null;
   isSynthetic: boolean;
   onDatasetChange: (choice: DatasetChoice) => void;
@@ -28,7 +30,7 @@ export function BrandMark() {
   );
 }
 
-export function AppHeader({ datasetChoice, importedLabel, isSynthetic, onDatasetChange, onImport, uiLang, onLangChange }: Props) {
+export function AppHeader({ datasetChoice, importedLabel, isSynthetic, onDatasetChange, onImport, uiLang, onLangChange, authUser, onLogout }: Props) {
   const { t } = useI18n();
   return (
     <header className="app-header">
@@ -63,6 +65,7 @@ export function AppHeader({ datasetChoice, importedLabel, isSynthetic, onDataset
           <Upload size={14} aria-hidden />
           {t('importData')}
         </button>
+        {authUser && onLogout && <div className="auth-header-user"><span title={authUser}>{authUser}</span><button type="button" className="btn btn-secondary btn-header" onClick={onLogout}>Sign out</button></div>}
         <div className="segmented lang-toggle" role="group" aria-label={t('language')}>
           <button type="button" aria-pressed={uiLang === 'en'} onClick={() => onLangChange('en')}>
             EN
