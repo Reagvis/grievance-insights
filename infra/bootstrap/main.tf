@@ -1,13 +1,19 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  project_name         = "grievance-insights"
-  environment          = "pilot"
-  frontend_bucket_name = "${local.project_name}-${local.environment}-${data.aws_caller_identity.current.account_id}-frontend"
-  state_object_arns = [
-    "${aws_s3_bucket.state.arn}/${var.state_key}",
-    "${aws_s3_bucket.state.arn}/${var.state_key}.tflock",
-  ]
+  project_name                  = "grievance-insights"
+  environment                   = "pilot"
+  hostname                      = "telangana-gov-pilot.reagvis.com"
+  frontend_bucket_name          = "${local.project_name}-${local.environment}-${data.aws_caller_identity.current.account_id}-frontend"
+  state_bucket_arn              = "arn:aws:s3:::${var.state_bucket_name}"
+  state_object_arn              = "${local.state_bucket_arn}/${var.state_key}"
+  state_lockfile_arn            = "${local.state_bucket_arn}/${var.state_key}.tflock"
+  cloudfront_distribution_arn   = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
+  cloudfront_function_arn       = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:function/grievance-insights-pilot-spa-rewrite"
+  cloudfront_oac_arn            = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:origin-access-control/*"
+  cloudfront_headers_policy_arn = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:response-headers-policy/*"
+  certificate_arn               = "arn:aws:acm:us-east-1:${data.aws_caller_identity.current.account_id}:certificate/*"
+  certificate_validation_record = "_*.${local.hostname}"
   tags = {
     Application = local.project_name
     Environment = local.environment
@@ -121,21 +127,27 @@ resource "aws_iam_role" "terraform" {
 
 data "aws_iam_policy_document" "terraform" {
   statement {
-    sid       = "StateBucketMetadata"
-    actions   = ["s3:GetBucketLocation", "s3:ListBucket"]
-    resources = [aws_s3_bucket.state.arn]
+    sid       = "StateBucketList"
+    actions   = ["s3:ListBucket"]
+    resources = [local.state_bucket_arn]
 
     condition {
-      test     = "StringLike"
+      test     = "StringEquals"
       variable = "s3:prefix"
-      values   = [var.state_key, "${var.state_key}.tflock"]
+      values   = [var.state_key]
     }
   }
 
   statement {
-    sid       = "StateObjects"
+    sid       = "StateObjectReadWrite"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = [local.state_object_arn]
+  }
+
+  statement {
+    sid       = "StateLockfileReadWriteDelete"
     actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-    resources = local.state_object_arns
+    resources = [local.state_lockfile_arn]
   }
 
   statement {
@@ -152,47 +164,158 @@ data "aws_iam_policy_document" "terraform" {
   }
 
   statement {
-    sid = "CloudFrontManagement"
+    sid       = "CloudFrontTaggedCreation"
+    actions   = ["cloudfront:CreateDistribution", "cloudfront:CreateFunction"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Repository"
+      values   = [var.github_repository]
+    }
+  }
+
+  statement {
+    sid       = "CloudFrontUntaggedCreation"
+    actions   = ["cloudfront:CreateOriginAccessControl", "cloudfront:CreateResponseHeadersPolicy"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "CloudFrontDistributionManagement"
     actions = [
-      "cloudfront:CreateDistribution",
       "cloudfront:GetDistribution",
       "cloudfront:GetDistributionConfig",
       "cloudfront:UpdateDistribution",
       "cloudfront:DeleteDistribution",
-      "cloudfront:CreateOriginAccessControl",
-      "cloudfront:GetOriginAccessControl",
-      "cloudfront:UpdateOriginAccessControl",
-      "cloudfront:DeleteOriginAccessControl",
-      "cloudfront:CreateFunction",
+    ]
+    resources = [local.cloudfront_distribution_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Repository"
+      values   = [var.github_repository]
+    }
+  }
+
+  statement {
+    sid = "CloudFrontFunctionManagement"
+    actions = [
       "cloudfront:DescribeFunction",
       "cloudfront:GetFunction",
       "cloudfront:UpdateFunction",
       "cloudfront:PublishFunction",
       "cloudfront:DeleteFunction",
-      "cloudfront:CreateResponseHeadersPolicy",
+    ]
+    resources = [local.cloudfront_function_arn]
+  }
+
+  statement {
+    sid = "CloudFrontOacManagement"
+    actions = [
+      "cloudfront:GetOriginAccessControl",
+      "cloudfront:UpdateOriginAccessControl",
+      "cloudfront:DeleteOriginAccessControl",
+    ]
+    resources = [local.cloudfront_oac_arn]
+  }
+
+  statement {
+    sid = "CloudFrontHeadersPolicyManagement"
+    actions = [
       "cloudfront:GetResponseHeadersPolicy",
       "cloudfront:UpdateResponseHeadersPolicy",
       "cloudfront:DeleteResponseHeadersPolicy",
-      "cloudfront:GetCachePolicy",
-      "cloudfront:ListCachePolicies",
+    ]
+    resources = [local.cloudfront_headers_policy_arn]
+  }
+
+  statement {
+    sid       = "CloudFrontInitialTagging"
+    actions   = ["cloudfront:TagResource"]
+    resources = [local.cloudfront_distribution_arn, local.cloudfront_function_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Repository"
+      values   = [var.github_repository]
+    }
+  }
+
+  statement {
+    sid = "CloudFrontManagedResourceTags"
+    actions = [
       "cloudfront:ListTagsForResource",
       "cloudfront:TagResource",
       "cloudfront:UntagResource",
     ]
+    resources = [local.cloudfront_distribution_arn, local.cloudfront_function_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Repository"
+      values   = [var.github_repository]
+    }
+  }
+
+  statement {
+    sid       = "CloudFrontManagedCachePolicyLookup"
+    actions   = ["cloudfront:GetCachePolicy", "cloudfront:ListCachePolicies"]
     resources = ["*"]
+  }
+
+  statement {
+    sid       = "CertificateRequest"
+    actions   = ["acm:RequestCertificate"]
+    resources = ["*"]
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "acm:DomainNames"
+      values   = [local.hostname]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "acm:ValidationMethod"
+      values   = ["DNS"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Repository"
+      values   = [var.github_repository]
+    }
+  }
+
+  statement {
+    sid       = "CertificateInitialTagging"
+    actions   = ["acm:AddTagsToCertificate"]
+    resources = [local.certificate_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Repository"
+      values   = [var.github_repository]
+    }
   }
 
   statement {
     sid = "CertificateManagement"
     actions = [
-      "acm:RequestCertificate",
       "acm:DescribeCertificate",
       "acm:DeleteCertificate",
       "acm:AddTagsToCertificate",
       "acm:RemoveTagsFromCertificate",
       "acm:ListTagsForCertificate",
     ]
-    resources = ["*"]
+    resources = [local.certificate_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Repository"
+      values   = [var.github_repository]
+    }
   }
 
   statement {
@@ -202,14 +325,61 @@ data "aws_iam_policy_document" "terraform" {
   }
 
   statement {
-    sid = "PilotDnsManagement"
+    sid = "PilotDnsRead"
     actions = [
-      "route53:ChangeResourceRecordSets",
       "route53:GetHostedZone",
       "route53:ListResourceRecordSets",
       "route53:ListTagsForResource",
     ]
     resources = ["arn:aws:route53:::hostedzone/${var.route53_zone_id}"]
+  }
+
+  statement {
+    sid       = "PilotAliasDnsWrite"
+    actions   = ["route53:ChangeResourceRecordSets"]
+    resources = ["arn:aws:route53:::hostedzone/${var.route53_zone_id}"]
+
+    condition {
+      test     = "ForAllValues:StringLike"
+      variable = "route53:ChangeResourceRecordSetsNormalizedRecordNames"
+      values   = [local.hostname]
+    }
+
+    condition {
+      test     = "ForAllValues:StringLike"
+      variable = "route53:ChangeResourceRecordSetsRecordTypes"
+      values   = ["A", "AAAA"]
+    }
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "route53:ChangeResourceRecordSetsActions"
+      values   = ["CREATE", "UPSERT", "DELETE"]
+    }
+  }
+
+  statement {
+    sid       = "CertificateValidationDnsWrite"
+    actions   = ["route53:ChangeResourceRecordSets"]
+    resources = ["arn:aws:route53:::hostedzone/${var.route53_zone_id}"]
+
+    condition {
+      test     = "ForAllValues:StringLike"
+      variable = "route53:ChangeResourceRecordSetsNormalizedRecordNames"
+      values   = [local.certificate_validation_record]
+    }
+
+    condition {
+      test     = "ForAllValues:StringLike"
+      variable = "route53:ChangeResourceRecordSetsRecordTypes"
+      values   = ["CNAME"]
+    }
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "route53:ChangeResourceRecordSetsActions"
+      values   = ["CREATE", "UPSERT", "DELETE"]
+    }
   }
 
   statement {

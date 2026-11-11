@@ -30,7 +30,7 @@ Bootstrap is deliberately separate because a remote-state configuration cannot c
 5. Plan and apply the hosting foundation only after approval. Then provide its distribution ID to the bootstrap stack and run a second reviewed bootstrap change to create the narrowly scoped frontend publishing role.
 6. Protect or migrate the bootstrap's initial local state as an administrative artifact. Never commit state, plan files, `.terraform/`, or populated variable files.
 
-The state role can access only this project's state object and lock object. Native S3 lockfiles replace a DynamoDB lock table. Bucket versioning provides recovery from accidental state replacement; recovery remains an audited operator action.
+The state role can list only the exact default-workspace state-key prefix. It can read and write the state and lockfile objects, but `s3:DeleteObject` applies only to the `.tflock` object; the backend cannot delete state. Terraform workspaces are intentionally unsupported because each environment must use a separately reviewed state key and role. Native S3 lockfiles replace a DynamoDB lock table. Bucket versioning provides recovery from accidental state replacement; recovery remains an audited operator action.
 
 ## GitHub OIDC and deployment separation
 
@@ -42,6 +42,12 @@ The AWS account already has the account-wide `token.actions.githubusercontent.co
 Both trust policies require the GitHub OIDC audience and the exact protected environment subject. The GitHub environments are separate bootstrap objects: configure required reviewers and permit deployments only from `main`. A future deployment workflow should run only for approved commits on `main`, request `id-token: write` only in the deployment job, use pinned actions, build from the lockfile, publish immutable assets, update entry-point files last, and invalidate only the required paths. Pull requests must never deploy. No active deployment workflow or permanent AWS key exists in this repository.
 
 The state bucket, existing account-wide OIDC provider, IAM roles, IAM permissions boundary decision, and protected GitHub environments require separate initial bootstrapping. Keeping them outside the main root avoids the circular dependency in which Terraform would need to assume a role and access state before either existed.
+
+The infrastructure role's shared-zone write access is conditioned on Route 53 normalized record names, record types, and change actions. It can change only the pilot's exact A/AAAA aliases and `_*.telangana-gov-pilot.reagvis.com` CNAMEs used for ACM DNS validation; it cannot modify unrelated `reagvis.com` records. Hosted-zone reads remain separate.
+
+CloudFront and ACM permissions follow each service's resource-level authorization support. Existing distributions and certificates are limited to account/region resource patterns plus the repository tag; the CloudFront Function uses its exact-name ARN. OAC and response-header policy lifecycle permissions are limited to their account/resource-type ARN patterns, but those resources are untaggable and their generated IDs are unknown before creation. CloudFront create/list operations and `acm:RequestCertificate` do not support resource ARNs, so `Resource = "*"` is unavoidable; project request tags constrain taggable CloudFront creates, while ACM requests additionally require the exact pilot domain and DNS validation. Managed CloudFront cache-policy lookup and Route 53 hosted-zone discovery are read-only wildcard exceptions.
+
+CI runs formatting, backend-disabled initialization, and validation for both Terraform roots without AWS credentials. It never plans, accesses remote state, or uploads Terraform state/plan artifacts.
 
 ## Authentication design
 

@@ -16,6 +16,7 @@ The existing React/TypeScript/Vite prototype is functional. It provides grievanc
 - Added an unapplied bootstrap configuration for a dedicated encrypted/versioned S3 state backend, native lockfile access, and separate repository/environment-scoped GitHub OIDC roles.
 - Documented authentication, data lifecycle, asynchronous Bedrock processing, deployment separation, costs, and unresolved governance decisions in `docs/INFRASTRUCTURE.md`.
 - Validated formatting, backend-disabled initialization, both Terraform roots, and a read-only hosting plan against a temporary empty local state. No state or binary plan was retained.
+- Corrected backend lockfile permissions, restricted shared-zone DNS writes by normalized name/type/action, narrowed CloudFront/ACM lifecycle permissions, and added credential-free Terraform CI validation for both roots.
 
 Task 1 merged as PR #1 at `9fe0e6d`. Task 2 branched from that commit; add its PR reference after merge if useful for investigation.
 
