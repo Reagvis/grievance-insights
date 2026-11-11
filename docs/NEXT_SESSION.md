@@ -4,7 +4,7 @@
 
 Grievance Insights is a single-organization pilot for analyzing Telugu citizen grievances and department responses. Read [ARCHITECTURE.md](ARCHITECTURE.md), [INFRASTRUCTURE.md](INFRASTRUCTURE.md), [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md), [DECISIONS.md](DECISIONS.md), and [AGENTS.md](../AGENTS.md) before changing code.
 
-The repository is `Reagvis/grievance-insights`. PRs #1–#5 are merged; at this handoff `main` is `4e70bb5189bb47a69991d6a52412b23561f4f05c` (PR #5). Always fetch latest remote `main`, preserve unrelated changes, and use a focused feature branch.
+The repository is `Reagvis/grievance-insights`. PRs #1–#6 are merged. Always fetch latest remote `main`, preserve unrelated changes, and use a focused feature branch.
 
 ## Implemented and deployed
 
@@ -21,7 +21,7 @@ The repository is `Reagvis/grievance-insights`. PRs #1–#5 are merged; at this 
 
 ## CI and deployment workflows
 
-- `ci.yml` runs application and credential-free Terraform validation for pull requests and pushes to `main`.
+- `ci.yml` runs application, credential-free Terraform, and GitHub Actions workflow syntax validation for pull requests and pushes to `main`.
 - `deploy-frontend.yml` is manual, main-only, and uses the `pilot-frontend` GitHub environment plus OIDC. `PILOT_DEPLOY_ENABLED=false`; do not enable it until authentication and publication are approved.
 - `deploy-infra.yml` is manual, main-only, and uses the `pilot-infrastructure` environment plus OIDC. Plan is read-only. Apply additionally requires `INFRA_DEPLOY_ENABLED=true` and the exact confirmation `APPLY`. It applies only the plan generated in that run and rejects every delete or replacement. Binary plans remain on the ephemeral runner and are not uploaded.
 - Both deployment workflows serialize runs. Never add permanent AWS credentials or generic command inputs.
