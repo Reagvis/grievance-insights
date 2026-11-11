@@ -82,3 +82,9 @@ jobs:
 
       - name: Validate bootstrap configuration
         run: terraform -chdir=infra/bootstrap validate
+
+      - name: Initialize access-seed configuration
+        run: terraform -chdir=infra/access-seed init -backend=false -input=false
+
+      - name: Validate access-seed configuration
+        run: terraform -chdir=infra/access-seed validate

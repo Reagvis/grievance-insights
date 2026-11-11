@@ -17,18 +17,17 @@ The hosting bucket is not a public website endpoint. CloudFront alone can read o
 
 ## State and bootstrap
 
-The main configuration declares an encrypted S3 backend with native S3 locking (`use_lockfile = true`) and the isolated key `grievance-insights/pilot/terraform.tfstate`. State must be treated as sensitive even when outputs are not marked sensitive.
+The main configuration declares an encrypted S3 backend with native S3 locking (`use_lockfile = true`) and the isolated key `grievance-insights/pilot/terraform.tfstate`. Bootstrap uses the same dedicated bucket but a separate key, `grievance-insights/pilot/bootstrap/terraform.tfstate`, with its own lockfile. State must be treated as sensitive even when outputs are not marked sensitive.
 
 Read-only discovery found an existing encrypted, versioned, non-public bucket used by the HimParivar project, but it is an unrelated artifacts bucket and lacks a bucket policy. Its ownership and reuse have not been approved, so this project does not use it. `infra/bootstrap/` instead defines a dedicated state bucket with versioning, default encryption, public-access blocking, enforced bucket ownership, TLS-only access, and deletion protection.
 
-Bootstrap is deliberately separate because a remote-state configuration cannot create its own bucket or the role used to run it. The bootstrap has been completed; these steps describe its reproducible lifecycle:
+Bootstrap is deliberately separate because a remote-state configuration cannot create its own bucket or access identity. The bootstrap state was migrated from the checksum-verified local authority to its dedicated remote key without changing any resource address; the old versioned `bootstrap/terraform.tfstate` backup object remains unchanged.
 
-1. Approve the dedicated globally unique bucket name, IAM permissions boundary (if required), hosted-zone ID, GitHub environments, and bootstrap operator.
-2. In `infra/bootstrap/`, copy `terraform.tfvars.example` to ignored `terraform.tfvars`. Supply the existing GitHub OIDC provider ARN and public `reagvis.com` zone ID through the operator's secure configuration.
-3. Run `terraform init`, `terraform fmt -check -recursive`, `terraform validate`, and create a saved bootstrap plan. Review it independently before any authorized apply.
-4. Initialize the main root with `terraform -chdir=infra init -backend-config="bucket=<approved-dedicated-bucket>" -reconfigure`. The backend key, region, encryption, and lockfile behavior are fixed in source.
-5. Plan and apply the hosting foundation only after approval. Provide its distribution ID to the bootstrap stack and run a second reviewed bootstrap change to create the narrowly scoped frontend publishing role. Both phases are now complete for the pilot.
-6. Protect or migrate the bootstrap's initial local state as an administrative artifact. The current state is backed up under the versioned, encrypted `bootstrap/terraform.tfstate` object in the dedicated state bucket. Never commit state, plan files, `.terraform/`, or populated variable files.
+The pre-migration authority had lineage `5481d700-9cb8-ba8b-0faf-3a4ab13721e2`, serial `25`, and 27 Terraform addresses. Terraform's supported backend migration established remote lineage `f1f56c57-9f39-515d-3cf6-222890b704b1` at serial `1`; all 27 addresses matched exactly and the first remote-backed plan reported zero changes.
+
+Routine bootstrap operations now run through `.github/workflows/deploy-bootstrap.yml` and the `pilot-bootstrap` environment. The workflow supplies every deployed non-secret variable, initializes the remote backend, creates a same-run plan, rejects deletion/replacement, and requires both a disabled-by-default guard and explicit confirmation before apply. State and plans are never uploaded as artifacts.
+
+The one-time `infra/access-seed/` root owns only the bootstrap role and its matching permissions boundary. Its local state and separate `access-seed/terraform.tfstate` backup are retained because the bootstrap role must not be able to change its own trust, permissions, or boundary. Access-seed changes are exceptional operator actions, not routine deployment work.
 
 The state role can list only the exact default-workspace state-key prefix. It can read and write the state and lockfile objects, but `s3:DeleteObject` applies only to the `.tflock` object; the backend cannot delete state. Terraform workspaces are intentionally unsupported because each environment must use a separately reviewed state key and role. Native S3 lockfiles replace a DynamoDB lock table. Bucket versioning provides recovery from accidental state replacement; recovery remains an audited operator action.
 
@@ -38,8 +37,9 @@ The AWS account already has the account-wide `token.actions.githubusercontent.co
 
 - `pilot-infrastructure`: a Terraform role with state access and permissions for the hosting foundation plus project-scoped Cognito, Lambda, HTTP API, DynamoDB, SQS/DLQ, private S3, CloudWatch Logs, runtime IAM, and Bedrock control-plane resources. It does not publish frontend objects or invoke Bedrock models.
 - `pilot-frontend`: a deployed publishing role that can list and update only `grievance-insights-pilot-134857759074-frontend` and invalidate only distribution `E3B0B5R1HAYD1J`; it cannot provision infrastructure.
+- `pilot-bootstrap`: a deployed bootstrap role that manages only the two project deployment roles, their exact policies, the runtime boundary, state-bucket configuration, and the dedicated bootstrap state/lock objects. Its own role and boundary are excluded.
 
-Both trust policies require the GitHub OIDC audience and the exact protected environment subject. The `pilot-infrastructure` and `pilot-frontend` GitHub environments permit deployments only from `main`; required reviewers are currently omitted because the pilot has one administrator.
+All three trust policies require the GitHub OIDC audience and their exact protected environment subject. The `pilot-infrastructure`, `pilot-frontend`, and `pilot-bootstrap` GitHub environments permit deployments only from `main`; required reviewers are currently omitted because the pilot has one administrator.
 
 Backend permissions are split across managed policies to remain below IAM policy-size limits. Runtime IAM is limited to the exact API and worker execution-role and policy names. New roles must carry the project runtime permissions boundary, and `iam:PassRole` is restricted to those roles and `lambda.amazonaws.com`. The boundary contains no IAM administration, excludes deployment artifacts from runtime data access, and denies Bedrock inference until approved model or inference-profile ARNs are configured. Streaming invocation requires a separate opt-in.
 
@@ -53,7 +53,7 @@ The infrastructure role's shared-zone write access is conditioned on Route 53 no
 
 CloudFront and ACM permissions follow each service's resource-level authorization support. Existing distributions and certificates are limited to account/region resource patterns plus the repository tag; the CloudFront Function uses its exact-name ARN. OAC and response-header policy lifecycle permissions are limited to their account/resource-type ARN patterns, but those resources are untaggable and their generated IDs are unknown before creation. CloudFront create/list operations and `acm:RequestCertificate` do not support resource ARNs, so `Resource = "*"` is unavoidable; project request tags constrain taggable CloudFront creates, while ACM requests additionally require the exact pilot domain and DNS validation. Managed CloudFront cache-policy lookup and Route 53 hosted-zone discovery are read-only wildcard exceptions.
 
-CI runs formatting, backend-disabled initialization, and validation for both Terraform roots without AWS credentials. It never plans, accesses remote state, or uploads Terraform state/plan artifacts.
+CI runs formatting, backend-disabled initialization, and validation for all three Terraform roots without AWS credentials. It never plans, accesses remote state, or uploads Terraform state/plan artifacts.
 
 ## Authentication design
 
