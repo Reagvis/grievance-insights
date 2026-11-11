@@ -51,7 +51,7 @@ export default function AuthGate({ children }: { children: (user: AuthUser, logo
   const version = useRef(0);
   const check = useCallback(async () => {
     const current = ++version.current;
-    setState({ kind: 'checking' });
+    setState(previous => previous.kind === 'authenticated' ? previous : { kind: 'checking' });
     try {
       const result = await authApi.session();
       if (current === version.current) setState({ kind: 'authenticated', user: result.user });
