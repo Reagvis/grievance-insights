@@ -4,7 +4,7 @@
 
 Grievance Insights is a single-organization pilot for analyzing Telugu citizen grievances and department responses. Read [ARCHITECTURE.md](ARCHITECTURE.md), [INFRASTRUCTURE.md](INFRASTRUCTURE.md), [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md), [DECISIONS.md](DECISIONS.md), and [AGENTS.md](../AGENTS.md) before changing code.
 
-The repository is `Reagvis/grievance-insights`. PRs #1–#8 are merged. Always fetch latest remote `main`, preserve unrelated changes, and use a focused feature branch.
+The repository is `Reagvis/grievance-insights`. PRs #1–#9 are merged; the authentication backend is under review in the next PR. Always fetch latest remote `main`, preserve unrelated changes, and use a focused feature branch.
 
 ## Implemented and deployed
 
@@ -19,6 +19,7 @@ The repository is `Reagvis/grievance-insights`. PRs #1–#8 are merged. Always f
 - Frontend publishing role: `arn:aws:iam::134857759074:role/grievance-insights-pilot-frontend`.
 - Bootstrap role: `arn:aws:iam::134857759074:role/grievance-insights-pilot-bootstrap`. It is bounded to the existing bootstrap-managed roles, policies, state-bucket configuration, and bootstrap state objects; it cannot administer itself.
 - The original bootstrap state remains preserved at the versioned `bootstrap/terraform.tfstate` backup object and in a protected pre-migration local copy. The separate access-seed state is also outside Git and backed up at `access-seed/terraform.tfstate`. Never initialize either stack from an empty state.
+- Authentication backend code now implements login, session lookup, logout, and health endpoints. Terraform defines Cognito, DynamoDB sessions, Lambda/API Gateway, bounded runtime IAM, logs, and uncached CloudFront API routing. None of these new resources is deployed yet.
 
 ## CI and deployment workflows
 
@@ -27,6 +28,7 @@ The repository is `Reagvis/grievance-insights`. PRs #1–#8 are merged. Always f
 - `deploy-infra.yml` is manual, main-only, and uses the `pilot-infrastructure` environment plus OIDC. Plan is read-only. Apply additionally requires `INFRA_DEPLOY_ENABLED=true` and the exact confirmation `APPLY`. It applies only the plan generated in that run and rejects every delete or replacement. Binary plans remain on the ephemeral runner and are not uploaded.
 - `deploy-bootstrap.yml` is manual, main-only, and uses the `pilot-bootstrap` environment plus the dedicated bootstrap OIDC role. Apply requires `BOOTSTRAP_DEPLOY_ENABLED=true` and `APPLY BOOTSTRAP`; deletes and replacements are rejected.
 - All deployment workflows serialize runs. Never add permanent AWS credentials or generic command inputs.
+- The infrastructure workflow runs backend type-checks/tests and creates the deterministic Lambda zip before planning, so deployment never depends on a WSL-built artifact.
 
 To operate through GitHub, verify `gh auth status`, fetch the latest `main`, create a focused branch, run local checks, push, and open a PR. After merge, select the appropriate manual workflow on `main`. Run `plan` first and review its log. Enable an apply guard only for an explicitly approved deployment, invoke `apply` with its confirmation, then return the guard to `false`. Routine hosting and bootstrap deployments no longer require local AWS credentials. Do not dispatch frontend publication before authentication is complete.
 
@@ -40,4 +42,4 @@ Bedrock worker invocation is authorized only for Qwen3 32B (`qwen.qwen3-32b-v1:0
 
 ## Not implemented and recommended next task
 
-Authentication, production APIs, durable sessions, application DynamoDB tables, dataset/result storage, queues, Bedrock workers, and backend Lambda packaging/deployment automation are not implemented. Next implement administrator-provisioned Cognito authentication, backend-managed secure sessions, frontend login/logout, and backend CI/build and Lambda packaging within the existing Terraform deployment workflow. Keep all deployment guards disabled while work is reviewed.
+Authentication API code, durable hashed sessions, Terraform, tests, and Lambda packaging are implemented but not deployed. Frontend login/logout, dataset/result storage, queues, Bedrock workers, and application APIs are not implemented. After a separately authorized authentication infrastructure deployment, implement frontend login/logout/session handling. Keep all deployment guards disabled while work is reviewed.

@@ -7,7 +7,7 @@ This document describes the pilot architecture and Terraform foundation in `infr
 | Boundary | Ownership and status |
 |---|---|
 | Frontend hosting | Deployed: private, encrypted, versioned S3 asset bucket; CloudFront with Origin Access Control; a `us-east-1` ACM certificate; and Route 53 aliases for `telangana-gov-pilot.reagvis.com`. The bucket remains empty. |
-| Authentication and API | A future API Gateway/Lambda backend will own Cognito authentication, sessions, authorization, presigned dataset operations, and job APIs. It is intentionally absent from this foundation. |
+| Authentication and API | Implemented but not deployed: administrator-only Cognito, a Node.js 22 Lambda, HTTP API, and DynamoDB hashed sessions. Dataset and job APIs remain future work. |
 | Datasets and results | Future private S3 storage will separate raw uploads from derived processing results. Browsers will receive only short-lived, authorized access. Not implemented. |
 | Metadata and jobs | Future DynamoDB tables will hold dataset metadata, session hashes with TTL, idempotency records, and job state; SQS and a dead-letter queue will control asynchronous work. Not implemented. |
 | AI execution | Future worker Lambdas will invoke Bedrock in the approved region/model configuration. The browser and synchronous API will not call Bedrock directly. Not implemented. |
@@ -57,13 +57,15 @@ CI runs formatting, backend-disabled initialization, and validation for all thre
 
 ## Authentication design
 
-Authentication will adapt the HimParivar pilot pattern after threat-model review:
+The authentication implementation adapts the HimParivar pilot pattern and remains unapplied:
 
-- Cognito allows administrator-created usernames only; self-registration is disabled. Password policy, recovery, MFA requirements, and administrator lifecycle still require approval.
+- Cognito allows administrator-created usernames only; self-registration and user-managed recovery are disabled. The initial pilot configuration has a 12-character complexity policy and no MFA; administrator lifecycle and any MFA change require operational approval.
 - The browser submits credentials only to the same-origin backend. Lambda authenticates with Cognito and stores only a cryptographic hash of a high-entropy opaque session identifier in DynamoDB.
 - The browser receives the opaque identifier in an `HttpOnly; Secure; SameSite=Strict` cookie with a narrowly scoped path. JavaScript never receives Cognito tokens or AWS credentials. State-changing endpoints require same-origin checks and CSRF protection appropriate to the final cookie/API design.
-- Sessions enforce both idle and absolute expiration, with DynamoDB TTL as cleanup rather than the sole authorization check. Exact durations require security approval; cookie expiry must not exceed the server-side session expiry.
-- Every API request validates the session, user status, expiry, and required pilot role. Logout deletes/revokes the server-side session and expires the cookie. Administrative account disablement must prevent new sessions and provide a way to revoke existing sessions.
+- Sessions enforce an eight-hour configurable absolute expiration, with DynamoDB TTL as cleanup rather than authorization. Cookie expiry equals the server-side expiry. Idle expiry is not implemented.
+- Session-protected requests validate the token hash and server-side expiry. Logout deletes the session and expires the cookie. Account disablement prevents new Cognito authentication; bulk revocation of existing application sessions remains future administrator tooling.
+
+`POST /api/auth/login` and `POST /api/auth/logout` require the exact public origin. `GET /api/auth/session` and `GET /api/health` are non-mutating. CloudFront forwards `/api` and `/api/*` to the HTTP API with caching disabled and without the SPA rewrite. The Lambda does not log request bodies, passwords, cookies, or tokens. Cognito authentication challenges are rejected without exposing Cognito tokens; administrators must provision a permanent password until a reviewed challenge flow exists.
 
 CloudFront-hosted JavaScript, CSS, fonts, and images are publicly retrievable. Complaint datasets, job status, AI results, reports, and user/session data are authenticated application data and must never be placed in the frontend bucket or a public cache behavior.
 

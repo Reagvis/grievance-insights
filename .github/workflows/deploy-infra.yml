@@ -60,6 +60,24 @@ jobs:
         with:
           terraform_version: 1.14.8
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Type-check authentication backend
+        run: npm run backend:typecheck
+
+      - name: Test authentication backend
+        run: npm run backend:test
+
+      - name: Package authentication Lambda
+        run: npm run backend:package
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:

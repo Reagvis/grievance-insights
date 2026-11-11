@@ -65,3 +65,31 @@ variable "additional_tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "auth_lambda_zip_path" {
+  description = "Path, relative to infra/, to the reproducibly built authentication Lambda archive."
+  type        = string
+  default     = "../artifacts/auth-lambda.zip"
+}
+
+variable "auth_session_ttl_seconds" {
+  description = "Absolute server-side authentication session lifetime in seconds."
+  type        = number
+  default     = 28800
+
+  validation {
+    condition     = var.auth_session_ttl_seconds >= 900 && var.auth_session_ttl_seconds <= 86400
+    error_message = "Authentication sessions must last between 15 minutes and 24 hours."
+  }
+}
+
+variable "auth_log_retention_days" {
+  description = "CloudWatch retention for authentication Lambda operational logs."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = contains([7, 14, 30, 60, 90, 120, 150, 180, 365], var.auth_log_retention_days)
+    error_message = "auth_log_retention_days must be a supported bounded CloudWatch retention value."
+  }
+}

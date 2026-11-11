@@ -27,3 +27,18 @@ output "certificate_arn" {
   description = "Validated us-east-1 ACM certificate ARN."
   value       = aws_acm_certificate.frontend.arn
 }
+
+output "authentication_api_id" {
+  description = "HTTP API identifier for the same-origin authentication backend."
+  value       = aws_apigatewayv2_api.auth.id
+}
+
+output "cognito_user_pool_id" {
+  description = "Administrator-managed Cognito user pool identifier."
+  value       = aws_cognito_user_pool.pilot.id
+}
+
+output "sessions_table_name" {
+  description = "DynamoDB table containing only hashed opaque sessions."
+  value       = aws_dynamodb_table.sessions.name
+}
