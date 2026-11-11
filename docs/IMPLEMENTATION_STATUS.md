@@ -35,7 +35,7 @@ Task 1 merged as PR #1 at `9fe0e6d`; Task 2 merged as PR #2 at `7a4b271`.
 - All bundled data is synthetic; imported data is not persisted.
 - Current summaries and assistant answers are deterministic, not AI-generated. Telugu report generation, OCR, RAG, RBAC, audit logs, and production observability are absent.
 - The Vite build and tests emit a forward-compatibility warning for extensionless imports under Vite's future native config loader. It does not currently fail validation.
-- Bedrock model availability/quotas, data classification, retention policy, and production access controls remain undecided.
+- Qwen3 32B is active in `ap-south-1` and approved only for initial synthetic-data evaluation; Bedrock quotas, broader model suitability, data classification, retention policy, and production access controls remain undecided.
 - Authentication is not implemented, so frontend publication remains intentionally disabled and the hosting bucket remains empty.
 
 ## Recommended next task
