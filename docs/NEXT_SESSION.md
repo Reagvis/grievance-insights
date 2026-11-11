@@ -4,7 +4,7 @@
 
 Grievance Insights is a single-organization pilot for analyzing Telugu citizen grievances and department responses. Read [ARCHITECTURE.md](ARCHITECTURE.md), [INFRASTRUCTURE.md](INFRASTRUCTURE.md), [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md), [DECISIONS.md](DECISIONS.md), and [AGENTS.md](../AGENTS.md) before changing code.
 
-The repository is `Reagvis/grievance-insights`. At this handoff, `main` includes PR #3 at `8edf996`; the infrastructure-workflow handoff is being prepared on `chore/infra-deployment-handoff` and must be merged through its reviewed PR. Start future work from the latest remote `main`, preserve unrelated changes, and use a focused feature branch.
+The repository is `Reagvis/grievance-insights`. PRs #1–#5 are merged; at this handoff `main` is `4e70bb5189bb47a69991d6a52412b23561f4f05c` (PR #5). Always fetch latest remote `main`, preserve unrelated changes, and use a focused feature branch.
 
 ## Implemented and deployed
 
@@ -17,7 +17,7 @@ The repository is `Reagvis/grievance-insights`. At this handoff, `main` includes
 - ACM certificate: `arn:aws:acm:us-east-1:134857759074:certificate/a4f5df92-a43a-4dde-a384-611865391489`.
 - Infrastructure role: `arn:aws:iam::134857759074:role/grievance-insights-pilot-terraform`.
 - Frontend publishing role: `arn:aws:iam::134857759074:role/grievance-insights-pilot-frontend`.
-- Bootstrap Terraform state remains local, excluded from Git, and separately backed up. Coordinate with the operator before changing `infra/bootstrap/`; never recreate its resources from an empty state.
+- Bootstrap Terraform state remains outside Git with an operator-held local copy and a checksum-verified backup at `bootstrap/terraform.tfstate` in the versioned, encrypted project state bucket. Coordinate with the operator before changing `infra/bootstrap/`; never apply it from empty state or use the main hosting root as its state.
 
 ## CI and deployment workflows
 
@@ -30,10 +30,10 @@ To operate through GitHub, verify `gh auth status`, fetch the latest `main`, cre
 
 ## IAM boundary and future work
 
-The infrastructure role currently supports only the dedicated state backend and deployed S3/CloudFront/ACM/Route 53 hosting resources. The frontend role can only list and publish to the frontend bucket and invalidate distribution `E3B0B5R1HAYD1J`. Neither role currently grants Cognito, Lambda, API Gateway, DynamoDB, SQS, or Bedrock permissions.
+The infrastructure OIDC role supports the existing state/hosting resources and now has project-scoped provisioning policies for Cognito, Lambda, API Gateway HTTP APIs, DynamoDB, SQS, private datasets/results/artifact buckets, CloudWatch Logs, two named Lambda execution roles, and Bedrock control-plane resources (PR #5). Its IAM runtime permissions boundary is mandatory for those execution roles. `iam:PassRole` is limited to the two named roles and Lambda. The Terraform deployer cannot invoke models. The frontend role still only publishes assets and invalidates distribution `E3B0B5R1HAYD1J`.
 
-Terraform validation does not prove that a future apply is authorized. When backend resources are actually defined, review their exact AWS API requirements and extend the infrastructure role with resource-specific permissions in a separate bootstrap plan before using the deployment workflow. Do not grant broad future-service access preemptively.
+Bedrock worker invocation is **not yet authorized**: `approved_bedrock_inference_arns` defaults to an empty set, and streaming remains disabled. The read-only reference uses Qwen3 32B in `ap-south-1`; verify the exact model ARN, account availability, pricing, and evaluation suitability before approving it through an explicitly reviewed bootstrap change. IAM simulation confirms selected allow/deny cases but does not guarantee that all future Terraform provider API calls will succeed. When backend resources are defined, refine any action-level gaps based on their actual plans and access-denied diagnostics without broadening permissions indiscriminately.
 
 ## Not implemented and recommended next task
 
-Authentication, production APIs, durable sessions, application DynamoDB tables, dataset/result storage, queues, Bedrock workers, and backend deployment automation remain unimplemented. The next task should implement administrator-provisioned Cognito authentication, backend-managed secure sessions, frontend login/logout, and backend CI/CD. Keep both deployment guards disabled while that design and implementation are reviewed.
+Authentication, production APIs, durable sessions, application DynamoDB tables, dataset/result storage, queues, Bedrock workers, and backend Lambda packaging/deployment automation are not implemented. Next implement administrator-provisioned Cognito authentication, backend-managed secure sessions, frontend login/logout, and backend CI/build and Lambda packaging within the existing Terraform deployment workflow. Keep both deployment guards disabled while work is reviewed.
