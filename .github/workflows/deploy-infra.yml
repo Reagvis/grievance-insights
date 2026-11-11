@@ -1,0 +1,114 @@
+name: Deploy infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Terraform operation to run
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+      confirmation:
+        description: Type APPLY to authorize an apply operation
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-infrastructure-pilot
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: pilot-infrastructure
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_PLAN_FILE: ${{ runner.temp }}/grievance-insights.tfplan
+    steps:
+      - name: Require apply authorization
+        if: inputs.operation == 'apply'
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          INFRA_DEPLOY_ENABLED: ${{ vars.INFRA_DEPLOY_ENABLED }}
+        run: |
+          if [[ "$INFRA_DEPLOY_ENABLED" != "true" ]]; then
+            echo "Infrastructure apply is disabled."
+            exit 1
+          fi
+          if [[ "$CONFIRMATION" != "APPLY" ]]; then
+            echo "Apply requires the exact confirmation APPLY."
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.8
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::134857759074:role/grievance-insights-pilot-terraform
+          aws-region: ap-south-1
+
+      - name: Check Terraform formatting
+        run: terraform -chdir=infra fmt -check -recursive
+
+      - name: Initialize remote backend
+        run: >-
+          terraform -chdir=infra init
+          -input=false
+          -backend-config="bucket=grievance-insights-pilot-134857759074-tfstate"
+
+      - name: Validate Terraform
+        run: terraform -chdir=infra validate
+
+      - name: Create Terraform plan
+        id: plan
+        run: |
+          set +e
+          terraform -chdir=infra plan -input=false -detailed-exitcode -out="$TF_PLAN_FILE"
+          status=$?
+          set -e
+
+          if [[ $status -eq 1 ]]; then
+            exit 1
+          fi
+          if [[ $status -eq 2 ]]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reject destructive changes
+        run: |
+          terraform -chdir=infra show -json "$TF_PLAN_FILE" > "$RUNNER_TEMP/plan.json"
+          destructive_count=$(jq '[.resource_changes[]? | select(.change.actions | index("delete"))] | length' "$RUNNER_TEMP/plan.json")
+          if [[ "$destructive_count" -ne 0 ]]; then
+            echo "Plan contains destruction or replacement and will not continue:"
+            jq -r '.resource_changes[]? | select(.change.actions | index("delete")) | "- \(.address): \(.change.actions | join(","))"' "$RUNNER_TEMP/plan.json"
+            exit 1
+          fi
+
+      - name: Apply exact reviewed plan
+        if: inputs.operation == 'apply' && steps.plan.outputs.has_changes == 'true'
+        run: terraform -chdir=infra apply -input=false -auto-approve "$TF_PLAN_FILE"
+
+      - name: Report no changes
+        if: inputs.operation == 'apply' && steps.plan.outputs.has_changes == 'false'
+        run: echo "Terraform reports no changes; nothing was applied."
