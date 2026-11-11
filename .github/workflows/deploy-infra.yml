@@ -35,7 +35,7 @@ jobs:
     env:
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
-      TF_PLAN_FILE: ${{ runner.temp }}/grievance-insights.tfplan
+      TF_PLAN_FILE: ${{ github.workspace }}/grievance-insights.tfplan
     steps:
       - name: Require apply authorization
         if: inputs.operation == 'apply'
