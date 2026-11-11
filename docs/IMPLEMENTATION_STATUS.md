@@ -4,7 +4,7 @@ Last updated: 2026-11-11
 
 ## Current state
 
-The React/TypeScript/Vite prototype is functional. Development and preview use an in-memory Vite-local API; static builds process records in the browser. AWS hosting and separate remote state for hosting and bootstrap are operational. Dedicated infrastructure, frontend, and bootstrap GitHub OIDC roles are deployed. The infrastructure role has bounded, project-scoped permissions for the planned backend, but no backend resources are deployed. All deployment guards remain disabled. There is no deployed production backend, authentication, persistence, or Bedrock integration, and no frontend assets have been published.
+The React/TypeScript/Vite prototype is functional. Development and preview retain the in-memory Vite-local API; static builds process records in the browser. AWS hosting and deployment foundations are operational. A tested Cognito/Lambda/DynamoDB authentication backend and its Terraform definitions now exist, but no backend resources are deployed. All deployment guards remain disabled, frontend login is not implemented, and no frontend assets have been published.
 
 ## Completed
 
@@ -21,13 +21,15 @@ The React/TypeScript/Vite prototype is functional. Development and preview use a
 - Added the distribution-scoped frontend publishing role and a manual, OIDC-based deployment workflow guarded by `PILOT_DEPLOY_ENABLED=false`.
 - Added and applied split, project-scoped backend provisioning policies plus a mandatory runtime-role permissions boundary; the deployer cannot invoke Bedrock models and streaming remains opt-in for future approved runtime resources.
 - Migrated bootstrap Terraform to its own remote S3 state key, added a non-self-administering bootstrap OIDC role, and added guarded GitHub Actions bootstrap plan/apply automation.
+- Added the administrator-only Cognito authentication Lambda with hashed opaque sessions, strict same-origin login/logout, session validation/revocation, deterministic GitHub packaging, and Terraform for HTTP API, DynamoDB, bounded runtime IAM, and uncached CloudFront API routing.
 
 Task 1 merged as PR #1 at `9fe0e6d`; Task 2 merged as PR #2 at `7a4b271`.
 
 ## Outstanding
 
-- Design and implement API Gateway, Lambda, Cognito/session storage, DynamoDB metadata, private S3 datasets/results, SQS/DLQ, worker Lambda, and Bedrock access.
-- Implement administrator-provisioned authentication and secure server-side sessions.
+- Review and deploy the implemented authentication infrastructure through the guarded infrastructure workflow; create administrator users separately only after deployment approval.
+- Implement frontend login/logout/session state against the same-origin authentication API.
+- Design and implement DynamoDB application metadata, private S3 datasets/results, SQS/DLQ, worker Lambda, and Bedrock access.
 - Define dataset schemas, retention rules, upload limits, job lifecycle, Bedrock model/prompt/evaluation strategy, and human-review controls.
 - Replace the local service implementation with authenticated production APIs while preserving the existing frontend contract and behavior.
 
@@ -37,8 +39,8 @@ Task 1 merged as PR #1 at `9fe0e6d`; Task 2 merged as PR #2 at `7a4b271`.
 - Current summaries and assistant answers are deterministic, not AI-generated. Telugu report generation, OCR, RAG, RBAC, audit logs, and production observability are absent.
 - The Vite build and tests emit a forward-compatibility warning for extensionless imports under Vite's future native config loader. It does not currently fail validation.
 - Qwen3 32B is active in `ap-south-1` and approved only for initial synthetic-data evaluation; Bedrock quotas, broader model suitability, data classification, retention policy, and production access controls remain undecided.
-- Authentication is not implemented, so frontend publication remains intentionally disabled and the hosting bucket remains empty.
+- Authentication infrastructure is not deployed and frontend authentication is not implemented, so publication remains disabled and the hosting bucket remains empty.
 
 ## Recommended next task
 
-Implement administrator-provisioned Cognito authentication and backend-managed sessions. Keep `PILOT_DEPLOY_ENABLED=false` until that work is reviewed and publication is explicitly authorized.
+Review PR infrastructure plans, then deploy the authentication backend through the guarded infrastructure workflow when explicitly authorized. Next implement frontend login/logout/session handling. Keep `PILOT_DEPLOY_ENABLED=false` until both layers are reviewed.

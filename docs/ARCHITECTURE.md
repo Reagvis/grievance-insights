@@ -6,9 +6,9 @@ Grievance Insights is currently a React 19 and TypeScript single-page applicatio
 
 During `npm run dev` and `npm run preview`, a Vite middleware in `server/api.ts` exposes same-origin `/api/health`, `/api/records`, `/api/summary`, and `/api/assistant` endpoints. Processing is deterministic and in memory; it does not use AI or persistence. `npm run build:aws` uses Vite's `pages` mode with root-relative asset paths and performs deterministic processing entirely in the browser; it does not depend on the localhost middleware or expose `/api/*`. The existing GitHub Pages build retains relative paths for project-subdirectory hosting.
 
-The frontend depends on service interfaces rather than an AWS implementation. `SummaryService` is the main summary boundary, `LocalApiSummaryService` is the current non-static client, and `RemoteAISummaryService` is an unconnected contract stub. No production backend, authentication, or Bedrock integration is implemented. A manual GitHub Actions frontend deployment workflow exists but is disabled through `PILOT_DEPLOY_ENABLED=false`.
+The frontend depends on service interfaces rather than an AWS implementation. `SummaryService` is the main summary boundary, `LocalApiSummaryService` is the current non-static client, and `RemoteAISummaryService` is an unconnected contract stub. A production-oriented authentication Lambda is implemented under `backend/auth/` but is not deployed or connected to frontend UI. Bedrock integration is not implemented. A manual GitHub Actions frontend deployment workflow exists but is disabled through `PILOT_DEPLOY_ENABLED=false`.
 
-The Terraform hosting foundation is deployed: private S3, CloudFront OAC, ACM, Route 53 aliases, dedicated remote state, and separate GitHub OIDC roles for infrastructure and frontend publication. The frontend bucket is intentionally empty pending authentication. See `docs/INFRASTRUCTURE.md` for resource boundaries and security design.
+The Terraform hosting foundation is deployed: private S3, CloudFront OAC, ACM, Route 53 aliases, dedicated remote state, and separate GitHub OIDC roles for infrastructure and frontend publication. Terraform now also defines, but has not deployed, the Cognito user pool/client, hashed-session DynamoDB table, authentication Lambda and bounded role, HTTP API, and uncached CloudFront API behaviors. The frontend bucket remains empty. See `docs/INFRASTRUCTURE.md` for resource boundaries and security design.
 
 ## Proposed AWS pilot
 
@@ -21,14 +21,14 @@ The planned production topology is:
 5. APIs enqueue long-running analysis through SQS. Worker Lambdas invoke Amazon Bedrock and persist structured, source-grounded results for later retrieval.
 6. Terraform defines infrastructure. GitHub Actions assumes narrowly scoped AWS roles through GitHub OIDC for future deployment; no static AWS credentials are stored in GitHub.
 
-Only the frontend hosting layer currently has Terraform definitions and deployed resources. API, authentication, data, queue, and AI components remain proposed only.
+The hosting layer is deployed. Authentication/API resources are implemented in code and Terraform but remain unapplied. Dataset, queue, reporting, and AI components remain proposed only.
 
 ## Integration and ownership boundaries
 
 - The browser should call only the authenticated project API. It must not receive AWS credentials or invoke Bedrock directly.
 - The backend will validate uploads and requests, authorize access, create asynchronous jobs, and expose status/results. AI output must retain links to source case IDs and must not turn a department response into an inferred resolution.
 - The reference repository `hardiksharma6555/telugu-complaint-summarizer-bedrock` is read-only. Its Bedrock techniques may inform the backend design, but production code and infrastructure belong in this repository and must be independently reviewed.
-- Authentication is planned to follow the read-only HimParivar pilot pattern: an admin-only Cognito user pool, backend-mediated username/password authentication, and an opaque `HttpOnly; Secure; SameSite=Strict` session cookie backed by TTL state. The exact design must be threat-modeled before implementation.
+- Authentication follows the reviewed HimParivar pattern: an admin-only Cognito user pool, backend-mediated username/password authentication, and an opaque host-only `HttpOnly; Secure; SameSite=Strict` session cookie. Only SHA-256 token hashes are stored, and server-side expiry/revocation—not DynamoDB TTL—authorizes requests. This code remains undeployed pending infrastructure review.
 
 ## Domain and DNS
 

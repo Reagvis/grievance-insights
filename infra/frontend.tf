@@ -120,6 +120,18 @@ resource "aws_cloudfront_distribution" "frontend" {
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
 
+  origin {
+    domain_name = trimsuffix(trimprefix(aws_apigatewayv2_api.auth.api_endpoint, "https://"), "/")
+    origin_id   = local.api_origin_id
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
   default_cache_behavior {
     target_origin_id           = local.frontend_origin_id
     viewer_protocol_policy     = "redirect-to-https"
@@ -133,6 +145,30 @@ resource "aws_cloudfront_distribution" "frontend" {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.spa_rewrite.arn
     }
+  }
+
+  ordered_cache_behavior {
+    path_pattern               = "/api"
+    target_origin_id           = local.api_origin_id
+    viewer_protocol_policy     = "https-only"
+    allowed_methods            = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods             = ["GET", "HEAD", "OPTIONS"]
+    compress                   = true
+    cache_policy_id            = data.aws_cloudfront_cache_policy.caching_disabled.id
+    origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
+  }
+
+  ordered_cache_behavior {
+    path_pattern               = "/api/*"
+    target_origin_id           = local.api_origin_id
+    viewer_protocol_policy     = "https-only"
+    allowed_methods            = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods             = ["GET", "HEAD", "OPTIONS"]
+    compress                   = true
+    cache_policy_id            = data.aws_cloudfront_cache_policy.caching_disabled.id
+    origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
   }
 
   restrictions {
@@ -168,7 +204,7 @@ data "aws_iam_policy_document" "frontend_bucket" {
     condition {
       test     = "StringEquals"
       variable = "AWS:SourceArn"
-      values   = [aws_cloudfront_distribution.frontend.arn]
+      values   = ["arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/${aws_cloudfront_distribution.frontend.id}"]
     }
   }
 

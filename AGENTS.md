@@ -9,6 +9,7 @@ Grievance Insights is a single-organization pilot for browsing and analyzing Tel
 - Work in WSL under `~/src/grievance-insights`.
 - Use Node.js 22 (minimum supported versions are Node 20.19 or 22.12) and install from the lockfile with `npm ci`.
 - Standard checks: `npm run lint`, `npm test`, and `npm run build`.
+- Authentication backend checks: `npm run backend:typecheck`, `npm run backend:test`, and `npm run backend:package`. Generated Lambda artifacts remain ignored.
 - Run locally with `npm run dev`; preview a production build with `npm run preview`.
 - Terraform hosting code is under `infra/`; bootstrap prerequisites are under `infra/bootstrap/`; the exceptional local access seed is under `infra/access-seed/`. The hosting and bootstrap roots use separate remote state keys. Use Terraform 1.14.x and the provider lock files.
 - For infrastructure-only changes run `terraform fmt -check -recursive`, initialize with the approved backend configuration (or `terraform init -backend=false` for validation only), and run `terraform validate`. Never apply, destroy, import, or modify AWS/GitHub configuration unless the task explicitly authorizes deployment.
