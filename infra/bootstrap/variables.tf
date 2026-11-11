@@ -71,7 +71,9 @@ variable "approved_bedrock_regions" {
 variable "approved_bedrock_inference_arns" {
   type        = set(string)
   description = "Approved Bedrock model or inference-profile ARNs for the runtime boundary. Empty denies all runtime model invocation."
-  default     = []
+  default = [
+    "arn:aws:bedrock:ap-south-1::foundation-model/qwen.qwen3-32b-v1:0",
+  ]
 
   validation {
     condition = alltrue([
