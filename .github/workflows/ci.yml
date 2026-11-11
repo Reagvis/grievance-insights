@@ -55,6 +55,19 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Build AWS frontend with authentication
+        run: |
+          npm run build:aws
+          grep -Rq 'Administrator sign in' dist/assets/
+
+      - name: Build GitHub Pages demo without authentication
+        run: |
+          npm run build:pages
+          if grep -Rq 'Administrator sign in' dist/assets/; then
+            echo "Pages bundle unexpectedly contains the AWS login screen."
+            exit 1
+          fi
+
       - name: Upload frontend build
         uses: actions/upload-artifact@v4
         with:
