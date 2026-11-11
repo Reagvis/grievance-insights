@@ -62,7 +62,7 @@ describe('protected UI', () => {
     const props = { onLogin: async () => {}, onRetry: () => {} };
     const html = renderToStaticMarkup(createElement(AuthScreen, { ...props, state: { kind: 'signed-out' } }));
     expect(html).toContain('type="password"');
-    expect(html).toContain('autocomplete="username"');
+    expect(html).toContain('autoComplete="username"');
     expect(html).toContain('id="auth-password"');
     expect(html).not.toContain('record-list');
     const loading = renderToStaticMarkup(createElement(AuthScreen, { ...props, state: { kind: 'checking' } }));
