@@ -7,6 +7,7 @@
     "dev": "vite",
     "test": "vitest run",
     "build": "tsc -b && vite build",
+    "build:aws": "tsc -b && vite build --mode pages --base=/",
     "build:pages": "tsc -b && vite build --mode pages --base=./",
     "deploy:pages": "node scripts/deploy-pages.mjs",
     "lint": "oxlint",
