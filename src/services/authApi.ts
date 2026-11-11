@@ -1,7 +1,8 @@
 /** Same-origin cookie-session client; credentials and tokens are never stored. */
 export interface AuthUser { username: string }
 export class AuthApiError extends Error {
-  constructor(readonly status: number, message: string) { super(message); this.name = 'AuthApiError'; }
+  readonly status: number;
+  constructor(status: number, message: string) { super(message); this.status = status; this.name = 'AuthApiError'; }
 }
 type Session = { authenticated: true; user: AuthUser };
 const listeners = new Set<() => void>();
