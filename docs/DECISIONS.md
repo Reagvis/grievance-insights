@@ -18,3 +18,7 @@
 | Retain noncurrent frontend asset versions for 30 days | Versioning supports rollback while bounded noncurrent retention controls pilot storage cost. This applies only to public build assets, not citizen datasets or processing results. Defined; not deployed. |
 
 These decisions describe direction, not deployed capability. Amend this log when a decision changes or an implementation establishes materially more detail.
+
+## AWS frontend authentication
+
+The AWS static build uses dedicated Vite `aws` mode and a fail-closed session gate backed by same-origin HttpOnly cookies. GitHub Pages and local dev retain the synthetic public demo. No tokens or passwords are retained in local storage. Client UI gating is not backend authorization for real data. Implemented in code; not deployed.

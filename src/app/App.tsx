@@ -68,7 +68,7 @@ async function copyText(text: string): Promise<void> {
 
 const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
 
-export default function App({ summaryService = defaultSummaryService }: { summaryService?: SummaryService }) {
+export default function App({ summaryService = defaultSummaryService, authUser, onLogout }: { summaryService?: SummaryService; authUser?: string; onLogout?: () => void }) {
   // ── Interface language ───────────────────────────────────────────────
   const [uiLang, setUiLang] = useState<UiLanguage>(readStoredLang);
   const i18n = useMemo(() => makeI18n(uiLang), [uiLang]);
@@ -314,6 +314,8 @@ export default function App({ summaryService = defaultSummaryService }: { summar
       <div className="app" data-view={mobileView}>
         <AppHeader
           datasetChoice={choice}
+          authUser={authUser}
+          onLogout={onLogout}
           importedLabel={imported ? `Imported · ${imported.sourceFileName} (${formatCount(imported.records.length)})` : null}
           isSynthetic={dataset.isSynthetic}
           onDatasetChange={changeDataset}

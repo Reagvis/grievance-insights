@@ -2233,3 +2233,18 @@ button:disabled {
     bottom: 76px;
   }
 }
+
+/* AWS authentication gate. */
+.auth-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.auth-panel { width: min(100%, 420px); padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.auth-brand { display: flex; gap: 12px; align-items: center; font-weight: 600; margin-bottom: 24px; }
+.auth-panel h1 { font-size: 1.5rem; margin-bottom: 8px; }
+.auth-description { color: var(--ink-500); margin-bottom: 24px; }
+.auth-form { display: grid; gap: 10px; }
+.auth-form label { font-weight: 500; }
+.auth-form .btn { margin-top: 12px; }
+.auth-error { color: #9c2424; margin: 12px 0; overflow-wrap: anywhere; }
+.auth-header-user { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.auth-header-user span { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
+@media (max-width: 850px) { .auth-header-user span { display: none; } }
+@media (max-width: 520px) { .auth-panel { padding: 24px; } }
