@@ -118,7 +118,14 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
         if (!job || job.ownerId !== session.userId) throw new HttpError(404, 'Analysis not found.');
         if (!jobRoute[2]) return json(200, { job: publicJob(job) });
         if (job.status !== 'completed' || !job.resultsKey) throw new HttpError(409, 'Analysis results are not ready.');
-        return json(200, { job: publicJob(job), report: await results.readReport(job.resultsKey) });
+        const cursorText = event.queryStringParameters?.cursor ?? '0';
+        if (!/^(0|[1-9][0-9]{0,3})$/.test(cursorText)) throw new HttpError(400, 'Invalid result cursor.');
+        const cursor = Number(cursorText);
+        const report = await results.readReport(job.resultsKey);
+        if (cursor > report.outcomes.length) throw new HttpError(400, 'Result cursor out of range.');
+        const end = Math.min(report.outcomes.length, cursor + 100);
+        return json(200, { job: publicJob(job), report: { ...report, outcomes: report.outcomes.slice(cursor, end) },
+          nextCursor: end < report.outcomes.length ? end : null });
       }
       throw new HttpError(404, 'Analysis endpoint not found.');
     } catch (error) {
