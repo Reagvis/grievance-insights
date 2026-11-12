@@ -12,7 +12,7 @@ export type JobStatus = 'queued' | 'running' | 'completed' | 'failed';
 export type Job = {
   id: string; datasetId: string; ownerId: string; status: JobStatus; expiresAt: number;
   createdAt: string; startedAt: string | null; finishedAt: string | null;
-  cursor: number; total: number; failureCount: number; resultsKey: string | null;
+  cursor: number; total: number; failureCount: number; attempt: number; resultsKey: string | null;
   modelId: typeof MODEL_ID; region: typeof MODEL_REGION; promptVersion: typeof PROMPT_VERSION;
   error: string | null;
 };
@@ -23,9 +23,10 @@ export interface JobStore {
   checkpoint(id: string, expected: number, failed: boolean): Promise<boolean>;
   complete(id: string, key: string, timestamp: string): Promise<void>;
   fail(id: string, code: string, timestamp: string): Promise<void>;
+  retry(id: string): Promise<boolean>;
 }
 export interface JobQueue {
-  send(id: string, cursor: number): Promise<void>;
+  send(id: string, cursor: number, attempt?: number): Promise<void>;
 }
 export interface ResultObjects {
   readRecord(id: string, index: number): Promise<RecordOutcome | null>;
@@ -46,8 +47,8 @@ function bearer(event: APIGatewayProxyEventV2): string | null {
   return TOKEN_PATTERN.test(value) ? value : null;
 }
 function publicJob(job: Job) {
-  const { id, datasetId, status, createdAt, startedAt, finishedAt, cursor, total, failureCount, modelId, region, promptVersion, error } = job;
-  return { id, datasetId, status, createdAt, startedAt, finishedAt, processed: cursor, total, failureCount, modelId, region, promptVersion, error };
+  const { id, datasetId, status, createdAt, startedAt, finishedAt, cursor, total, failureCount, attempt, modelId, region, promptVersion, error } = job;
+  return { id, datasetId, status, createdAt, startedAt, finishedAt, processed: cursor, total, failureCount, attempt: attempt ?? 0, modelId, region, promptVersion, error };
 }
 class HttpError extends Error {
   constructor(readonly code: number, message: string) { super(message); }
@@ -76,7 +77,7 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
           id: dataset.id, datasetId: dataset.id, ownerId: session.userId, status: 'queued',
           createdAt: now().toISOString(), startedAt: null, finishedAt: null, cursor: 0, total: records.length,
           expiresAt: Math.floor(now().getTime() / 1000) + 89 * 86400,
-          failureCount: 0, resultsKey: null, modelId: MODEL_ID, region: MODEL_REGION,
+          failureCount: 0, attempt: 0, resultsKey: null, modelId: MODEL_ID, region: MODEL_REGION,
           promptVersion: PROMPT_VERSION, error: null,
         };
         if (!await jobs.create(job)) {
@@ -84,7 +85,7 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
           if (!existing) throw new HttpError(409, 'An analysis has already been requested.');
           return json(200, { job: publicJob(existing), alreadyExists: true });
         }
-        try { await queue.send(job.id, 0); }
+        try { await queue.send(job.id, 0, job.attempt); }
         catch {
           await jobs.fail(job.id, 'queue_unavailable', now().toISOString());
           return json(503, { error: 'Analysis queue unavailable; the job is marked failed.' });
@@ -94,6 +95,23 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
       if (datasetRoute?.[2] === 'analyses' && method === 'GET') {
         const job = await jobs.get(id);
         return json(200, { jobs: job ? [publicJob(job)] : [] });
+      }
+      if (jobRoute?.[2] === '/retry' && method === 'POST') {
+        const previous = await jobs.get(id);
+        if (!previous || previous.ownerId !== session.userId) throw new HttpError(404, 'Analysis not found.');
+        if (dataset.status !== 'ready') throw new HttpError(409, 'Dataset must be ready.');
+        if (previous.status !== 'failed' || !['queue_unavailable', 'retries_exhausted'].includes(previous.error ?? '')) {
+          throw new HttpError(409, 'Only interrupted processing jobs can be retried.');
+        }
+        if (!await jobs.retry(id)) throw new HttpError(409, 'Job retry state changed; refresh before retrying.');
+        const retried = await jobs.get(id);
+        if (!retried || retried.status !== 'queued') throw new HttpError(409, 'Job retry state changed.');
+        try { await queue.send(id, retried.cursor, retried.attempt); }
+        catch {
+          await jobs.fail(id, 'queue_unavailable', now().toISOString());
+          return json(503, { error: 'Retry queue unavailable; job remains recoverable.' });
+        }
+        return json(202, { job: publicJob(retried) });
       }
       if (jobRoute && method === 'GET') {
         const job = await jobs.get(id);
@@ -133,10 +151,11 @@ export async function inferWithRetry(model: Inference, record: GrievanceRecord, 
 /** FIFO SQS: one dataset per message; state checkpoints every record, next message queued after each small chunk. */
 export function createAnalysisWorker(datasets: DatasetStore, files: PrivateObjects, jobs: JobStore, queue: JobQueue,
   results: ResultObjects, model: Inference, now = () => new Date()) {
-  return async (jobId: string, deadLetter = false): Promise<void> => {
+  return async (jobId: string, deadLetter = false, messageAttempt?: number): Promise<void> => {
     if (!ID_PATTERN.test(jobId)) return;
     const job = await jobs.get(jobId);
-    if (!job || job.status === 'completed' || job.status === 'failed') return;
+    if (!job || job.status === 'completed' || job.status === 'failed' ||
+        (messageAttempt !== undefined && messageAttempt !== (job.attempt ?? 0))) return;
     if (deadLetter) { await jobs.fail(jobId, 'retries_exhausted', now().toISOString()); return; }
     const dataset = await datasets.get(job.datasetId);
     if (!dataset || dataset.status !== 'ready' || dataset.ownerId !== job.ownerId) {
@@ -172,7 +191,7 @@ export function createAnalysisWorker(datasets: DatasetStore, files: PrivateObjec
       if (!await jobs.checkpoint(jobId, next, !!outcome.failure)) return;
       next++;
     }
-    if (next < job.total) { await queue.send(jobId, next); return; }
+    if (next < job.total) { await queue.send(jobId, next, job.attempt ?? 0); return; }
     const completed: RecordOutcome[] = [];
     for (let index = 0; index < job.total; index++) {
       const item = await results.readRecord(jobId, index);
