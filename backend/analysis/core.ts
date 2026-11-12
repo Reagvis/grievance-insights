@@ -71,7 +71,7 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
       if (datasetRoute?.[2] === 'analyze' && method === 'POST') {
         if (dataset.status !== 'ready') throw new HttpError(409, 'Dataset must be ready.');
         const records = await readDataset(dataset, files);
-        if (!records.length || records.length > MAX_ANALYSIS_RECORDS) throw new HttpError(422, 'AI pilot supports 1–30 records per dataset.');
+        if (!records.length || records.length > MAX_ANALYSIS_RECORDS) throw new HttpError(422, 'AI analysis supports 1–2,000 records per dataset.');
         const job: Job = {
           id: dataset.id, datasetId: dataset.id, ownerId: session.userId, status: 'queued',
           createdAt: now().toISOString(), startedAt: null, finishedAt: null, cursor: 0, total: records.length,
