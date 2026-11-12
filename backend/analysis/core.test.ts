@@ -271,6 +271,39 @@ describe('terminal failures, idempotent checkpoints and dead letters', () => {
     expect(f.results.writeReport).not.toHaveBeenCalled();
     expect((await f.api(event('GET', '/api/analyses/' + id + '/results'))).statusCode).toBe(409);
   });
+  it('enforces a 2-MiB byte budget for large report pages, without losing outcomes', async () => {
+    const f = fixture();
+    await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
+    const old = f.current()!;
+    vi.mocked(f.jobs.get).mockResolvedValue({ ...old, status: 'completed', cursor: 100,
+      total: 100, resultsKey: 'analyses/' + id + '/report.json' });
+    const base = await f.results.readReport('any');
+    const outcomes = Array.from({ length: 100 }, (_, i) => ({
+      id: 'GR-' + i,
+      analysis: {
+        id: 'GR-' + i, category: 'water', complaintSummary: 'అ'.repeat(1500),
+        issueClassification: 'అ'.repeat(1500), requestedAction: 'అ'.repeat(1500),
+        potentiallyUrgent: true, urgencyReason: 'అ'.repeat(1500),
+        complaintEvidence: 'నీరు రావడం లేదు', responseSummary: 'అ'.repeat(1500),
+        departmentClaim: 'అ'.repeat(1500), responseRelevance: 'inconclusive' as const,
+        responseAssessment: 'అ'.repeat(1500), responseEvidence: 'పరిశీలిస్తున్నాము',
+        verifiedOutcome: null, verificationStatus: 'not_verified' as const,
+      },
+    }));
+    vi.mocked(f.results.readReport).mockResolvedValue({ ...base,
+      stats: { ...base.stats, grievances: 100, analyzed: 100 }, outcomes });
+    const response = await f.api(event('GET', '/api/analyses/' + id + '/results'));
+    expect(response.statusCode).toBe(200);
+    expect(Buffer.byteLength(response.body ?? '')).toBeLessThan(2 * 1024 * 1024);
+    const page = safeResponse(response);
+    expect(page.nextCursor).toBeGreaterThan(0);
+    expect(page.nextCursor).toBeLessThan(100);
+    expect(page.report.outcomes).toHaveLength(page.nextCursor);
+    const later = event('GET', '/api/analyses/' + id + '/results');
+    later.queryStringParameters = { cursor: String(page.nextCursor) };
+    const second = safeResponse(await f.api(later));
+    expect(second.report.outcomes[0].id).toBe('GR-' + page.nextCursor);
+  });
   it('retries after conditional DynamoDB checkpoint rejection without duplicating model inference', async () => {
     const f = fixture();
     await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
