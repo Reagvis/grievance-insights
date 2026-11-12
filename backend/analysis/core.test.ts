@@ -198,7 +198,7 @@ describe('authenticated asynchronous job API', () => {
   it('rejects a historical oversized AI prompt without hiding its source or invoking Bedrock', async () => {
     const f = fixture();
     vi.mocked(f.files.read).mockResolvedValue(new TextEncoder().encode(
-      'id,complaintText\\nLEGACY-1,' + 'అ'.repeat(6500)));
+      'id,complaintText\nLEGACY-1,' + 'అ'.repeat(6500)));
     const response = await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
     expect(response.statusCode).toBe(422);
     expect(safeResponse(response).error).toContain('12 KiB AI-input limit');
