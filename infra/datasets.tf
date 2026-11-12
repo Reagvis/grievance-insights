@@ -104,7 +104,7 @@ data "aws_iam_policy_document" "datasets_runtime" {
     resources = [aws_dynamodb_table.datasets.arn]
   }
   statement {
-    actions   = ["s3:PutObject", "s3:HeadObject", "s3:GetObject", "s3:DeleteObject"]
+    actions   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
     resources = ["${aws_s3_bucket.datasets.arn}/raw/*"]
   }
 }

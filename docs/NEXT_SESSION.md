@@ -43,3 +43,8 @@ Bedrock worker invocation is authorized only for Qwen3 32B (`qwen.qwen3-32b-v1:0
 ## Not implemented and recommended next task
 
 Authentication API code, durable hashed sessions, Terraform, tests, and Lambda packaging are implemented but not deployed. Frontend AWS-mode login/logout and session restoration are implemented in code; dataset/result storage, queues, Bedrock workers, and application APIs are not implemented. After separately authorized authentication infrastructure deployment, verify the AWS-mode login/logout/session flow before any publication. Keep all deployment guards disabled. Do not place real grievance data in the frontend bucket; future data endpoints must independently authorize access. Keep all deployment guards disabled while work is reviewed.
+
+
+## Task 15 branch / PR handoff
+
+PR #16 (`feature/task-15-persistent-datasets`) implements private persistent AWS datasets without deployment. It adds the authenticated datasets Lambda, five HTTP API routes, DynamoDB dataset metadata, private datasets S3, browser presigned upload, strict CSV/JSON validation, AWS-mode dataset UI, and CI packaging/tests. Limits: 1 MiB, 200 rows, 5-minute upload authorization. Test CI before merging and review any runtime IAM boundary gaps only from actual deployment plans; do not edit bootstrap/access-seed or deploy as part of this PR. The current deployment permissions repair is independent. Bedrock work remains subsequent.

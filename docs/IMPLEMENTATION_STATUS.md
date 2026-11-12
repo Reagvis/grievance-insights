@@ -48,3 +48,10 @@ Review PR infrastructure plans, then deploy the authentication backend through t
 ## Frontend authentication (PR #11)
 
 AWS builds now use a separate Vite `aws` mode and require the same-origin Cognito-backed session API before rendering the existing workspace. Login, logout, restoration, 401 expiry handling, periodic and visibility revalidation, accessible errors and focused client/UI tests are implemented. GitHub Pages and local development retain unauthenticated synthetic demos. UI gating is not data authorization; all future grievance endpoints require independent backend authorization. No backend or frontend deployment performed.
+
+
+## Task 15 — persistent datasets (PR #16; code only, not deployed)
+
+Implemented private dataset upload coordination with five authenticated API routes, short-lived single-key S3 presigned PUTs (signed Content-Type and If-None-Match), DynamoDB metadata, server-side strict UTF-8 and schema validation using the existing importer, per-user ownership checks, dataset retrieval, and deletion. AWS-mode UI supports upload, status, list, open, refresh restoration, and confirmed deletion. Local and Pages modes retain browser-only import. Backend is packaged deterministically with CI; Terraform resources are defined but have not been applied.
+
+Pilot limits: 1 MiB per file, 200 rows, 300-second upload URL expiry; only CSV/JSON, unique nonblank case IDs, nonblank complaintText. Files failing validation are retained privately in failed status until deleted. The initial synchronous validator executes within the API Lambda and may need a queue for larger production datasets. Metadata is preserved if object deletion fails; retry delete. If S3 delete succeeds but DynamoDB delete fails, retry delete (S3 DELETE is idempotent). This task does not deploy or invoke Bedrock.
