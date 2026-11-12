@@ -1,0 +1,109 @@
+name: Deploy bootstrap infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Terraform operation to run
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+      confirmation:
+        description: Type APPLY BOOTSTRAP to authorize an apply operation
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-bootstrap-pilot
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: pilot-bootstrap
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_PLAN_FILE: ${{ github.workspace }}/grievance-insights-bootstrap.tfplan
+      TF_VAR_aws_region: ap-south-1
+      TF_VAR_state_bucket_name: grievance-insights-pilot-134857759074-tfstate
+      TF_VAR_state_key: grievance-insights/pilot/terraform.tfstate
+      TF_VAR_github_repository: Reagvis/grievance-insights
+      TF_VAR_github_oidc_provider_arn: arn:aws:iam::134857759074:oidc-provider/token.actions.githubusercontent.com
+      TF_VAR_route53_zone_id: Z055217913E8P67DP4TOI
+      TF_VAR_infrastructure_github_environment: pilot-infrastructure
+      TF_VAR_frontend_github_environment: pilot-frontend
+      TF_VAR_frontend_distribution_id: E3B0B5R1HAYD1J
+      TF_VAR_approved_bedrock_regions: '["ap-south-1"]'
+      TF_VAR_approved_bedrock_inference_arns: '["arn:aws:bedrock:ap-south-1::foundation-model/qwen.qwen3-32b-v1:0"]'
+      TF_VAR_enable_bedrock_response_streaming: "false"
+    steps:
+      - name: Require apply authorization
+        if: inputs.operation == 'apply'
+        env:
+          BOOTSTRAP_DEPLOY_ENABLED: ${{ vars.BOOTSTRAP_DEPLOY_ENABLED }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [[ "$BOOTSTRAP_DEPLOY_ENABLED" != "true" ]]; then
+            echo "Bootstrap apply is disabled."
+            exit 1
+          fi
+          if [[ "$CONFIRMATION" != "APPLY BOOTSTRAP" ]]; then
+            echo "Apply requires the exact confirmation APPLY BOOTSTRAP."
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.8
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::134857759074:role/grievance-insights-pilot-bootstrap
+          aws-region: ap-south-1
+
+      - name: Check Terraform formatting
+        run: terraform -chdir=infra/bootstrap fmt -check -recursive
+
+      - name: Initialize remote backend
+        run: >-
+          terraform -chdir=infra/bootstrap init
+          -input=false
+          -backend-config="bucket=grievance-insights-pilot-134857759074-tfstate"
+
+      - name: Validate Terraform
+        run: terraform -chdir=infra/bootstrap validate
+
+      - name: Create Terraform plan
+        run: terraform -chdir=infra/bootstrap plan -input=false -out="$TF_PLAN_FILE"
+
+      - name: Reject destructive changes
+        run: |
+          terraform -chdir=infra/bootstrap show -json "$TF_PLAN_FILE" > "$RUNNER_TEMP/plan.json"
+          destructive_count=$(jq '[.resource_changes[]? | select(.change.actions | index("delete"))] | length' "$RUNNER_TEMP/plan.json")
+          if [[ "$destructive_count" -ne 0 ]]; then
+            echo "Plan contains destruction or replacement and will not continue:"
+            jq -r '.resource_changes[]? | select(.change.actions | index("delete")) | "- \(.address): \(.change.actions | join(","))"' "$RUNNER_TEMP/plan.json"
+            exit 1
+          fi
+
+      - name: Apply exact reviewed plan
+        if: inputs.operation == 'apply'
+        run: terraform -chdir=infra/bootstrap apply -input=false -auto-approve "$TF_PLAN_FILE"
+

@@ -37,6 +37,8 @@ npm run deploy:pages  # build and push static files to the gh-pages branch
 
 Repository: `Reagvis/grievance-insights`. In Settings → Pages, use **Deploy from a branch**, branch **gh-pages**, folder **/ (root)**. The site URL is `https://reagvis.github.io/grievance-insights/`. Source lives on `main`; generated assets are published on `gh-pages`. The deployment script uses your existing Git credentials and does not require API secrets or workflow permissions. Run `npm run dev` to retain the localhost API mode.
 
+The separate AWS static build uses `npm run build:aws`. It retains the same browser-only `pages` processing mode but emits root-relative `/assets/...` URLs for CloudFront SPA routes. The guarded GitHub Actions workflow uses this build; it does not change the legacy GitHub Pages command above.
+
 > **Prototype · Sample Data.** Every record bundled with this app is synthetic demonstration content written for the prototype. It is not CM Helpline data, and no figure in the app describes real government activity.
 
 ## What it does today

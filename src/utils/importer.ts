@@ -353,6 +353,7 @@ export type ReadFilesOptions = {
   onProgress?: (done: number, total: number) => void;
   signal?: AbortSignal;
   /** Supplies pdf.js; defaults to the browser loader (tests inject their own). */
+  /** Supplies pdf.js. Injected (the browser UI passes `loadPdfJs` from pdfLoader.ts) so this module stays free of browser-only imports: the AWS dataset Lambda bundles it too. */
   loadPdf?: () => Promise<PdfJsLike>;
   concurrency?: number;
 };
@@ -398,7 +399,8 @@ export async function readImportFiles(files: File[], opts: ReadFilesOptions = {}
         const buffer = await f.arrayBuffer();
         let text: string;
         if (kind === 'pdf') {
-          pdfjs ??= await (opts.loadPdf ?? (async () => (await import('./pdfLoader')).loadPdfJs()))();
+          if (!opts.loadPdf) throw new ImportError('PDF files cannot be read in this environment.');
+          pdfjs ??= await opts.loadPdf();
           const pdfText = await extractPdfText(pdfjs, buffer);
           text = pdfText.text;
           if (pdfText.undecodable > 0) out.lossy = pdfText.undecodable;

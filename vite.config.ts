@@ -9,6 +9,6 @@ export default defineConfig({
   preview: { host: '127.0.0.1' },
   test: {
     environment: 'node',
-    include: ['src/tests/**/*.test.ts'],
+    include: ['src/tests/**/*.test.ts', 'src/tests/**/*.test.tsx', 'backend/**/*.test.ts'],
   },
 });

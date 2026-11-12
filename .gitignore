@@ -10,9 +10,28 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+artifacts
 *.local
 .env
 .env.*
+
+# Terraform local state and generated plans
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.plan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+backend.hcl
+backend.*.hcl
 
 # Editor directories and files
 .vscode/*

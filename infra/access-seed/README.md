@@ -1,0 +1,9 @@
+# Bootstrap access seed
+
+This one-time local Terraform root owns only the GitHub OIDC bootstrap role and its permissions boundary. It is deliberately separate from `infra/bootstrap/`, so the bootstrap role cannot change its own trust, permissions, or boundary.
+
+The role trusts only `Reagvis/grievance-insights` through the `pilot-bootstrap` environment. It can manage the existing bootstrap stack's two deployment roles, their exact inline and managed policies, the project runtime boundary, the dedicated state-bucket configuration, and only the new bootstrap state and lock objects. It has no `iam:PassRole`, unrestricted `iam:*`, application-service provisioning, or access to the main infrastructure state object.
+
+This root intentionally retains local state because changing the access identity is an exceptional operator action, not a routine deployment. Keep its state outside Git with restrictive permissions and a separate encrypted, versioned backup. Its current backup key is `access-seed/terraform.tfstate`; do not overwrite the bootstrap stack's historical backup or either remote Terraform state key. Never run it from the bootstrap GitHub workflow and never import it into `infra/bootstrap/`.
+
+S3 `HeadBucket` is used when Terraform refreshes `aws_s3_bucket.state`, and AWS authorizes it through bucket-level `s3:ListBucket` without an `s3:prefix` condition. The bootstrap role therefore also permits bucket-level listing on this one dedicated state bucket; it does **not** permit reading, writing, or deleting the main hosting state object. This is intentionally separate from the prefix-scoped bootstrap backend state access. A role without this check can incorrectly report that the existing state bucket has disappeared and propose replacing its settings. Apply any access-seed policy changes only from its authoritative operator-managed state, after reviewing a saved plan.

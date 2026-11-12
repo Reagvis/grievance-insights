@@ -5,6 +5,7 @@ import { AppNav } from '../components/AppNav';
 import { AssistantLauncher, ChatPanel, useChatStore, type ScopeOption } from '../components/ChatPanel';
 import { DashboardPage, type BrowseTarget } from '../components/DashboardPage';
 import { LoadingScreen } from '../components/LoadingScreen';
+import { InsightsDashboard } from '../components/InsightsDashboard';
 import { ImportDialog } from '../components/ImportDialog';
 import { PAGE_SIZE, RecordExplorer } from '../components/RecordExplorer';
 import { RecordDetail } from '../components/RecordDetail';
@@ -19,7 +20,10 @@ import { fetchAllComplaints, fetchHealth, HttpChatService, HttpSummaryService, t
 import { api, IS_LIVE } from '../services/api/config';
 import type { HealthInfo } from '../services/api/wire';
 import { LookupChatService, type ChatScope, type ChatService } from '../services/chat';
-import { defaultSummaryService } from '../services/runtimeServices';
+import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServices';
+import { PersistedDatasets } from '../components/PersistedDatasets';
+import { AnalysisWorkspace } from '../components/AnalysisWorkspace';
+import type { AnalysisJob, AnalysisReport } from '../services/analysisApi';
 import {
   buildNoteText,
   buildRecordsZip,
@@ -87,7 +91,7 @@ type LiveState = {
   refreshing: boolean;
 };
 
-export default function App({ summaryService: summaryOverride }: { summaryService?: SummaryService }) {
+export default function App({ summaryService: summaryOverride, authUser, onLogout }: { summaryService?: SummaryService; authUser?: string; onLogout?: () => void }) {
   // ── Interface language ───────────────────────────────────────────────
   const [uiLang, setUiLang] = useState<UiLanguage>(readStoredLang);
   const i18n = useMemo(() => makeI18n(uiLang), [uiLang]);
@@ -105,6 +109,15 @@ export default function App({ summaryService: summaryOverride }: { summaryServic
   const [expanded, setExpanded] = useState<Dataset | null>(null);
   const [imported, setImported] = useState<Dataset | null>(null);
   const [choice, setChoice] = useState<DatasetChoice>('sample');
+  const [remoteId, setRemoteId] = useState<string | null>(null);
+  const [analysisSnapshot, setAnalysisSnapshot] = useState<{
+    datasetId: string; job: AnalysisJob | null; report: AnalysisReport | null; loading: boolean; error: string;
+  } | null>(null);
+  const onAnalysisStateChange = useCallback((datasetId: string, job: AnalysisJob | null, report: AnalysisReport | null,
+    loading: boolean, error: string) => {
+    setAnalysisSnapshot(previous => previous?.datasetId === datasetId && previous.job === job && previous.report === report &&
+      previous.loading === loading && previous.error === error ? previous : { datasetId, job, report, loading, error });
+  }, []);
   const [live, setLive] = useState<LiveState>({ status: 'loading', dataset: null, error: null, progress: null, refreshing: false });
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
@@ -181,6 +194,8 @@ export default function App({ summaryService: summaryOverride }: { summaryServic
   /** Last record opened — stays highlighted in the list after the detail panel closes. */
   const [lastOpenedId, setLastOpenedId] = useState<string | null>(null);
 
+  // An async result from another dataset must never enter this dataset's dashboard.
+  const currentAnalysis = remoteId && analysisSnapshot?.datasetId === remoteId ? analysisSnapshot : null;
   const filtered = useMemo(() => filterRecords(dataset.records, filters), [dataset, filters]);
   const filtersActive = isFiltered(filters);
   const categories = useMemo(() => listCategories(dataset.records), [dataset]);
@@ -255,8 +270,23 @@ export default function App({ summaryService: summaryOverride }: { summaryServic
   const changeDataset = (next: DatasetChoice) => {
     if (next === choice) return;
     if (next === 'expanded' && !expanded) setExpanded(createExpandedDataset());
+    if (AWS_AUTH_ENABLED) { sessionStorage.removeItem('grievance-insights.remoteDatasetId'); setRemoteId(null); }
     resetForDataset();
     setChoice(next);
+  };
+
+  const useRemoteDataset = (loaded: Dataset) => {
+    resetForDataset();
+    setImported(loaded);
+    setRemoteId(loaded.id);
+    setChoice('imported');
+  };
+
+  const clearRemoteDataset = () => {
+    resetForDataset();
+    setImported(null);
+    setRemoteId(null);
+    setChoice('sample');
   };
 
   const updateFilters = useCallback((patch: Partial<RecordFilters>) => {
@@ -413,6 +443,10 @@ export default function App({ summaryService: summaryOverride }: { summaryServic
       isSynthetic: result.records.length > 0 && result.records.every((r) => r.isSyntheticDemo),
       sourceFileName: result.fileName,
     };
+    if (AWS_AUTH_ENABLED) {
+      sessionStorage.removeItem('grievance-insights.remoteDatasetId');
+      setRemoteId(null);
+    }
     resetForDataset();
     setImported(ds);
     setChoice('imported');
@@ -503,10 +537,12 @@ export default function App({ summaryService: summaryOverride }: { summaryServic
       <div className="app" data-page={route.page} data-assistant={assistantOpen ? 'open' : undefined}>
         <AppHeader
           datasetChoice={choice}
+          authUser={authUser}
+          onLogout={onLogout}
           importedLabel={imported ? `Imported · ${imported.sourceFileName} (${formatCount(imported.records.length)})` : null}
           isSynthetic={dataset.isSynthetic}
           onDatasetChange={changeDataset}
-          onImport={() => setImportOpen(true)}
+          onImport={() => AWS_AUTH_ENABLED ? document.getElementById('remote-dataset-file')?.click() : setImportOpen(true)}
           uiLang={uiLang}
           onLangChange={setUiLang}
           live={
@@ -521,6 +557,13 @@ export default function App({ summaryService: summaryOverride }: { summaryServic
           }
         />
         {dataReady && <AppNav page={route.page} onNavigate={goToPage} complaintCount={dataset.records.length} />}
+
+        {AWS_AUTH_ENABLED && (
+          // Stays mounted on every page so the saved dataset is restored on load and the header Import button works anywhere.
+          <div className="aws-data" hidden={route.page !== 'dashboard'}>
+            <PersistedDatasets onSelect={useRemoteDataset} onClear={clearRemoteDataset} activeId={remoteId} />
+          </div>
+        )}
 
         {!dataReady && (
           <LoadingScreen
@@ -552,6 +595,23 @@ export default function App({ summaryService: summaryOverride }: { summaryServic
             onSummarize={summarizeFromDashboard}
             aiSummary={summaryService.mode === 'server-ai'}
           />
+        )}
+
+        {AWS_AUTH_ENABLED && remoteId && route.page === 'dashboard' && (
+          <div className="aws-insights">
+            <AnalysisWorkspace key={remoteId} datasetId={remoteId} records={dataset.records} onStateChange={onAnalysisStateChange} />
+            <InsightsDashboard
+              key={dataset.id}
+              dataset={dataset}
+              filteredCount={filtered.length}
+              job={currentAnalysis?.job ?? null}
+              report={currentAnalysis?.report ?? null}
+              analysisLoading={!currentAnalysis || currentAnalysis.loading}
+              analysisError={currentAnalysis?.error ?? null}
+              onOpenRecord={openRecord}
+              onOpenReport={() => goToPage('summary')}
+            />
+          </div>
         )}
 
         {dataReady && route.page === 'complaints' && (
@@ -591,7 +651,8 @@ export default function App({ summaryService: summaryOverride }: { summaryServic
                 <p>One report across your complaints and the responses recorded for them.</p>
               </div>
               {datasetBanners}
-              <SummaryWorkspace
+              <div id="deterministic-report">
+                <SummaryWorkspace
                 scope={scope}
                 onScopeChange={setScope}
                 allCount={dataset.records.length}
@@ -612,7 +673,8 @@ export default function App({ summaryService: summaryOverride }: { summaryServic
                 onOpenRecord={openRecord}
                 reportRef={reportRef}
                 generateRef={generateRef}
-              />
+                />
+              </div>
               {!summary && <div className="print-only print-empty">Generate a consolidated summary before printing.</div>}
             </div>
           </main>
@@ -632,7 +694,7 @@ export default function App({ summaryService: summaryOverride }: { summaryServic
             onClose={() => setAssistantOpen(false)}
           />
         )}
-        {importOpen && <ImportDialog onClose={() => setImportOpen(false)} onUse={applyImport} onDownloadTemplate={downloadTemplate} />}
+        {!AWS_AUTH_ENABLED && importOpen && <ImportDialog onClose={() => setImportOpen(false)} onUse={applyImport} onDownloadTemplate={downloadTemplate} />}
         <Toasts toasts={toasts} onDismiss={(id) => setToasts((ts) => ts.filter((t) => t.id !== id))} />
       </div>
     </I18nContext.Provider>

@@ -1043,3 +1043,18 @@ button.case-chip:hover {
 .dropzone .load-bar {
   max-width: 320px;
 }
+
+/* AWS mode: saved datasets and AI analysis sit above/below the dashboard, inside the same page gutters. */
+.aws-data,
+.aws-insights {
+  padding: 16px 36px 0;
+}
+.aws-data[hidden] {
+  display: none;
+}
+@media (max-width: 720px) {
+  .aws-data,
+  .aws-insights {
+    padding-inline: 16px;
+  }
+}

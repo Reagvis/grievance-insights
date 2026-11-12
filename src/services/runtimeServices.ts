@@ -3,10 +3,11 @@ import type { ConsolidatedSummary, SummaryOptions, SummaryService } from '../dom
 import { LocalApiSummaryService } from './localApiService';
 import { LocalDemoSummaryService } from './localDemoSummaryService';
 
-export const IS_STATIC_BUILD = import.meta.env.MODE === 'pages';
+export const AWS_AUTH_ENABLED = import.meta.env.MODE === 'aws';
+export const IS_STATIC_BUILD = import.meta.env.MODE === 'pages' || AWS_AUTH_ENABLED;
 export const PROCESSOR_LABEL = IS_STATIC_BUILD ? 'Browser processing' : 'Local API';
 export const DATA_PRIVACY_HINT = IS_STATIC_BUILD
-  ? 'Records stay in this browser and are not uploaded or saved.'
+  ? (AWS_AUTH_ENABLED ? 'Uploaded datasets are stored privately in AWS; browser summaries are deterministic.' : 'Records stay in this browser and are not uploaded or saved.')
   : 'Records are processed by the local API in memory and are not saved.';
 
 export class BrowserSummaryService implements SummaryService {

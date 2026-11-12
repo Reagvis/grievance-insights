@@ -1,0 +1,7 @@
+state_bucket_name       = "replace-with-globally-unique-dedicated-state-bucket"
+github_oidc_provider_arn = "arn:aws:iam::REPLACE:oidc-provider/token.actions.githubusercontent.com"
+route53_zone_id          = "REPLACE_WITH_REAGVIS_ZONE_ID"
+
+# Set only after the hosting foundation exists, then rerun this bootstrap stack
+# to create the narrowly scoped frontend publishing role.
+# frontend_distribution_id = "REPLACE_AFTER_FOUNDATION_APPLY"

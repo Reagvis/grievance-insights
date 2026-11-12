@@ -63,7 +63,7 @@ export function ImportDialog({ onClose, onUse, onDownloadTemplate }: Props) {
     setResult(null);
     setProgress(null);
     try {
-      const r = await readImportFiles(list, { signal: ac.signal, onProgress: (done, total) => setProgress({ done, total }) });
+      const r = await readImportFiles(list, { signal: ac.signal, loadPdf: async () => (await import('../utils/pdfLoader')).loadPdfJs(), onProgress: (done, total) => setProgress({ done, total }) });
       if (!ac.signal.aborted) setResult(r);
     } catch (e) {
       if (!ac.signal.aborted) setError(e instanceof ImportError ? e.message : 'The files could not be read.');
