@@ -58,7 +58,9 @@ export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uin
     const text = decodeUtf8(Uint8Array.from(bytes).buffer);
     parsed = format === 'csv' ? parseCsvImport(name, text) : parseJsonImport(name, text);
   } catch (error) {
-    throw new ApiError(422, error instanceof Error ? error.message : 'Invalid dataset.');
+    // Parser error messages may embed arbitrarily long source column values. Never echo citizen data.
+    void error;
+    throw new ApiError(422, 'Invalid UTF-8 CSV/JSON structure. Check the required id and complaintText fields.');
   }
   if (parsed.totalRows > MAX_DATASET_RECORDS || parsed.records.length > MAX_DATASET_RECORDS) throw new ApiError(422, 'Dataset exceeds the 2,000-record limit.');
   if (parsed.rejectedRows.length || parsed.duplicates.length || parsed.emptyRows || !parsed.records.length) throw new ApiError(422, 'Every row requires a unique ID and complaintText; empty, missing, or duplicate rows are not accepted.');
