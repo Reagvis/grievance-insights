@@ -97,10 +97,9 @@ data "aws_iam_policy_document" "bootstrap_permissions" {
       "s3:CreateBucket",
       "s3:DeleteBucket",
       "s3:DeleteBucket*",
-      "s3:GetBucket*",
-      "s3:GetAccelerateConfiguration",
-      "s3:GetEncryptionConfiguration",
-      "s3:GetLifecycleConfiguration",
+      # Terraform bucket refresh uses GetReplicationConfiguration, GetAccelerateConfiguration,
+      # and other bucket metadata reads; the bucket ARN does not grant GetObject on state keys.
+      "s3:Get*",
       "s3:PutBucket*",
       "s3:PutEncryptionConfiguration",
       "s3:PutLifecycleConfiguration",
