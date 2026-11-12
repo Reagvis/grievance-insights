@@ -3,7 +3,7 @@ import { signalAuthExpired } from './authApi';
 export type AnalysisJob = {
   id: string; datasetId: string; status: 'queued' | 'running' | 'completed' | 'failed';
   createdAt: string; startedAt: string | null; finishedAt: string | null;
-  processed: number; total: number; failureCount: number;
+  processed: number; total: number; failureCount: number; attempt: number;
   modelId: string; region: string; promptVersion: string; error: string | null;
 };
 export type AnalysisItem = {
@@ -36,6 +36,9 @@ async function request<T>(path: string, method: 'GET' | 'POST' = 'GET'): Promise
 }
 export async function createAnalysis(datasetId: string) {
   return request<{ job: AnalysisJob; alreadyExists: boolean }>('/api/datasets/' + encodeURIComponent(datasetId) + '/analyze', 'POST');
+}
+export async function retryAnalysis(jobId: string) {
+  return request<{ job: AnalysisJob }>('/api/analyses/' + encodeURIComponent(jobId) + '/retry', 'POST');
 }
 export async function listAnalyses(datasetId: string) {
   return (await request<{ jobs: AnalysisJob[] }>('/api/datasets/' + encodeURIComponent(datasetId) + '/analyses')).jobs;
