@@ -109,10 +109,33 @@ data "aws_iam_policy_document" "datasets_runtime" {
   }
 }
 
-# Use an inline role policy: bootstrap permits iam:PutRolePolicy on the
-# approved api-execution role, but not creation of an arbitrary managed policy.
+# Preserve the existing inline policy resource on api-execution and replace its
+# permissive content with a protective deny. Terraform need not delete/replace it.
+data "aws_iam_policy_document" "datasets_auth_guard" {
+  statement {
+    sid       = "DenyDatasetStorageFromAuthentication"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.datasets.arn, "${aws_s3_bucket.datasets.arn}/*"]
+  }
+
+  statement {
+    sid       = "DenyDatasetMetadataFromAuthentication"
+    effect    = "Deny"
+    actions   = ["dynamodb:*"]
+    resources = [aws_dynamodb_table.datasets.arn]
+  }
+}
+
 resource "aws_iam_role_policy" "datasets_runtime" {
   name   = "${local.name_prefix}-datasets-runtime"
+  role   = aws_iam_role.api_execution.id
+  policy = data.aws_iam_policy_document.datasets_auth_guard.json
+}
+
+# Dataset API now runs on the preapproved worker-execution role, not auth's role.
+resource "aws_iam_role_policy" "datasets_worker_runtime" {
+  name   = "${local.name_prefix}-datasets-worker-runtime"
   role   = aws_iam_role.worker_execution.id
   policy = data.aws_iam_policy_document.datasets_runtime.json
 }
@@ -137,7 +160,7 @@ resource "aws_lambda_function" "datasets_api" {
       SESSIONS_TABLE_NAME  = aws_dynamodb_table.sessions.name
     }
   }
-  depends_on = [aws_cloudwatch_log_group.datasets_lambda, aws_iam_role_policy.datasets_runtime]
+  depends_on = [aws_cloudwatch_log_group.datasets_lambda, aws_iam_role_policy.datasets_worker_runtime]
 }
 
 resource "aws_apigatewayv2_integration" "datasets_lambda" {
