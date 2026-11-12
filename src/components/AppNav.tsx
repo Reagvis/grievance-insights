@@ -1,19 +1,21 @@
-import { FileText, LayoutDashboard, ListTree } from 'lucide-react';
+import { FileText, LayoutDashboard, ListTree, Upload } from 'lucide-react';
 import { useI18n } from '../i18n/strings';
 import type { Page } from '../utils/route';
 
-const ITEMS: Array<{ page: Page; key: 'navDashboard' | 'navComplaints' | 'navSummary'; icon: typeof FileText }> = [
+const ITEMS: Array<{ page: Page; key: 'navUpload' | 'navDashboard' | 'navComplaints' | 'navSummary'; icon: typeof FileText }> = [
+  { page: 'upload', key: 'navUpload', icon: Upload },
   { page: 'dashboard', key: 'navDashboard', icon: LayoutDashboard },
   { page: 'complaints', key: 'navComplaints', icon: ListTree },
   { page: 'summary', key: 'navSummary', icon: FileText },
 ];
 
-export function AppNav({ page, onNavigate, complaintCount }: { page: Page; onNavigate: (p: Page) => void; complaintCount: number }) {
+/** `pages` picks which sections are shown (the signed-in build: Upload, All Complaints, Summary; the demo: Dashboard, All Complaints, Summary). */
+export function AppNav({ page, onNavigate, complaintCount, pages }: { page: Page; onNavigate: (p: Page) => void; complaintCount: number; pages?: readonly Page[] }) {
   const { t } = useI18n();
   return (
     <nav className="app-nav" aria-label="Sections">
       <ul>
-        {ITEMS.map(({ page: p, key, icon: Icon }) => (
+        {ITEMS.filter((item) => (pages ? pages.includes(item.page) : item.page !== 'upload')).map(({ page: p, key, icon: Icon }) => (
           <li key={p}>
             <a
               href={`#/${p}`}

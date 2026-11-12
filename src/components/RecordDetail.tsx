@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Copy, Download, FlaskConical, MessageSquareText, UserRound, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, Download, FlaskConical, MessageSquareText, Trash2, UserRound, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { useDialog } from '../app/useDialog';
 import { categoryOf, hasResponse, UNCATEGORIZED, type GrievanceRecord } from '../domain/grievance';
@@ -17,6 +17,9 @@ type Props = {
   onCopy: (text: string, what: string) => void;
   /** Render as a static panel beside the list (no overlay, no focus trap). */
   inline?: boolean;
+  /** Signed-in build: the uploaded file this complaint came from, and how to delete that file. */
+  sourceFile?: { name: string; recordCount: number };
+  onDeleteSource?: () => void;
 };
 
 const LANGUAGE_LABEL: Record<GrievanceRecord['language'], string> = {
@@ -26,7 +29,7 @@ const LANGUAGE_LABEL: Record<GrievanceRecord['language'], string> = {
   unknown: 'Not recorded',
 };
 
-export function RecordDetail({ record, position, onPrev, onNext, onClose, onDownload, onCopy, inline = false }: Props) {
+export function RecordDetail({ record, position, onPrev, onNext, onClose, onDownload, onCopy, inline = false, sourceFile, onDeleteSource }: Props) {
   const { t, categoryLabel } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -130,6 +133,19 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
               {record.originalFileName ? <dd>{record.originalFileName}</dd> : <dd className="not-recorded">No original file attached</dd>}
             </div>
           </dl>
+
+          {sourceFile && onDeleteSource && (
+            <div className="source-file-box">
+              <span>
+                From <strong>{sourceFile.name}</strong>
+                {sourceFile.recordCount > 1 ? ' · ' + formatCount(sourceFile.recordCount) + ' complaints in this file' : ''}
+              </span>
+              <button type="button" className="btn btn-ghost btn-sm source-delete" onClick={onDeleteSource}>
+                <Trash2 size={14} aria-hidden />
+                {sourceFile.recordCount > 1 ? 'Delete this file…' : 'Delete this complaint'}
+              </button>
+            </div>
+          )}
 
           <section className="text-block text-block--complaint" aria-labelledby="complaint-h">
             <div className="text-block-head">
