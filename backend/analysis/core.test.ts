@@ -40,28 +40,43 @@ function fixture() {
   const jobs: JobStore = {
     get: vi.fn(async () => current),
     create: vi.fn(async (item: Job) => { if (current) return false; current = item; return true; }),
-    start: vi.fn(async (_id: string, at: string) => { if (current && current.status === 'queued') current = { ...current, status: 'running', startedAt: at }; }),
-    checkpoint: vi.fn(async (_id: string, expected: number, failed: boolean) => {
-      if (!current || current.cursor !== expected || current.status !== 'running') return false;
+    start: vi.fn(async (_id: string, at: string, attempt = 0) => { if (current && current.status === 'queued' && current.attempt === attempt) current = { ...current, status: 'running', startedAt: at }; }),
+    checkpoint: vi.fn(async (_id: string, expected: number, failed: boolean, attempt = 0) => {
+      if (!current || current.cursor !== expected || current.status !== 'running' || current.attempt !== attempt) return false;
       current = { ...current, cursor: expected + 1, failureCount: current.failureCount + Number(failed) };
       return true;
     }),
-    complete: vi.fn(async (_id: string, key: string, at: string) => {
-      if (!current || current.cursor !== current.total) throw new Error('Incorrect finalization');
+    complete: vi.fn(async (_id: string, key: string, at: string, attempt = 0) => {
+      if (!current || current.cursor !== current.total || current.attempt !== attempt) throw new Error('Incorrect finalization');
       current = { ...current, status: 'completed', resultsKey: key, finishedAt: at };
     }),
-    retry: vi.fn(async () => { if (!current || current.status !== 'failed' || !['queue_unavailable','retries_exhausted'].includes(current.error ?? '')) return false; current = { ...current, status: 'queued', attempt: (current.attempt ?? 0) + 1, error: null, finishedAt: null, startedAt: null }; return true; }),
-    fail: vi.fn(async (_id: string, code: string, at: string) => {
-      if (current && (current.status === 'queued' || current.status === 'running')) current = { ...current, status: 'failed', error: code, finishedAt: at };
+    retry: vi.fn(async (_id: string, mode: 'resume' | 'fresh' = 'resume') => {
+      if (!current || current.status !== 'failed' || !['queue_unavailable','retries_exhausted',
+        ...(mode === 'fresh' ? ['all_records_failed'] : [])].includes(current.error ?? '')) return false;
+      current = { ...current, status: 'queued', attempt: (current.attempt ?? 0) + 1,
+        generation: (current.generation ?? 0) + Number(mode === 'fresh'),
+        cursor: mode === 'fresh' ? 0 : current.cursor,
+        failureCount: mode === 'fresh' ? 0 : current.failureCount,
+        resultsKey: mode === 'fresh' ? null : current.resultsKey,
+        error: null, finishedAt: null, startedAt: null };
+      return true;
+    }),
+    fail: vi.fn(async (_id: string, code: string, at: string, attempt = 0) => {
+      if (current && current.attempt === attempt && (current.status === 'queued' || current.status === 'running')) current = { ...current, status: 'failed', error: code, finishedAt: at };
     }),
   };
   const queue: JobQueue = { send: vi.fn(async () => {}) };
   const stored = new Map<number, RecordOutcome>();
+  const generations = new Map<string, Map<number, RecordOutcome>>([[id, stored]]);
+  const bucket = (scope: string) => {
+    if (!generations.has(scope)) generations.set(scope, new Map());
+    return generations.get(scope)!;
+  };
   let report: Report | undefined;
   const results: ResultObjects = {
-    readRecord: vi.fn(async (_id, index) => stored.get(index) ?? null),
-    writeRecord: vi.fn(async (_id, index, value) => { if (!stored.has(index)) stored.set(index, value); }),
-    writeReport: vi.fn(async () => { report = reportValue(); return 'analyses/' + id + '/report.json'; }),
+    readRecord: vi.fn(async (scope, index) => bucket(scope).get(index) ?? null),
+    writeRecord: vi.fn(async (scope, index, value) => { if (!bucket(scope).has(index)) bucket(scope).set(index, value); }),
+    writeReport: vi.fn(async (scope, value) => { report = value; return 'analyses/' + scope + '/report.json'; }),
     readReport: vi.fn(async () => report ?? reportValue()),
   };
   function reportValue(): Report {
@@ -83,7 +98,8 @@ function fixture() {
   }, record)) };
   const api = createAnalysisApi(datasets, files, jobs, queue, results, origin, () => timestamp);
   const worker = createAnalysisWorker(datasets, files, jobs, queue, results, model, () => timestamp);
-  return { dataset, datasets, files, jobs, queue, results, model, api, worker, stored, current: () => current };
+  return { dataset, datasets, files, jobs, queue, results, model, api, worker, stored, generations,
+    current: () => current };
 }
 describe('authenticated asynchronous job API', () => {
   it('checks current session on all four routes and hides other owners', async () => {
@@ -129,6 +145,45 @@ describe('authenticated asynchronous job API', () => {
     await f.api(event('POST','/api/datasets/' + id + '/analyze'));
     await f.jobs.fail(id, 'all_records_failed', timestamp.toISOString());
     expect((await f.api(event('POST','/api/analyses/' + id + '/retry'))).statusCode).toBe(409);
+  });
+  it('creates a fresh immutable generation after all model output failed and fences old messages', async () => {
+    const f = fixture();
+    const originalModel = vi.mocked(f.model.analyze).getMockImplementation()!;
+    await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
+    vi.mocked(f.model.analyze).mockRejectedValue(new InvalidModelOutput('Invalid test output'));
+    await f.worker(id, false, 0); await f.worker(id, false, 0);
+    expect(f.current()).toMatchObject({ status: 'failed', error: 'all_records_failed', cursor: 4, failureCount: 4 });
+    const oldOutcomes = [...f.stored.values()];
+    const request = event('POST', '/api/analyses/' + id + '/retry');
+    request.body = JSON.stringify({ mode: 'fresh' });
+    const retried = await f.api(request);
+    expect(retried.statusCode).toBe(202);
+    expect(f.current()).toMatchObject({ status: 'queued', cursor: 0, failureCount: 0,
+      attempt: 1, generation: 1, resultsKey: null });
+    await f.worker(id, true, 0); // Stale terminal message cannot mark the new generation failed.
+    expect(f.current()?.status).toBe('queued');
+    vi.mocked(f.model.analyze).mockImplementation(originalModel);
+    await f.worker(id, false, 1); await f.worker(id, false, 1);
+    expect(f.current()).toMatchObject({ status: 'completed', cursor: 4, attempt: 1, generation: 1,
+      failureCount: 0, resultsKey: 'analyses/' + id + '/generations/1/report.json' });
+    expect(f.generations.get(id + '/generations/1')?.size).toBe(4);
+    expect([...f.stored.values()]).toEqual(oldOutcomes); // Original private outcomes remain immutable.
+    expect(safeResponse(await f.api(event('GET', '/api/analyses/' + id + '/results'))).report.generation).toBe(1);
+    await f.worker(id, false, 0);
+    expect(f.generations.get(id + '/generations/1')?.size).toBe(4);
+  });
+  it('enforces generational CAS on persistent attempts', async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const jobs = new DynamoJobs({ send } as unknown as DynamoDBDocumentClient, 'jobs');
+    await jobs.retry(id, 'fresh');
+    const command = send.mock.calls[0][0] as UpdateCommand;
+    expect(command.input.UpdateExpression).toContain('generation = if_not_exists(generation, :zero) + :one');
+    expect(command.input.UpdateExpression).toContain('failureCount = :zero');
+    expect(command.input.ConditionExpression).toContain('#s = :failed');
+    await jobs.checkpoint(id, 0, false, 3);
+    const checkpoint = send.mock.calls[1][0] as UpdateCommand;
+    expect(checkpoint.input.ExpressionAttributeValues).toMatchObject({ ':attempt': 3 });
+    expect(checkpoint.input.ConditionExpression).toContain('attempt = :attempt');
   });
   it('returns bounded, ordered result pages for authenticated clients', async () => {
     const f = fixture();
