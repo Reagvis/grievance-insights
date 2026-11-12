@@ -106,6 +106,8 @@ type Props = {
   unavailableReason: string | null;
   onOpenRecord: (id: string) => void;
   onClose: () => void;
+  /** Signed-in build: the AI analysis tools, shown as a second mode of the assistant. */
+  analysisPane?: ReactNode;
 };
 
 const SUGGESTIONS: Record<ScopeOption['key'], string[]> = {
@@ -114,7 +116,8 @@ const SUGGESTIONS: Record<ScopeOption['key'], string[]> = {
   note: ['Summarise this complaint and the response', 'Is there anything the response does not address?'],
 };
 
-export function ChatPanel({ store, service, scopes, knownIds, unavailableReason, onOpenRecord, onClose }: Props) {
+export function ChatPanel({ store, service, scopes, knownIds, unavailableReason, onOpenRecord, onClose, analysisPane }: Props) {
+  const [mode, setMode] = useState<'ask' | 'analysis'>('ask');
   const { chats, active, setActiveId, newChat, patchTurn, addTurns, dropTurnsFrom, turnId } = store;
   const [draft, setDraft] = useState('');
   const [scopeKey, setScopeKey] = useState<ScopeOption['key']>(scopes[0].key);
@@ -209,6 +212,15 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
         </div>
       </header>
 
+      {analysisPane && (
+        <div className="chat-modes segmented" role="group" aria-label="Assistant mode">
+          <button type="button" aria-pressed={mode === 'ask'} onClick={() => setMode('ask')}>Ask</button>
+          <button type="button" aria-pressed={mode === 'analysis'} onClick={() => setMode('analysis')}>AI analysis</button>
+        </div>
+      )}
+      {analysisPane && mode === 'analysis' && <div className="chat-analysis">{analysisPane}</div>}
+
+      <div className="chat-ask" hidden={mode === 'analysis' && !!analysisPane}>
       {chats.length > 1 && (
         <div className="chat-history">
           <label htmlFor="chat-history-select" className="sr-only">
@@ -352,6 +364,7 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
           </>
         )}
       </footer>
+      </div>
     </aside>
   );
 }

@@ -23,7 +23,8 @@ import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServ
 import { FileProblems } from '../components/FileProblems';
 import { SummaryFilters } from '../components/SummaryFilters';
 import { UploadPage, type BatchResult } from '../components/UploadPage';
-import { loadAllComplaints, type AllComplaints, type SourceRef } from '../services/allComplaints';
+import { AiAnalysisPane } from '../components/AiAnalysisPane';
+import { loadAllComplaints, mergedIdOf, type AllComplaints, type SourceRef } from '../services/allComplaints';
 import { removeDataset } from '../services/datasetApi';
 import {
   buildNoteText,
@@ -756,6 +757,17 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
             unavailableReason={chatUnavailable}
             onOpenRecord={openRecord}
             onClose={() => setAssistantOpen(false)}
+            analysisPane={
+              AWS_AUTH_ENABLED && all ? (
+                <AiAnalysisPane
+                  files={readyFiles.map((f) => ({ id: f.id, name: f.name, count: f.recordCount }))}
+                  recordsByDataset={all.recordsByDataset}
+                  mergedIdOf={(datasetId, originalId) => mergedIdOf(all, datasetId, originalId)}
+                  onOpenRecord={openRecord}
+                  preferredFileId={selectedId ? all.sourceOf.get(selectedId)?.datasetId : undefined}
+                />
+              ) : undefined
+            }
           />
         )}
         {!AWS_AUTH_ENABLED && importOpen && <ImportDialog onClose={() => setImportOpen(false)} onUse={applyImport} />}

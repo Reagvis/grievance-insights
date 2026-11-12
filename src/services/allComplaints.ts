@@ -6,11 +6,14 @@ import { listDatasets, openDataset, type RemoteDataset } from './datasetApi';
  * Uploads are still stored as separate private files (one per upload); this module merges them for display.
  */
 export type SourceRef = { datasetId: string; fileName: string; fileRecordCount: number; /** When the file was uploaded (ISO). */ addedAt: string };
+export const mergedIdOf = (all: Pick<AllComplaints, 'idMap'>, datasetId: string, originalId: string): string | undefined => all.idMap.get(datasetId + '\u0000' + originalId);
 export type AllComplaints = {
   /** Merged list; IDs are unique across files. */
   records: GrievanceRecord[];
   /** Merged record ID → the uploaded file it came from (used for "delete this file"). */
   sourceOf: ReadonlyMap<string, SourceRef>;
+  /** (file ID, ID inside that file) → ID in the merged list. Needed to open a complaint named by a per-file AI report. */
+  idMap: ReadonlyMap<string, string>;
   /** Each file's records exactly as stored (original IDs), for per-file AI analysis whose report is keyed by those IDs. */
   recordsByDataset: ReadonlyMap<string, GrievanceRecord[]>;
   /** Every uploaded file, newest first, in any state (ready, extracting, failed…). */
@@ -20,10 +23,11 @@ export type AllComplaints = {
 };
 
 /** Merge files (newest first). A repeated ID from a later file is kept, renamed "ID (file name)" so nothing is ever dropped. */
-export function mergeComplaints(loaded: Array<{ dataset: RemoteDataset; records: GrievanceRecord[] }>): Pick<AllComplaints, 'records' | 'sourceOf' | 'recordsByDataset'> {
+export function mergeComplaints(loaded: Array<{ dataset: RemoteDataset; records: GrievanceRecord[] }>): Pick<AllComplaints, 'records' | 'sourceOf' | 'recordsByDataset' | 'idMap'> {
   const records: GrievanceRecord[] = [];
   const sourceOf = new Map<string, SourceRef>();
   const recordsByDataset = new Map<string, GrievanceRecord[]>();
+  const idMap = new Map<string, string>();
   const seen = new Set<string>();
   for (const { dataset, records: list } of loaded) {
     recordsByDataset.set(dataset.id, list);
@@ -34,11 +38,12 @@ export function mergeComplaints(loaded: Array<{ dataset: RemoteDataset; records:
         for (let n = 2; seen.has(id); n++) id = `${record.id} (${dataset.name} #${n})`;
       }
       seen.add(id);
+      idMap.set(dataset.id + '\u0000' + record.id, id);
       records.push(id === record.id ? record : { ...record, id });
       sourceOf.set(id, { datasetId: dataset.id, fileName: dataset.name, fileRecordCount: list.length, addedAt: dataset.createdAt });
     }
   }
-  return { records, sourceOf, recordsByDataset };
+  return { records, sourceOf, recordsByDataset, idMap };
 }
 
 export async function loadAllComplaints(): Promise<AllComplaints> {

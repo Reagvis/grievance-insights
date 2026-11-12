@@ -93,8 +93,8 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
 
   return <section className="analysis-control" aria-label="AI analysis job and export">
     <header>
-      <div><h2>AI analysis</h2>
-        <p>Available only for persisted AWS datasets of 1–2,000 records. Completed AI interpretations appear in the dashboard; deterministic reporting stays separate.</p>
+      <div><h3>Run the analysis</h3>
+        <p>Works on files of 1–2,000 complaints. Results appear below once the analysis finishes; the Consolidated Summary stays separate and is not AI.</p>
       </div>
       {job?.status === 'completed' && report && <button className="btn btn-secondary btn-sm" type="button" onClick={download}>Export validated AI JSON</button>}
     </header>
@@ -102,14 +102,14 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
     {!loading && !job && <div className="analysis-action-row">
       <button type="button" className="btn btn-primary" disabled={busy || records.length === 0 || records.length > 2000}
         onClick={() => void start()}>{busy ? 'Submitting…' : 'Analyze with AI'}</button>
-      {records.length > 2000 ? <p>This dataset exceeds the 2,000-record AI limit. Source analytics remain available above.</p> :
-        records.length === 0 ? <p>Select a nonempty dataset first.</p> : <p>No AI job has been requested for this dataset.</p>}
+      {records.length > 2000 ? <p>This file has more than 2,000 complaints, which is the limit for AI analysis.</p> :
+        records.length === 0 ? <p>This file has no complaints to analyse.</p> : <p>No AI analysis has been run on this file yet.</p>}
     </div>}
     {job && <div className="analysis-progress" role="status">
       <strong>Job: {job.status}</strong> <span>{job.processed}/{job.total} records checkpointed · {job.failureCount} recorded failures</span>
-      {job.status === 'queued' && <p>Queued for processing. The dashboard will not display AI conclusions until the report completes.</p>}
+      {job.status === 'queued' && <p>Queued for processing. Results appear here when the analysis finishes.</p>}
       {job.status === 'running' && <p>Processing asynchronously. You may refresh; this job will remain available.</p>}
-      {job.status === 'completed' && report && <p>Validated report available. <a href="#insight-charts">Inspect category and assessment charts</a> or <a href="#insight-drilldown-title">inspect case evidence</a>.</p>}
+      {job.status === 'completed' && report && <p>Finished. The results are below, and you can export them.</p>}
       {job.status === 'failed' && <p className="analysis-error" role="alert">
         {job.error === 'all_records_failed' ? 'No records produced a usable AI analysis. All failures have been counted; no completed report is available.' :
           'The AI job failed. No verified outcome or successful AI report is available.'}
