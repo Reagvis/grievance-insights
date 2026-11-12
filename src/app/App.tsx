@@ -1,4 +1,4 @@
-import { FileSearch, FlaskConical, TriangleAlert } from 'lucide-react';
+import { FileSearch, FlaskConical, Sparkles, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppHeader, type DatasetChoice } from '../components/AppHeader';
 import { AppNav } from '../components/AppNav';
@@ -23,7 +23,8 @@ import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServ
 import { FileProblems } from '../components/FileProblems';
 import { SummaryFilters } from '../components/SummaryFilters';
 import { UploadPage, type BatchResult } from '../components/UploadPage';
-import { loadAllComplaints, type AllComplaints, type SourceRef } from '../services/allComplaints';
+import { AiAnalysisDrawer } from '../components/AiAnalysisDrawer';
+import { loadAllComplaints, mergedIdOf, type AllComplaints, type SourceRef } from '../services/allComplaints';
 import { removeDataset } from '../services/datasetApi';
 import {
   buildNoteText,
@@ -115,6 +116,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   const [choice, setChoice] = useState<DatasetChoice>('sample');
   // ── Signed-in build: every uploaded file merged into one list ───────────
   const [all, setAll] = useState<AllComplaints | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
   const [allError, setAllError] = useState<string | null>(null);
   const reloadAll = useCallback(async () => {
     try {
@@ -683,6 +685,14 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
               onExportFiltered={() => void downloadZip('filtered')}
               zipBusy={zipBusy}
               addedAt={AWS_AUTH_ENABLED ? addedAtById : undefined}
+              headerAction={
+                AWS_AUTH_ENABLED ? (
+                  <button type="button" className="btn btn-primary ai-open-btn" onClick={() => setAiOpen(true)} disabled={readyFiles.length === 0}>
+                    <Sparkles size={16} aria-hidden />
+                    AI analysis
+                  </button>
+                ) : undefined
+              }
             />
             {inlineDetail && (
               <main className="detail-pane" id="main" aria-label="Selected complaint">
@@ -756,6 +766,18 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
             unavailableReason={chatUnavailable}
             onOpenRecord={openRecord}
             onClose={() => setAssistantOpen(false)}
+          />
+        )}
+        {AWS_AUTH_ENABLED && aiOpen && all && (
+          <AiAnalysisDrawer
+            files={readyFiles.map((f) => ({ id: f.id, name: f.name, count: f.recordCount }))}
+            recordsByDataset={all.recordsByDataset}
+            mergedIdOf={(datasetId, originalId) => mergedIdOf(all, datasetId, originalId)}
+            onOpenRecord={(id) => {
+              setAiOpen(false);
+              openRecord(id);
+            }}
+            onClose={() => setAiOpen(false)}
           />
         )}
         {!AWS_AUTH_ENABLED && importOpen && <ImportDialog onClose={() => setImportOpen(false)} onUse={applyImport} />}

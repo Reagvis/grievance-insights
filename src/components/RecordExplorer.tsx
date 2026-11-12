@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronLeft, ChevronRight, FileArchive, LoaderCircle, RotateCcw, Search, SearchX, X, Inbox } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { CASE_STATUSES, type CaseStatus, type GrievanceRecord } from '../domain/grievance';
 import { useI18n } from '../i18n/strings';
 import { formatCount } from '../utils/format';
@@ -27,6 +27,8 @@ type Props = {
   zipBusy: 'all' | 'filtered' | null;
   /** Record ID → when its file was uploaded (ISO). Shows "Added 5 minutes ago" on each row. */
   addedAt?: ReadonlyMap<string, string>;
+  /** A prominent action shown under the title (the signed-in build puts "AI analysis" here). */
+  headerAction?: ReactNode;
 };
 
 export function RecordExplorer({
@@ -44,6 +46,7 @@ export function RecordExplorer({
   onExportFiltered,
   zipBusy,
   addedAt,
+  headerAction,
 }: Props) {
   const { t, categoryLabel, statusLabel } = useI18n();
   const active = isFiltered(filters);
@@ -86,6 +89,7 @@ export function RecordExplorer({
           </h2>
           <span className="muted num">{formatCount(totalCount)}</span>
         </div>
+        {headerAction}
         <div className="search" role="search">
           <label htmlFor="record-search" className="sr-only">
             {t('searchLabel')}
