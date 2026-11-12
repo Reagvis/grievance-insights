@@ -112,6 +112,17 @@ describe('authenticated dataset lifecycle', () => {
     expect((await f.handler(event('GET','/api/datasets/' + id))).statusCode).toBe(404);
     expect(data(await f.handler(event('GET','/api/datasets'))).datasets).toEqual([]);
   });
+  it('still retrieves pre-upgrade ready records with long text, without truncation or AI revalidation', async () => {
+    const f = fixture();
+    const longText = 'అ'.repeat(6500);
+    f.items.set(id, { id, key: 'raw/' + id + '/source.csv', name: 'old.csv',
+      format: 'csv', status: 'ready', ownerId: 'admin-1', bytes: 0, recordCount: 1,
+      createdAt: new Date(now).toISOString(), uploadExpiresAt: 0 });
+    f.setFile(utf8('id,complaintText\\nLEGACY-1,' + longText));
+    const response = await f.handler(event('GET', '/api/datasets/' + id));
+    expect(response.statusCode).toBe(200);
+    expect(data(response).records[0].complaintText).toBe(longText);
+  });
   it('requires the production origin for mutations and enforces file limits', async () => {
     const f = fixture();
     const foreign = event('POST','/api/datasets/uploads',true,{ name:'pilot.csv', bytes:10 });
