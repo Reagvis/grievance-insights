@@ -2,7 +2,7 @@ import { FlaskConical, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppHeader, type DatasetChoice } from '../components/AppHeader';
 import { AssistantDrawer, AssistantLauncher } from '../components/AssistantDrawer';
-import { DatasetOverview } from '../components/DatasetOverview';
+import { InsightsDashboard } from '../components/InsightsDashboard';
 import { ImportDialog } from '../components/ImportDialog';
 import { PAGE_SIZE, RecordExplorer } from '../components/RecordExplorer';
 import { RecordDetail } from '../components/RecordDetail';
@@ -15,6 +15,7 @@ import { I18nContext, makeI18n, type UiLanguage } from '../i18n/strings';
 import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServices';
 import { PersistedDatasets } from '../components/PersistedDatasets';
 import { AnalysisWorkspace } from '../components/AnalysisWorkspace';
+import type { AnalysisJob, AnalysisReport } from '../services/analysisApi';
 import {
   buildNoteText,
   buildRecordsZip,
@@ -89,6 +90,13 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
   const [imported, setImported] = useState<Dataset | null>(null);
   const [choice, setChoice] = useState<DatasetChoice>('sample');
   const [remoteId, setRemoteId] = useState<string | null>(null);
+  const [analysisSnapshot, setAnalysisSnapshot] = useState<{
+    datasetId: string; job: AnalysisJob | null; report: AnalysisReport | null;
+  } | null>(null);
+  const onAnalysisStateChange = useCallback((datasetId: string, job: AnalysisJob | null, report: AnalysisReport | null) => {
+    setAnalysisSnapshot(previous => previous?.datasetId === datasetId && previous.job === job && previous.report === report
+      ? previous : { datasetId, job, report });
+  }, []);
   const dataset: Dataset = (choice === 'imported' && imported) || (choice === 'expanded' && expanded) || sample;
 
   // ── Exploration state ───────────────────────────────────────────────
@@ -99,6 +107,8 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
   const [lastOpenedId, setLastOpenedId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<'records' | 'summary'>('summary');
 
+  // An async result from another dataset must never enter this dataset's dashboard.
+  const currentAnalysis = remoteId && analysisSnapshot?.datasetId === remoteId ? analysisSnapshot : null;
   const filtered = useMemo(() => filterRecords(dataset.records, filters), [dataset, filters]);
   const filtersActive = isFiltered(filters);
   const stats = useMemo(() => computeStats(dataset.records), [dataset]);
@@ -385,9 +395,12 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
 
               {AWS_AUTH_ENABLED && <PersistedDatasets onSelect={useRemoteDataset} onClear={clearRemoteDataset} activeId={remoteId} />}
 
-              {AWS_AUTH_ENABLED && remoteId && <AnalysisWorkspace key={remoteId} datasetId={remoteId} records={dataset.records} />}
 
-              <DatasetOverview stats={stats} />
+              <InsightsDashboard key={dataset.id} dataset={dataset} filteredCount={filtered.length}
+                job={currentAnalysis?.job ?? null} report={currentAnalysis?.report ?? null} onOpenRecord={openRecord} />
+
+              {AWS_AUTH_ENABLED && remoteId && <AnalysisWorkspace key={remoteId} datasetId={remoteId}
+                records={dataset.records} onStateChange={onAnalysisStateChange} />}
 
               {dataset.kind === 'synthetic-expansion' && (
                 <div className="notice notice--warn dataset-notice">
@@ -405,6 +418,7 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
                 </div>
               )}
 
+              <div id="deterministic-report">
               <SummaryWorkspace
                 scope={scope}
                 onScopeChange={setScope}
@@ -425,6 +439,7 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
                 reportRef={reportRef}
                 generateRef={generateRef}
               />
+              </div>
               {!summary && <div className="print-only print-empty">Generate a consolidated summary before printing.</div>}
             </div>
           </main>
