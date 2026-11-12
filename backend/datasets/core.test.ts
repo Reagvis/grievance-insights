@@ -17,6 +17,7 @@ function fixture() {
   const items = new Map<string, Metadata>();
   const file = utf8(csv);
   let stored: Uint8Array | null = file;
+  const indexed = new Map<string, Uint8Array>();
   const store: DatasetStore = {
     session: vi.fn(async (value) => value === hash ? { userId: 'admin-1', expiresAt: now / 1000 + 100 } : undefined),
     create: vi.fn(async (item) => { items.set(item.id, item); }),
@@ -33,8 +34,14 @@ function fixture() {
   const objects: PrivateObjects = {
     presign: vi.fn(async () => ({ url: 'https://s3.example.invalid/presigned', headers: { 'if-none-match': '*' } })),
     size: vi.fn(async () => stored?.byteLength ?? null),
-    read: vi.fn(async () => { if (!stored) throw new Error('missing'); return stored; }),
-    remove: vi.fn(async () => { stored = null; }),
+    read: vi.fn(async (key) => {
+      if (key.endsWith('/source.csv')) { if (!stored) throw new Error('missing'); return stored; }
+      const chunk = indexed.get(key);
+      if (!chunk) throw new Error('missing index');
+      return chunk;
+    }),
+    write: vi.fn(async (key, bytes) => { if (indexed.has(key)) throw new Error('immutable'); indexed.set(key, bytes); }),
+    remove: vi.fn(async (key) => { if (key.endsWith('/source.csv')) stored = null; else indexed.delete(key); }),
   };
   const handler = createDatasetHandler(store, objects, origin, () => now, () => id);
   return { items, store, objects, handler, setFile: (next: Uint8Array | null) => { stored = next; } };
@@ -54,6 +61,10 @@ describe('private dataset validation', () => {
     expect(() => validateDataset('x.csv', 'csv', new Uint8Array([255, 254]))).toThrow(ApiError);
     expect(() => validateDataset('x.csv', 'csv', new Uint8Array(20 * 1024 * 1024 + 1))).toThrow(ApiError);
     expect(() => validateDataset('x.csv', 'csv', utf8('id,complaintText\n' + Array.from({ length: 2001 }, (_, i) => i + ',test').join('\n')))).toThrow(ApiError);
+    const huge = utf8('id,complaintText\nGR-1,' + 'అ'.repeat(2_600_000));
+    expect(huge.length).toBeGreaterThan(6 * 1024 * 1024);
+    expect(() => validateDataset('x.csv', 'csv', huge)).toThrow(/12 KiB AI-input limit/);
+    expect(() => validateDataset('x.json', 'json', utf8(JSON.stringify([{ id: 'GR-1', complaintText: 'అ'.repeat(6000) }])))).toThrow(/12 KiB AI-input limit/);
   });
 });
 describe('authenticated dataset lifecycle', () => {
