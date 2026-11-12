@@ -2,6 +2,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 import type { GrievanceRecord } from '../../src/domain/grievance';
 import { decodeUtf8, parseCsvImport, parseJsonImport } from '../../src/utils/importer';
+import { validateRecordBounds } from './bounds';
+import { writeDatasetIndex, readIndexedRange, removeDatasetIndex, INDEX_CHUNK_RECORDS } from './index';
 
 export const MAX_DATASET_BYTES = 20 * 1024 * 1024;
 export const MAX_DATASET_RECORDS = 2000;
@@ -11,7 +13,7 @@ const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type Status = 'pending_upload' | 'validating' | 'ready' | 'failed';
-export type Metadata = { id: string; key: string; name: string; format: 'csv' | 'json'; status: Status; createdAt: string; bytes: number; recordCount: number; error?: string; ownerId: string; uploadExpiresAt: number };
+export type Metadata = { id: string; key: string; name: string; format: 'csv' | 'json'; status: Status; createdAt: string; bytes: number; recordCount: number; indexVersion?: number; error?: string; ownerId: string; uploadExpiresAt: number };
 export type Session = { userId: string; expiresAt: number };
 export interface DatasetStore {
   session(hash: string): Promise<Session | undefined>;
@@ -25,6 +27,7 @@ export interface PrivateObjects {
   presign(key: string, format: 'csv' | 'json', expires: number): Promise<{ url: string; headers: Record<string, string> }>;
   size(key: string): Promise<number | null>;
   read(key: string): Promise<Uint8Array>;
+  write?(key: string, bytes: Uint8Array): Promise<void>;
   remove(key: string): Promise<void>;
 }
 export class ApiError extends Error {
@@ -58,6 +61,10 @@ export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uin
   }
   if (parsed.totalRows > MAX_DATASET_RECORDS || parsed.records.length > MAX_DATASET_RECORDS) throw new ApiError(422, 'Dataset exceeds the 2,000-record limit.');
   if (parsed.rejectedRows.length || parsed.duplicates.length || parsed.emptyRows || !parsed.records.length) throw new ApiError(422, 'Every row requires a unique ID and complaintText; empty, missing, or duplicate rows are not accepted.');
+  for (let i = 0; i < parsed.records.length; i++) {
+    try { validateRecordBounds(parsed.records[i]); }
+    catch (error) { throw new ApiError(422, 'Record ' + (i + 1) + ': ' + (error instanceof Error ? error.message : 'Input size exceeds safety limit.')); }
+  }
   return parsed.records;
 }
 export function createDatasetHandler(store: DatasetStore, objects: PrivateObjects, allowedOrigin: string, now = () => Date.now(), uuid = randomUUID) {
@@ -98,32 +105,44 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
         if (item.status !== 'pending_upload') throw new ApiError(409, 'Upload already finalized.');
         if (item.uploadExpiresAt < Math.floor(now() / 1000)) throw new ApiError(409, 'Upload request expired. Delete this dataset and retry.');
         if (!await store.transition(id, 'pending_upload', 'validating')) throw new ApiError(409, 'Upload is already being validated.');
+        let indexedKeys: string[] = [];
         try {
           const bytes = await objects.size(item.key);
           if (bytes === null) throw new ApiError(422, 'Upload is incomplete or missing.');
           if (bytes !== item.bytes || bytes > MAX_DATASET_BYTES) throw new ApiError(422, 'Uploaded size differs from the requested size.');
           const records = validateDataset(item.name, item.format, await objects.read(item.key));
-          await store.transition(id, 'validating', 'ready', { recordCount: records.length });
+          // Record count is durable before creating chunks, permitting cleanup even if indexing fails.
+          if (!await store.transition(id, 'validating', 'validating', { recordCount: records.length })) {
+            throw new Error('Dataset validation state changed');
+          }
+          indexedKeys = await writeDatasetIndex(item.key, records, objects);
+          if (!await store.transition(id, 'validating', 'ready', { recordCount: records.length, indexVersion: 1 })) {
+            throw new Error('Dataset finalization state changed');
+          }
           return result(200, { dataset: publicMetadata({ ...item, status: 'ready', recordCount: records.length }) });
         } catch (error) {
-          const message = error instanceof ApiError && error.status === 422 ? error.message : 'Validation or storage failed.';
+          await Promise.allSettled(indexedKeys.map(key => objects.remove(key)));
+          const message = error instanceof ApiError && error.status === 422 ? error.message : 'Validation or private indexing failed.';
           await store.transition(id, 'validating', 'failed', { error: message });
           return result(422, { error: message });
         }
       }
       if (method === 'GET' && !match[2]) {
         if (item.status !== 'ready') return result(200, { dataset: publicMetadata(item), records: null });
-        const records = validateDataset(item.name, item.format, await objects.read(item.key));
         const cursorText = event.queryStringParameters?.cursor ?? '0';
         if (!/^(0|[1-9][0-9]{0,3})$/.test(cursorText)) throw new ApiError(400, 'Invalid record cursor.');
         const cursor = Number(cursorText);
-        if (cursor > records.length) throw new ApiError(400, 'Record cursor out of range.');
-        const end = Math.min(records.length, cursor + 50);
-        return result(200, { dataset: publicMetadata(item), records: records.slice(cursor, end),
-          nextCursor: end < records.length ? end : null });
+        if (cursor > item.recordCount) throw new ApiError(400, 'Record cursor out of range.');
+        const end = Math.min(item.recordCount, cursor + INDEX_CHUNK_RECORDS);
+        const records = item.indexVersion === 1
+          ? await readIndexedRange(item, objects, cursor, end)
+          : validateDataset(item.name, item.format, await objects.read(item.key)).slice(cursor, end);
+        return result(200, { dataset: publicMetadata(item), records,
+          nextCursor: end < item.recordCount ? end : null });
       }
       if (method === 'DELETE' && !match[2]) {
-        // Delete raw object first: metadata remains retriable if S3 deletion fails.
+        // Keep metadata until all private objects are removed; a failed delete remains retriable.
+        if (item.recordCount > 0) await removeDatasetIndex(item.key, item.recordCount, objects);
         await objects.remove(item.key);
         await store.delete(id);
         return { statusCode: 204, headers: { 'cache-control': 'no-store' } };
