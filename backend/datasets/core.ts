@@ -114,7 +114,13 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
       if (method === 'GET' && !match[2]) {
         if (item.status !== 'ready') return result(200, { dataset: publicMetadata(item), records: null });
         const records = validateDataset(item.name, item.format, await objects.read(item.key));
-        return result(200, { dataset: publicMetadata(item), records });
+        const cursorText = event.queryStringParameters?.cursor ?? '0';
+        if (!/^(0|[1-9][0-9]{0,3})$/.test(cursorText)) throw new ApiError(400, 'Invalid record cursor.');
+        const cursor = Number(cursorText);
+        if (cursor > records.length) throw new ApiError(400, 'Record cursor out of range.');
+        const end = Math.min(records.length, cursor + 50);
+        return result(200, { dataset: publicMetadata(item), records: records.slice(cursor, end),
+          nextCursor: end < records.length ? end : null });
       }
       if (method === 'DELETE' && !match[2]) {
         // Delete raw object first: metadata remains retriable if S3 deletion fails.
