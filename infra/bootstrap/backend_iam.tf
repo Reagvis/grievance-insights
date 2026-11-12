@@ -241,6 +241,21 @@ data "aws_iam_policy_document" "backend_compute" {
     }
   }
 
+  # API Gateway v2 checks this action when a tagged $default stage is created,
+  # on the stage collection ARN (before the named stage exists). This is not
+  # an API invocation grant and does not authorize tagging other resources.
+  statement {
+    sid       = "HttpApiStageTagOnCreate"
+    actions   = ["apigateway:TagResource"]
+    resources = ["arn:aws:apigateway:${var.aws_region}::/apis/*/stages"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = [var.aws_region]
+    }
+  }
+
   statement {
     sid = "LogGroupLifecycle"
     actions = [
@@ -375,6 +390,9 @@ data "aws_iam_policy_document" "backend_data" {
       "cognito-idp:DeleteUserPoolClient",
       "cognito-idp:DescribeUserPool",
       "cognito-idp:DescribeUserPoolClient",
+      # Terraform reads this even when the user pool has MFA explicitly OFF.
+      # No MFA setup or user self-registration action is being granted.
+      "cognito-idp:GetUserPoolMfaConfig",
       "cognito-idp:ListTagsForResource",
       "cognito-idp:ListUserPoolClients",
       "cognito-idp:TagResource",
