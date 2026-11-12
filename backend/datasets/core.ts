@@ -74,7 +74,7 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
       if (method === 'POST' && path === '/api/datasets/uploads') {
         const request = body(event);
         const name = request.name;
-        if (typeof name !== 'string' || !/^.{1,120}\.(csv|json)$/i.test(name) || /[\\/\x00-\x1f]/.test(name)) throw new ApiError(400, 'Provide a CSV or JSON filename (maximum 120 characters).');
+        if (typeof name !== 'string' || !/^.{1,120}\.(csv|json)$/i.test(name) || (/[\\/]/.test(name) || [...name].some(c => c.charCodeAt(0) < 32))) throw new ApiError(400, 'Provide a CSV or JSON filename (maximum 120 characters).');
         const format = name.toLowerCase().endsWith('.csv') ? 'csv' : 'json';
         const size = request.bytes;
         if (typeof size !== 'number' || !Number.isInteger(size) || size < 1 || size > MAX_DATASET_BYTES) throw new ApiError(413, 'File exceeds the 1 MiB limit or is empty.');

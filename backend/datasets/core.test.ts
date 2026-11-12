@@ -11,7 +11,7 @@ const now = 1800000000000;
 const utf8 = (s: string) => new TextEncoder().encode(s);
 const csv = 'id,complaintText,responseText,status\nGRV-1,మా గ్రామంలో నీరు లేదు,పరిశీలనలో ఉంది,pending\n';
 function event(method: string, path: string, authenticated = true, data?: object): APIGatewayProxyEventV2 {
-  return { headers: { origin, 'content-type': 'application/json' }, cookies: authenticated ? ['__Host-grievance_session=' + cookie] : [], body: data === undefined ? undefined : JSON.stringify(data), requestContext: { http: { method, path } }, isBase64Encoded: false } as APIGatewayProxyEventV2;
+  return { headers: { origin, 'content-type': 'application/json' }, cookies: authenticated ? ['__Host-grievance_session=' + cookie] : [], body: data === undefined ? undefined : JSON.stringify(data), requestContext: { http: { method, path } }, isBase64Encoded: false } as unknown as APIGatewayProxyEventV2;
 }
 function fixture() {
   const items = new Map<string, Metadata>();
