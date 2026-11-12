@@ -11,6 +11,8 @@ type Props = {
   filteredCount: number;
   job: AnalysisJob | null;
   report: AnalysisReport | null;
+  analysisLoading?: boolean;
+  analysisError?: string | null;
   onOpenRecord: (id: string) => void;
 };
 
@@ -93,7 +95,8 @@ function CaseEvidence({ record, report, onOpenRecord }: {
   </article>;
 }
 
-export function InsightsDashboard({ dataset, filteredCount, job, report, onOpenRecord }: Props) {
+export function InsightsDashboard({ dataset, filteredCount, job, report,
+  analysisLoading = false, analysisError = null, onOpenRecord }: Props) {
   const scopedReport = reportForDataset(dataset.id, job, report);
   const metrics = useMemo(() => buildInsights(dataset.records, scopedReport, job), [dataset.records, scopedReport, job]);
   const [selection, setSelection] = useState<InsightSelection | null>(null);
@@ -110,11 +113,11 @@ export function InsightsDashboard({ dataset, filteredCount, job, report, onOpenR
     setEvidenceId(null);
     setLimit(12);
   };
-  const state = job?.status ?? 'not requested';
+  const state = job?.status ?? (analysisLoading ? 'checking saved analysis' : 'not requested');
   const hasJob = job !== null;
   const availableAI = scopedReport !== null;
   const progressText = hasJob ? `${formatCount(metrics.processed)} of ${formatCount(job.total)} processing attempts checkpointed` : 'No AI job for this dataset';
-  const aiValue = (n: number) => hasJob ? n : '—';
+  const aiValue = (n: number) => availableAI ? n : '—';
 
   return <section id="insights-dashboard" className="insights-dashboard" aria-labelledby="insights-title">
     <header className="insights-header">
@@ -143,7 +146,7 @@ export function InsightsDashboard({ dataset, filteredCount, job, report, onOpenR
         <div className="insight-section-head"><h3 id="ai-metrics-heading">AI-assisted interpretation</h3><span>{state} · {progressText}</span></div>
         <div className="insight-metric-grid">
           <Metric label="AI-analyzed" value={aiValue(metrics.analyzed)} context={availableAI ? 'Validated record outputs' : 'Confirmed after completed report'} source="ai" />
-          <Metric label="Analysis failures" value={aiValue(metrics.failures)} context={availableAI ? 'Per-record failures' : 'Checkpointed failures so far'} source="ai" />
+          <Metric label="Analysis failures" value={hasJob ? metrics.failures : '—'} context={availableAI ? 'Per-record failures' : 'Checkpointed failures so far'} source="ai" />
           <Metric label="Potential urgency" value={aiValue(metrics.flaggedUrgent)} context="AI-flagged · needs human review" source="ai" urgent={metrics.flaggedUrgent > 0} />
           <Metric label="Responses relevant" value={aiValue(metrics.relevant)} context="AI assessment, not outcome" source="ai" />
           <Metric label="Responses insufficient" value={aiValue(metrics.insufficient)} context="AI assessment, not outcome" source="ai" />
@@ -160,7 +163,9 @@ export function InsightsDashboard({ dataset, filteredCount, job, report, onOpenR
         `AI analysis is running; ${progressText}. Completed report data is not yet available.` :
         `AI analysis failed (${job.error ?? 'unknown cause'}). No completed AI report is available.`}
     </div>}
-    {!hasJob && <p className="insight-scope-note">No AI analysis has been requested for this dataset. Source charts are available independently.</p>}
+    {!hasJob && analysisLoading && <p className="insight-scope-note" role="status">Checking for a saved AI analysis. Source charts remain available.</p>}
+    {analysisError && <p className="insight-scope-note" role="alert">AI job information could not be loaded: {analysisError}. Source data remains available.</p>}
+    {!hasJob && !analysisLoading && !analysisError && <p className="insight-scope-note">No AI analysis has been requested for this dataset. Source charts are available independently.</p>}
     {dataset.records.length > 30 && !hasJob && <p className="insight-scope-note">This dataset exceeds the 30-record AI pilot limit; all source statistics remain available. Use a dataset of up to 30 records to request AI analysis.</p>}
     <div className="insight-chart-grid" id="insight-charts">
       <ChartPanel id="source-cat-chart" title="Grievances by source category"

@@ -140,9 +140,18 @@ describe('accessible visual analytics and drill-down', () => {
     expect(html).not.toContain('Category excerpts from individual AI summaries');
     expect(html).not.toContain('నీటి సమస్యల ఫిర్యాదులు.');
   });
+  it('reports AI loading and errors without claiming there is no saved job', () => {
+    const checking = render({ job: null, report: null, analysisLoading: true });
+    expect(checking).toContain('Checking for a saved AI analysis');
+    expect(checking).not.toContain('No AI analysis has been requested');
+    const error = render({ job: null, report: null, analysisError: 'Network unavailable' });
+    expect(error).toContain('AI job information could not be loaded');
+    expect(error).not.toContain('No AI analysis has been requested');
+  });
   it('shows queued/failed status and keeps the existing job controls accessible', () => {
     const html = render({ job: { ...job, status: 'queued', processed: 0 }, report: null });
     expect(html).toContain('AI analysis is queued.');
+    expect(html).toContain('Confirmed after completed report');
     expect(html).not.toContain('Category excerpts from individual AI summaries');
     const failed = render({ job: { ...job, status: 'failed', error: 'all_records_failed' }, report: null });
     expect(failed).toContain('AI analysis failed');

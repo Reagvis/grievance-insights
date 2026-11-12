@@ -91,11 +91,12 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
   const [choice, setChoice] = useState<DatasetChoice>('sample');
   const [remoteId, setRemoteId] = useState<string | null>(null);
   const [analysisSnapshot, setAnalysisSnapshot] = useState<{
-    datasetId: string; job: AnalysisJob | null; report: AnalysisReport | null;
+    datasetId: string; job: AnalysisJob | null; report: AnalysisReport | null; loading: boolean; error: string;
   } | null>(null);
-  const onAnalysisStateChange = useCallback((datasetId: string, job: AnalysisJob | null, report: AnalysisReport | null) => {
-    setAnalysisSnapshot(previous => previous?.datasetId === datasetId && previous.job === job && previous.report === report
-      ? previous : { datasetId, job, report });
+  const onAnalysisStateChange = useCallback((datasetId: string, job: AnalysisJob | null, report: AnalysisReport | null,
+    loading: boolean, error: string) => {
+    setAnalysisSnapshot(previous => previous?.datasetId === datasetId && previous.job === job && previous.report === report &&
+      previous.loading === loading && previous.error === error ? previous : { datasetId, job, report, loading, error });
   }, []);
   const dataset: Dataset = (choice === 'imported' && imported) || (choice === 'expanded' && expanded) || sample;
 
@@ -396,7 +397,9 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
 
 
               <InsightsDashboard key={dataset.id} dataset={dataset} filteredCount={filtered.length}
-                job={currentAnalysis?.job ?? null} report={currentAnalysis?.report ?? null} onOpenRecord={openRecord} />
+                job={currentAnalysis?.job ?? null} report={currentAnalysis?.report ?? null}
+                analysisLoading={Boolean(remoteId) && (!currentAnalysis || currentAnalysis.loading)}
+                analysisError={currentAnalysis?.error ?? null} onOpenRecord={openRecord} />
 
               {AWS_AUTH_ENABLED && remoteId && <AnalysisWorkspace key={remoteId} datasetId={remoteId}
                 records={dataset.records} onStateChange={onAnalysisStateChange} />}

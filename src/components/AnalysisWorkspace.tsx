@@ -6,7 +6,8 @@ import { triggerDownload } from '../utils/downloads';
 type Props = {
   datasetId: string;
   records: GrievanceRecord[];
-  onStateChange: (datasetId: string, job: AnalysisJob | null, report: AnalysisReport | null) => void;
+  onStateChange: (datasetId: string, job: AnalysisJob | null, report: AnalysisReport | null,
+    loading: boolean, error: string) => void;
 };
 
 /** One authenticated job reader shared with the dashboard; never infer results from an in-flight job. */
@@ -17,7 +18,7 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => { onStateChange(datasetId, job, report); }, [datasetId, job, report, onStateChange]);
+  useEffect(() => { onStateChange(datasetId, job, report, loading, error); }, [datasetId, job, report, loading, error, onStateChange]);
 
   useEffect(() => {
     let active = true;
