@@ -12,6 +12,8 @@ type Props = {
   /** The ID a complaint has in the combined list (IDs repeated across files are renamed there). */
   mergedIdOf: (datasetId: string, originalId: string) => string | undefined;
   onOpenRecord: (id: string) => void;
+  /** File to show first (the file of the complaint that is open). */
+  preferredFileId?: string;
 };
 
 const label = (category: string) => category.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -101,10 +103,10 @@ export function AnalysisResults({ datasetId, job, report, mergedIdOf, onOpenReco
 }
 
 /** The Assistant's "AI analysis" mode: choose an uploaded file, start the analysis, watch progress, read and export the result. */
-export function AiAnalysisPane({ files, recordsByDataset, mergedIdOf, onOpenRecord }: Props) {
+export function AiAnalysisPane({ files, recordsByDataset, mergedIdOf, onOpenRecord, preferredFileId }: Props) {
   const [chosen, setChosen] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const activeId = files.find((f) => f.id === chosen)?.id ?? files[0]?.id ?? null;
+  const activeId = files.find((f) => f.id === chosen)?.id ?? files.find((f) => f.id === preferredFileId)?.id ?? files[0]?.id ?? null;
   const onState = useCallback((datasetId: string, job: AnalysisJob | null, report: AnalysisReport | null, loading: boolean, error: string) => {
     setSnapshot((prev) => (prev && prev.datasetId === datasetId && prev.job === job && prev.report === report && prev.loading === loading && prev.error === error ? prev : { datasetId, job, report, loading, error }));
   }, []);
@@ -120,7 +122,7 @@ export function AiAnalysisPane({ files, recordsByDataset, mergedIdOf, onOpenReco
   return (
     <div className="ai-pane">
       <p className="ai-intro">
-        The AI reads every complaint in <strong>one file</strong>, and the department response if there is one. It sorts each complaint into a category, summarises it in Telugu,
+        The AI works on a <strong>whole file</strong> at a time, not a single complaint. It reads every complaint in the file, and the department response if there is one. It sorts each complaint into a category, summarises it in Telugu,
         flags anything potentially urgent and says whether the response looks relevant.
       </p>
       <label className="ai-file-picker">

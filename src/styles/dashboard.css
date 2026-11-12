@@ -1577,21 +1577,28 @@ button.case-chip:hover {
   }
 }
 
-/* ───── AI analysis (button on All Complaints + window) ───── */
-.ai-open-btn {
-  width: 100%;
-  justify-content: center;
-  gap: 8px;
+/* ───── Assistant: Ask | AI analysis ───── */
+.chat-modes {
+  margin: 10px 16px 0;
+  align-self: stretch;
 }
-.modal.ai-modal {
-  width: min(760px, 96vw);
-  max-height: 90vh;
+.chat-modes button {
+  flex: 1;
+}
+.chat-ask {
   display: flex;
+  flex: 1;
+  min-height: 0;
   flex-direction: column;
 }
-.ai-modal .drawer-body {
+.chat-ask[hidden] {
+  display: none;
+}
+.chat-analysis {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 16px 20px 24px;
+  padding: 14px 16px 24px;
 }
 .ai-pane {
   display: grid;
