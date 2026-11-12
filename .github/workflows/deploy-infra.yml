@@ -97,21 +97,7 @@ jobs:
         run: terraform -chdir=infra validate
 
       - name: Create Terraform plan
-        id: plan
-        run: |
-          set +e
-          terraform -chdir=infra plan -input=false -detailed-exitcode -out="$TF_PLAN_FILE"
-          status=$?
-          set -e
-
-          if [[ $status -eq 1 ]]; then
-            exit 1
-          fi
-          if [[ $status -eq 2 ]]; then
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: terraform -chdir=infra plan -input=false -out="$TF_PLAN_FILE"
 
       - name: Reject destructive changes
         run: |
@@ -124,9 +110,6 @@ jobs:
           fi
 
       - name: Apply exact reviewed plan
-        if: inputs.operation == 'apply' && steps.plan.outputs.has_changes == 'true'
+        if: inputs.operation == 'apply'
         run: terraform -chdir=infra apply -input=false -auto-approve "$TF_PLAN_FILE"
 
-      - name: Report no changes
-        if: inputs.operation == 'apply' && steps.plan.outputs.has_changes == 'false'
-        run: echo "Terraform reports no changes; nothing was applied."
