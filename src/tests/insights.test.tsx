@@ -71,10 +71,9 @@ describe('unified dashboard metric aggregation', () => {
   });
   it('treats an absent response as not applicable only when AI actually analyzed the case', () => {
     const m = buildInsights(records, report, job);
-    expect(m.assessmentRows.map(r => [r.key, r.count])).toEqual([
-      ['inconclusive', 1], ['insufficient', 1], ['not_applicable', 1],
-      ['relevant', 1], ['unassessed', 1],
-    ]);
+    expect(Object.fromEntries(m.assessmentRows.map(r => [r.key, r.count]))).toEqual({
+      inconclusive: 1, insufficient: 1, not_applicable: 1, relevant: 1, unassessed: 1,
+    });
     expect(matchInsightRecords(records, report, { kind: 'assessment', value: 'not_applicable' }).map(r => r.id)).toEqual(['A-3']);
     expect(matchInsightRecords(records, report, { kind: 'assessment', value: 'unassessed' }).map(r => r.id)).toEqual(['A-5']);
   });
