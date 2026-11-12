@@ -493,7 +493,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
 
   useEffect(() => {
     const label = { dashboard: 'Dashboard', complaints: 'All Complaints', summary: 'Consolidated Summary' }[route.page];
-    document.title = `${label} · Grievance Insights`;
+    document.title = `${label} · Reagvis Labs`;
   }, [route.page]);
 
   const includedSpan =

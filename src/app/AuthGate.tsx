@@ -25,7 +25,7 @@ export function AuthScreen({ state, onLogin, onRetry }: {
   };
   return <main id="main" className="auth-shell">
     <section className="auth-panel" aria-labelledby="auth-title" aria-busy={busy || state.kind === 'checking'}>
-      <div className="auth-brand"><BrandMark /><span>Grievance Insights</span></div>
+      <div className="auth-brand"><BrandMark /><span>Reagvis Labs</span></div>
       <h1 id="auth-title">Administrator sign in</h1>
       <p className="auth-description">Enter your pilot administrator credentials to access the workspace.</p>
       {state.kind === 'checking' ? <p role="status">Checking your session…</p> :

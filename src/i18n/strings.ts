@@ -7,7 +7,7 @@ import type { CaseStatus } from '../domain/grievance';
  * are a planned capability), and source text is always shown verbatim.
  */
 const en = {
-  appName: 'Grievance Insights',
+  appName: 'Reagvis Labs',
   appSubtitle: 'CM Helpline · Complaint Intelligence',
   prototypeBadge: 'Prototype · Sample Data',
   prototypeBadgeImported: 'Prototype · Imported data',

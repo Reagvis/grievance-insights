@@ -8,14 +8,14 @@
 /* Header */
 .brand-mark {
   background: none;
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 0;
   display: block;
 }
 .brand-mark svg {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   display: block;
 }
 .app-header {
