@@ -52,7 +52,7 @@ data "aws_iam_policy_document" "bootstrap_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:Reagvis/grievance-insights:environment:pilot-bootstrap"]
+      values   = ["repo:Reagvis@212125805/grievance-insights@1446187135:environment:pilot-bootstrap"]
     }
   }
 }
