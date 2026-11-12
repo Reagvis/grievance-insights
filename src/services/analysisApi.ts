@@ -52,6 +52,7 @@ export async function readAnalysisResults(jobId: string) {
   let cursor: number | null = 0;
   let result: { job: AnalysisJob; report: AnalysisReport } | null = null;
   const outcomes: AnalysisReport['outcomes'] = [];
+  let categories: AnalysisReport['categories'] | null = null;
   while (cursor !== null) {
     const page: { job: AnalysisJob; report: AnalysisReport; nextCursor: number | null } =
       await request(path + '?cursor=' + cursor);
@@ -64,10 +65,35 @@ export async function readAnalysisResults(jobId: string) {
         (page.nextCursor !== cursor + page.report.outcomes.length || page.nextCursor > 2000)) {
       throw new Error('Invalid AI result pagination.');
     }
+    if (categories === null) {
+      categories = page.report.categories.map(category => ({ ...category, sourceIds: [] }));
+    } else if (page.report.categories.length !== categories.length ||
+        page.report.categories.some((category, index) =>
+          category.category !== categories![index].category || category.count !== categories![index].count ||
+          category.summaryTe !== categories![index].summaryTe)) {
+      throw new Error('AI report category metadata changed while downloading.');
+    }
+    const pageMembership = new Set<string>();
+    const pageAnalyses = new Map(page.report.outcomes.filter(item => !!item.analysis)
+      .map(item => [item.id, item.analysis!.category]));
+    for (let index = 0; index < page.report.categories.length; index++) {
+      const category = page.report.categories[index];
+      for (const sourceId of category.sourceIds) {
+        if (pageAnalyses.get(sourceId) !== category.category || pageMembership.has(sourceId)) {
+          throw new Error('AI category evidence does not match the result page.');
+        }
+        pageMembership.add(sourceId);
+      }
+      categories[index].sourceIds.push(...category.sourceIds);
+    }
+    if (pageMembership.size !== pageAnalyses.size) throw new Error('Incomplete AI category evidence in result page.');
     outcomes.push(...page.report.outcomes);
     result = { job: page.job, report: page.report };
     cursor = page.nextCursor;
   }
-  if (!result || outcomes.length !== result.report.stats.grievances) throw new Error('Incomplete AI report retrieval.');
-  return { ...result, report: { ...result.report, outcomes } };
+  if (!result || outcomes.length !== result.report.stats.grievances ||
+      !categories || categories.some(category => category.sourceIds.length !== category.count)) {
+    throw new Error('Incomplete AI report retrieval.');
+  }
+  return { ...result, report: { ...result.report, categories, outcomes } };
 }
