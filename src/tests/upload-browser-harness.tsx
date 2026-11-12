@@ -106,7 +106,7 @@ async function run() {
   await until(() => !!mount.querySelector('[role="alert"]'), 'failure is shown as an alert', 30000);
   check(/OCR could not read page\(s\) 2/.test(mount.querySelector('[role="alert"]')!.textContent ?? ''), 'failure reason is shown');
   check(selected.length === opened, 'a failed extraction is never opened');
-  check(/bad-scan\.pdf — failed/.test(text()), 'failed dataset is listed as failed');
+  check(/bad-scan\.pdf[\s\S]*Failed/.test(text()), 'failed dataset is listed as failed');
 
   // 4. Client-side validation: unsupported type and oversize never reach the network.
   const writes = () => requests.filter(r => r.startsWith('POST') || r === 'PUT s3').length;
