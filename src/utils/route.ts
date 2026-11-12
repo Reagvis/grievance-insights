@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 
 /**
  * Tiny hash router (no dependency). Hash URLs also work on static hosting such as GitHub Pages.
- *   #/dashboard   #/complaints   #/summary      — optional  ?id=GRV-000123  opens that note.
+ *   #/upload (signed-in build)   #/dashboard (demo)   #/complaints   #/summary      — optional  ?id=GRV-000123  opens that note.
  */
-export type Page = 'dashboard' | 'complaints' | 'summary';
+export type Page = 'upload' | 'dashboard' | 'complaints' | 'summary';
 export type Route = { page: Page; noteId: string | null };
 
-export const PAGES: readonly Page[] = ['dashboard', 'complaints', 'summary'];
+export const PAGES: readonly Page[] = ['upload', 'dashboard', 'complaints', 'summary'];
 export const DEFAULT_ROUTE: Route = { page: 'dashboard', noteId: null };
 
 export function parseHash(hash: string): Route {

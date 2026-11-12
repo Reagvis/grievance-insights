@@ -1,12 +1,11 @@
 /**
- * Real-browser regression for the seven-format upload UI, including the asynchronous PDF/OCR path.
+ * Real-browser regression for the upload screen (seven formats, many files at once, asynchronous PDF/OCR path).
  * Served by Vite and run in headless Chromium by scripts/test-dashboard-browser.mjs.
  * The network is faked in-page; all data is synthetic. No AWS endpoint is contacted.
  */
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { PersistedDatasets } from '../components/PersistedDatasets';
-import type { Dataset } from '../domain/grievance';
+import { UploadPage, type BatchResult } from '../components/UploadPage';
 import type { RemoteDataset } from '../services/datasetApi';
 
 const mount = document.getElementById('upload-root')!;
@@ -61,59 +60,58 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   return json({ error: 'unexpected request ' + method + ' ' + url }, 404);
 };
 
-function chooseFile(name: string, content = 'x') {
+function chooseFiles(names: string[]) {
   const input = document.getElementById('remote-dataset-file') as HTMLInputElement;
   const transfer = new DataTransfer();
-  transfer.items.add(new File([content], name));
+  for (const name of names) transfer.items.add(new File(['x'], name));
   input.files = transfer.files;
   input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 const text = () => mount.textContent ?? '';
 
 async function run() {
-  const selected: Dataset[] = [];
+  const batches: BatchResult[] = [];
+  let viewAll = 0;
   const root = createRoot(mount);
-  flushSync(() => root.render(<PersistedDatasets onSelect={dataset => selected.push(dataset)} onClear={() => {}} activeId={null} />));
+  flushSync(() => root.render(<UploadPage onBatchDone={(r) => batches.push(r)} onViewAll={() => { viewAll++; }} />));
   await sleep(100);
 
   const input = document.getElementById('remote-dataset-file') as HTMLInputElement;
-  check(input, 'upload input present');
+  check(input && input.multiple, 'the file input accepts several files at once');
   for (const ext of ['.txt', '.md', '.docx', '.csv', '.json', '.jsonl', '.pdf']) check(input.accept.split(',').includes(ext), 'input accepts ' + ext);
-  check(/2,000 grievances/.test(text()) && /OCR/.test(text()), 'limits and OCR are explained to the user');
+  check(/2,000 complaints/.test(text()) && /OCR/.test(text()), 'limits and OCR are explained to the user');
+  check(!mount.querySelector('.dataset-row, .dataset-list'), 'no dataset list on the upload screen');
 
-  // 1. Synchronous formats go straight to ready and are opened.
-  for (const name of ['note.txt', 'note.md', 'note.docx', 'set.csv', 'set.json', 'set.jsonl']) {
-    const before = selected.length;
-    chooseFile(name);
-    await until(() => selected.length === before + 1, name + ' opens after upload');
-    check(selected[selected.length - 1].sourceFileName === name, name + ' is the open dataset');
-  }
-  check(requests.filter(r => r === 'PUT s3').length === 6, 'each file was uploaded once, directly to private storage');
-
-  // 2. A PDF is extracted asynchronously: the UI shows extraction progress, then opens the dataset when it is ready.
-  const before = selected.length;
-  chooseFile('scan.pdf');
-  await until(() => /Extracting text from the PDF/.test(text()), 'extraction progress is shown');
+  // 1. Several files at once, including a PDF that is extracted asynchronously.
+  chooseFiles(['note.txt', 'set.csv', 'scan.pdf']);
+  await until(() => /Extracting text from the PDF/.test(text()), 'PDF extraction progress is shown');
   check(/OCR/.test(text()), 'progress mentions OCR');
-  check(selected.length === before, 'a dataset is not opened while it is still extracting');
-  await until(() => selected.length === before + 1, 'PDF opens only after extraction succeeded', 30000);
-  check(/Upload validated and saved/.test(text()), 'success message shown');
-  check(selected[selected.length - 1].records[0].complaintText === 'పరీక్ష ఫిర్యాదు', 'Telugu text round-trips into the open dataset');
+  check(batches.length === 0, 'the batch is not reported finished while the PDF is still extracting');
+  await until(() => batches.length === 1, 'batch finishes after the PDF is ready', 40000);
+  check(batches[0].files === 3 && batches[0].failed === 0 && batches[0].records === 3, 'all three files were added: ' + JSON.stringify(batches[0]));
+  check(mount.querySelectorAll('.upload-result--done').length === 3, 'each file shows as done');
+  check(/scan\.pdf/.test(text()) && /1 complaint added/.test(text()), 'per-file result text is shown');
+  check(requests.filter(r => r === 'PUT s3').length === 3, 'each file was sent once, directly to private storage');
 
-  // 3. A PDF whose extraction fails shows the server's reason, never opens, and is listed as failed.
-  const opened = selected.length;
-  chooseFile('bad-scan.pdf');
-  await until(() => !!mount.querySelector('[role="alert"]'), 'failure is shown as an alert', 30000);
-  check(/OCR could not read page\(s\) 2/.test(mount.querySelector('[role="alert"]')!.textContent ?? ''), 'failure reason is shown');
-  check(selected.length === opened, 'a failed extraction is never opened');
-  check(/bad-scan\.pdf[\s\S]*Failed/.test(text()), 'failed dataset is listed as failed');
+  // 2. A PDF whose extraction fails shows the server's reason and the batch reports the failure.
+  chooseFiles(['bad-scan.pdf']);
+  await until(() => batches.length === 2, 'failed batch reported', 40000);
+  check(batches[1].failed === 1 && batches[1].files === 0, 'the failure is counted');
+  const alert = mount.querySelector('.upload-result--failed [role="alert"]');
+  check(alert && /OCR could not read page\(s\) 2/.test(alert.textContent ?? ''), 'the failure reason is shown on the file');
+  const before = viewAll;
+  const viewButton = [...mount.querySelectorAll('button')].find(b => /View all complaints/.test(b.textContent ?? ''));
+  check(viewButton, '"View all complaints" is offered after a batch');
+  (viewButton as HTMLButtonElement).click();
+  check(viewAll === before + 1, 'View all complaints navigates');
 
-  // 4. Client-side validation: unsupported type and oversize never reach the network.
+  // 3. Client-side validation: unsupported types never reach the network.
   const writes = () => requests.filter(r => r.startsWith('POST') || r === 'PUT s3').length;
-  const before4 = writes();
-  chooseFile('sheet.xlsx');
-  await until(() => /Unsupported file type/.test(text()), 'unsupported type is explained');
-  check(writes() === before4, 'an unsupported file creates no upload and sends no data');
+  const w0 = writes();
+  chooseFiles(['sheet.xlsx']);
+  await until(() => batches.length === 3, 'unsupported file batch reported');
+  check(/Unsupported file type/.test(text()), 'unsupported type is explained');
+  check(writes() === w0, 'an unsupported file creates no upload and sends no data');
   root.unmount();
 }
 

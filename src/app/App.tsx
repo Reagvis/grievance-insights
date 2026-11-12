@@ -21,7 +21,9 @@ import { api, IS_LIVE } from '../services/api/config';
 import type { HealthInfo } from '../services/api/wire';
 import { LookupChatService, type ChatScope, type ChatService } from '../services/chat';
 import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServices';
-import { PersistedDatasets } from '../components/PersistedDatasets';
+import { UploadPage, type BatchResult } from '../components/UploadPage';
+import { loadAllComplaints, type AllComplaints, type SourceRef } from '../services/allComplaints';
+import { removeDataset } from '../services/datasetApi';
 import { AnalysisWorkspace } from '../components/AnalysisWorkspace';
 import type { AnalysisJob, AnalysisReport } from '../services/analysisApi';
 import {
@@ -111,7 +113,30 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   const [expanded, setExpanded] = useState<Dataset | null>(null);
   const [imported, setImported] = useState<Dataset | null>(null);
   const [choice, setChoice] = useState<DatasetChoice>('sample');
-  const [remoteId, setRemoteId] = useState<string | null>(null);
+  // ── Signed-in build: every uploaded file merged into one list ───────────
+  const [all, setAll] = useState<AllComplaints | null>(null);
+  const [allError, setAllError] = useState<string | null>(null);
+  const [analysisDatasetId, setAnalysisDatasetId] = useState<string | null>(null);
+  const reloadAll = useCallback(async () => {
+    try {
+      setAll(await loadAllComplaints());
+      setAllError(null);
+    } catch (e) {
+      setAllError(e instanceof Error ? e.message : 'Your complaints could not be loaded.');
+    }
+  }, []);
+  useEffect(() => {
+    if (AWS_AUTH_ENABLED) void reloadAll();
+  }, [reloadAll]);
+  // Files still being extracted (PDFs) are picked up automatically when they finish.
+  useEffect(() => {
+    if (!AWS_AUTH_ENABLED || !all?.files.some((f) => f.status === 'extracting' || f.status === 'validating')) return;
+    const timer = window.setInterval(() => void reloadAll(), 6000);
+    return () => window.clearInterval(timer);
+  }, [all, reloadAll]);
+  const awsDataset = useMemo<Dataset>(() => ({ id: 'all-complaints', name: 'All complaints', kind: 'imported', records: all?.records ?? [], isSynthetic: false }), [all]);
+  const readyFiles = useMemo(() => all?.files.filter((f) => f.status === 'ready') ?? [], [all]);
+  const activeAnalysisId = readyFiles.find((f) => f.id === analysisDatasetId)?.id ?? readyFiles[0]?.id ?? null;
   const [analysisSnapshot, setAnalysisSnapshot] = useState<{
     datasetId: string; job: AnalysisJob | null; report: AnalysisReport | null; loading: boolean; error: string;
   } | null>(null);
@@ -123,14 +148,14 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   const [live, setLive] = useState<LiveState>({ status: 'loading', dataset: null, error: null, progress: null, refreshing: false });
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
-  const dataset: Dataset = IS_LIVE
-    ? (live.dataset ?? EMPTY_DATASET)
-    : (choice === 'imported' && imported) || (choice === 'expanded' && expanded) || sample;
+  const dataset: Dataset = AWS_AUTH_ENABLED
+    ? awsDataset
+    : IS_LIVE
+      ? (live.dataset ?? EMPTY_DATASET)
+      : (choice === 'imported' && imported) || (choice === 'expanded' && expanded) || sample;
   /** False only while the very first live load is running or has failed. */
-  const dataReady = !IS_LIVE || live.dataset !== null;
-  /** AWS build: waiting for the user to open or upload a real file (there is no sample to fall back on). */
-  const awaitingDataset = AWS_AUTH_ENABLED && remoteId === null;
-  const pagesReady = dataReady && !awaitingDataset;
+  const dataReady = AWS_AUTH_ENABLED ? all !== null : !IS_LIVE || live.dataset !== null;
+  const pagesReady = dataReady;
 
   // ── Live data (real backend) ─────────────────────────────────────────
   const [skippedCount, setSkippedCount] = useState(0);
@@ -200,7 +225,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   const [lastOpenedId, setLastOpenedId] = useState<string | null>(null);
 
   // An async result from another dataset must never enter this dataset's dashboard.
-  const currentAnalysis = remoteId && analysisSnapshot?.datasetId === remoteId ? analysisSnapshot : null;
+  const currentAnalysis = activeAnalysisId && analysisSnapshot?.datasetId === activeAnalysisId ? analysisSnapshot : null;
   const filtered = useMemo(() => filterRecords(dataset.records, filters), [dataset, filters]);
   const filtersActive = isFiltered(filters);
   const categories = useMemo(() => listCategories(dataset.records), [dataset]);
@@ -275,23 +300,8 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   const changeDataset = (next: DatasetChoice) => {
     if (next === choice) return;
     if (next === 'expanded' && !expanded && import.meta.env.MODE !== 'aws') setExpanded(createExpandedDataset());
-    if (AWS_AUTH_ENABLED) { sessionStorage.removeItem('grievance-insights.remoteDatasetId'); setRemoteId(null); }
     resetForDataset();
     setChoice(next);
-  };
-
-  const useRemoteDataset = (loaded: Dataset) => {
-    resetForDataset();
-    setImported(loaded);
-    setRemoteId(loaded.id);
-    setChoice('imported');
-  };
-
-  const clearRemoteDataset = () => {
-    resetForDataset();
-    setImported(null);
-    setRemoteId(null);
-    setChoice('sample');
   };
 
   const updateFilters = useCallback((patch: Partial<RecordFilters>) => {
@@ -448,10 +458,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
       isSynthetic: result.records.length > 0 && result.records.every((r) => r.isSyntheticDemo),
       sourceFileName: result.fileName,
     };
-    if (AWS_AUTH_ENABLED) {
-      sessionStorage.removeItem('grievance-insights.remoteDatasetId');
-      setRemoteId(null);
-    }
     resetForDataset();
     setImported(ds);
     setChoice('imported');
@@ -465,6 +471,38 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   };
 
   const goToPage = (page: Page) => navigate({ page, noteId: null });
+
+  // Signed-in build: there is no Dashboard page; the front door is the upload screen.
+  useEffect(() => {
+    if (AWS_AUTH_ENABLED && route.page === 'dashboard') navigate({ page: 'upload', noteId: null }, { replace: true });
+  }, [route.page, navigate]);
+
+  const onUploaded = async ({ files, records, failed }: BatchResult) => {
+    await reloadAll();
+    if (files > 0) {
+      resetForDataset();
+      notify('success', `Added ${formatCount(records)} ${records === 1 ? 'complaint' : 'complaints'} from ${files} ${files === 1 ? 'file' : 'files'}`);
+    }
+    if (failed === 0 && files > 0) navigate({ page: 'complaints', noteId: null });
+  };
+
+  /** Uploads are stored as files, so "delete" removes the file a complaint came from (all of its complaints). */
+  const deleteSourceFile = async (source: { datasetId: string; fileName: string; fileRecordCount: number }) => {
+    const many = source.fileRecordCount > 1;
+    const question = many
+      ? `Delete "${source.fileName}" and all ${formatCount(source.fileRecordCount)} complaints in it? This cannot be undone.`
+      : `Delete this complaint (file "${source.fileName}")? This cannot be undone.`;
+    if (!window.confirm(question)) return;
+    try {
+      await removeDataset(source.datasetId);
+      closeRecord();
+      resetForDataset();
+      await reloadAll();
+      notify('success', many ? `Deleted ${source.fileName}` : 'Complaint deleted');
+    } catch (e) {
+      notify('error', e instanceof Error ? e.message : 'The file could not be deleted.');
+    }
+  };
 
   /** Dashboard → Complaints: reset the explorer, then apply exactly what was clicked plus the dashboard date range. */
   const browse = (target: BrowseTarget) => {
@@ -492,7 +530,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   };
 
   useEffect(() => {
-    const label = { dashboard: 'Dashboard', complaints: 'All Complaints', summary: 'Consolidated Summary' }[route.page];
+    const label = { upload: 'Upload', dashboard: 'Dashboard', complaints: 'All Complaints', summary: 'Consolidated Summary' }[route.page];
     document.title = `${label} · Reagvis Labs`;
   }, [route.page]);
 
@@ -511,6 +549,8 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
       onClose={closeRecord}
       onDownload={downloadNote}
       onCopy={(text, what) => void copyRecordText(text, what)}
+      sourceFile={AWS_AUTH_ENABLED && all?.sourceOf.get(selected.id) ? { name: all.sourceOf.get(selected.id)!.fileName, recordCount: all.sourceOf.get(selected.id)!.fileRecordCount } : undefined}
+      onDeleteSource={AWS_AUTH_ENABLED && all?.sourceOf.get(selected.id) ? () => void deleteSourceFile(all.sourceOf.get(selected.id) as SourceRef) : undefined}
     />
   ) : null;
 
@@ -544,10 +584,10 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           importedLabel={imported ? `Imported · ${imported.sourceFileName} (${formatCount(imported.records.length)})` : null}
           isSynthetic={dataset.isSynthetic}
           onDatasetChange={changeDataset}
-          onImport={() => AWS_AUTH_ENABLED ? document.getElementById('remote-dataset-file')?.click() : setImportOpen(true)}
+          onImport={() => (AWS_AUTH_ENABLED ? goToPage('upload') : setImportOpen(true))}
           uiLang={uiLang}
           onLangChange={setUiLang}
-          realData={AWS_AUTH_ENABLED ? { datasetName: remoteId ? (imported?.sourceFileName ?? null) : null } : null}
+          realData={AWS_AUTH_ENABLED ? { datasetName: null } : null}
           live={
             IS_LIVE
               ? {
@@ -559,21 +599,14 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
               : null
           }
         />
-        {pagesReady && <AppNav page={route.page} onNavigate={goToPage} complaintCount={dataset.records.length} />}
-
-        {AWS_AUTH_ENABLED && (
-          // Stays mounted on every page so the saved dataset is restored on load and the header Import button works anywhere.
-          <div className="aws-data" hidden={!awaitingDataset && route.page !== 'dashboard'}>
-            <PersistedDatasets onSelect={useRemoteDataset} onClear={clearRemoteDataset} activeId={remoteId} />
-          </div>
-        )}
+        {pagesReady && <AppNav page={route.page} onNavigate={goToPage} complaintCount={dataset.records.length} pages={AWS_AUTH_ENABLED ? ['upload', 'complaints', 'summary'] : undefined} />}
 
         {!dataReady && (
           <LoadingScreen
-            status={live.status === 'error' ? 'error' : 'loading'}
-            progress={live.progress}
-            error={live.error}
-            onRetry={() => loadLive('initial')}
+            status={(AWS_AUTH_ENABLED ? (allError ? 'error' : 'loading') : live.status) === 'error' ? 'error' : 'loading'}
+            progress={AWS_AUTH_ENABLED ? null : live.progress}
+            error={AWS_AUTH_ENABLED ? allError : live.error}
+            onRetry={() => (AWS_AUTH_ENABLED ? void reloadAll() : loadLive('initial'))}
           />
         )}
 
@@ -587,17 +620,9 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           </div>
         )}
 
-        {awaitingDataset && (
-          <main className="main" id="main">
-            <div className="main-inner">
-              <EmptyState icon={<FileSearch size={28} aria-hidden />}>
-                No dataset is open. Upload a file with the button above, or open one of your saved datasets.
-              </EmptyState>
-            </div>
-          </main>
-        )}
+        {AWS_AUTH_ENABLED && pagesReady && route.page === 'upload' && <UploadPage onBatchDone={(r) => void onUploaded(r)} onViewAll={() => goToPage('complaints')} />}
 
-        {pagesReady && route.page === 'dashboard' && (
+        {!AWS_AUTH_ENABLED && pagesReady && route.page === 'dashboard' && (
           <DashboardPage
             dataset={dataset}
             from={dashRange.from}
@@ -610,24 +635,38 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           />
         )}
 
-        {AWS_AUTH_ENABLED && remoteId && route.page === 'dashboard' && (
-          <div className="aws-insights">
-            <AnalysisWorkspace key={remoteId} datasetId={remoteId} records={dataset.records} onStateChange={onAnalysisStateChange} />
-            <InsightsDashboard
-              key={dataset.id}
-              dataset={dataset}
-              filteredCount={filtered.length}
-              job={currentAnalysis?.job ?? null}
-              report={currentAnalysis?.report ?? null}
-              analysisLoading={!currentAnalysis || currentAnalysis.loading}
-              analysisError={currentAnalysis?.error ?? null}
-              onOpenRecord={openRecord}
-              onOpenReport={() => goToPage('summary')}
-            />
+        {AWS_AUTH_ENABLED && pagesReady && route.page === 'complaints' && all && (
+          <div className="file-banners">
+            {all.files.filter((f) => f.status !== 'ready').map((f) => (
+              <div key={f.id} className={'file-banner file-banner--' + (f.status === 'failed' ? 'failed' : 'working')} role={f.status === 'failed' ? 'alert' : 'status'}>
+                <span>
+                  <strong>{f.name}</strong>{' '}
+                  {f.status === 'failed' ? 'could not be added: ' + (f.error ?? 'extraction failed.') : f.status === 'pending_upload' ? 'was not finished uploading.' : 'is still being read. It will appear here when it is ready.'}
+                </span>
+                {f.status !== 'extracting' && f.status !== 'validating' && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => void deleteSourceFile({ datasetId: f.id, fileName: f.name, fileRecordCount: 1 })}>Remove</button>
+                )}
+              </div>
+            ))}
+            {all.unreadable.length > 0 && (
+              <div className="file-banner file-banner--failed" role="alert">
+                <span>Some files could not be opened just now: {all.unreadable.join(', ')}. <button type="button" className="link-button" onClick={() => void reloadAll()}>Try again</button></span>
+              </div>
+            )}
           </div>
         )}
 
-        {pagesReady && route.page === 'complaints' && (
+        {AWS_AUTH_ENABLED && pagesReady && route.page === 'complaints' && dataset.records.length === 0 && (
+          <main className="main" id="main">
+            <div className="main-inner">
+              <EmptyState icon={<FileSearch size={28} aria-hidden />} action={<button type="button" className="btn btn-primary" onClick={() => goToPage('upload')}>Upload complaints</button>}>
+                No complaints yet. Upload a file to see its complaints here.
+              </EmptyState>
+            </div>
+          </main>
+        )}
+
+        {pagesReady && route.page === 'complaints' && !(AWS_AUTH_ENABLED && dataset.records.length === 0) && (
           <div className="workspace workspace--complaints">
             <RecordExplorer
               totalCount={dataset.records.length}
@@ -689,6 +728,33 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
                 />
               </div>
               {!summary && <div className="print-only print-empty">Generate a consolidated summary before printing.</div>}
+
+              {AWS_AUTH_ENABLED && activeAnalysisId && (
+                <section className="ai-analysis-section" aria-label="AI analysis">
+                  <h2>AI analysis</h2>
+                  <p>AI analysis runs on one uploaded file at a time. Choose the file, start the analysis, and the results appear below.</p>
+                  <label className="ai-file-picker">
+                    File{' '}
+                    <select className="select" value={activeAnalysisId} onChange={(e) => setAnalysisDatasetId(e.target.value)}>
+                      {readyFiles.map((f) => (
+                        <option key={f.id} value={f.id}>{f.name} ({f.recordCount} {f.recordCount === 1 ? 'complaint' : 'complaints'})</option>
+                      ))}
+                    </select>
+                  </label>
+                  <AnalysisWorkspace key={'run-' + activeAnalysisId} datasetId={activeAnalysisId} records={all?.recordsByDataset.get(activeAnalysisId) ?? []} onStateChange={onAnalysisStateChange} />
+                  <InsightsDashboard
+                    key={'view-' + activeAnalysisId}
+                    dataset={{ id: activeAnalysisId, name: readyFiles.find((f) => f.id === activeAnalysisId)?.name ?? 'File', kind: 'imported', records: all?.recordsByDataset.get(activeAnalysisId) ?? [], isSynthetic: false }}
+                    filteredCount={all?.recordsByDataset.get(activeAnalysisId)?.length ?? 0}
+                    job={currentAnalysis?.job ?? null}
+                    report={currentAnalysis?.report ?? null}
+                    analysisLoading={!currentAnalysis || currentAnalysis.loading}
+                    analysisError={currentAnalysis?.error ?? null}
+                    onOpenRecord={openRecord}
+                    onOpenReport={() => document.getElementById('deterministic-report')?.scrollIntoView({ behavior: 'smooth' })}
+                  />
+                </section>
+              )}
             </div>
           </main>
         )}
