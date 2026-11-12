@@ -91,6 +91,16 @@ describe('authenticated dataset lifecycle', () => {
     expect(objects.remove).toHaveBeenCalled();
     expect((await handler(event('GET', '/api/datasets/' + id))).statusCode).toBe(404);
   });
+  it('does not echo multi-megabyte citizen text in a malformed-upload error', async () => {
+    const f = fixture();
+    const malformed = utf8('id,complaintText,' + 'అ'.repeat(2_500_000));
+    await f.handler(event('POST', '/api/datasets/uploads', true, { name: 'malformed.csv', bytes: malformed.length }));
+    f.setFile(malformed);
+    const response = await f.handler(event('POST', '/api/datasets/' + id + '/finalize'));
+    expect(response.statusCode).toBe(422);
+    expect(Buffer.byteLength(response.body ?? '')).toBeLessThan(1024);
+    expect(response.body).not.toContain('అఅఅఅఅఅ');
+  });
   it('rejects mismatched upload sizes and persists failed validation state', async () => {
     const f = fixture();
     await f.handler(event('POST','/api/datasets/uploads',true,{ name:'pilot.csv', bytes:1 }));
