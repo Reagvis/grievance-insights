@@ -33,6 +33,7 @@ export type Report = {
   modelId: typeof MODEL_ID;
   region: typeof MODEL_REGION;
   promptVersion: typeof PROMPT_VERSION;
+  generation?: number;
   generatedAt: string;
   stats: {
     grievances: number;
