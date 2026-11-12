@@ -189,6 +189,20 @@ data "aws_iam_policy_document" "backend_compute" {
     }
   }
 
+  # Lambda authorizes tags supplied during CreateEventSourceMapping as a
+  # separate TagResource action before the mapping ARN is fully materialized.
+  statement {
+    sid       = "TagLambdaEventSourceMappingsOnCreate"
+    actions   = ["lambda:TagResource"]
+    resources = [local.lambda_mapping_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Repository"
+      values   = [var.github_repository]
+    }
+  }
+
   statement {
     sid = "ManageLambdaEventSourceMappings"
     actions = [
