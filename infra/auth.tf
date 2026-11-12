@@ -1,5 +1,5 @@
 data "aws_iam_policy" "runtime_boundary" {
-  name = "${local.name_prefix}-runtime-boundary"
+  arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.name_prefix}-runtime-boundary"
 }
 
 resource "aws_cognito_user_pool" "pilot" {
