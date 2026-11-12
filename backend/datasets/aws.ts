@@ -2,7 +2,8 @@ import { createHash, createHmac } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, DeleteCommand, GetCommand, PutCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { CONTENT_TYPE, type SourceFormat } from '../ingest/limits';
-import type { DatasetStore, Metadata, PrivateObjects, Session, Status } from './core';
+import type { DatasetStore, ExtractionQueue, Metadata, PrivateObjects, Session, Status } from './core';
+import { signedAwsRequest, objectUrl } from '../analysis/aws-http';
 
 const enc = (value: string) => encodeURIComponent(value).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
 const sha = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');
@@ -61,11 +62,22 @@ export class SignedS3 implements PrivateObjects {
   }
   async size(key: string) { const response = await this.request('HEAD', key); return response ? Number(response.headers.get('content-length')) : null; }
   async read(key: string) { const response = await this.request('GET', key); if (!response) throw new Error('S3 object missing'); return new Uint8Array(await response.arrayBuffer()); }
+  async write(key: string, bytes: Uint8Array): Promise<void> {
+    const response = await signedAwsRequest('s3', this.region, 'PUT', objectUrl(this.bucket, this.region, key), bytes,
+      { 'content-type': 'application/json', 'if-none-match': '*' });
+    if (response.status === 412) throw new Error('Immutable dataset index already exists');
+  }
   async remove(key: string) { await this.request('DELETE', key); }
-  async write(key: string, bytes: Uint8Array, contentType: string) {
-    const signed = this.sign('PUT', key, undefined, undefined, { bytes, contentType });
-    const response = await fetch(signed.url, { method: 'PUT', headers: signed.headers, body: new Blob([Uint8Array.from(bytes)]) });
-    if (!response.ok) throw new Error('S3 PUT failed with ' + response.status);
+}
+/** FIFO extraction queue (same pattern as the analysis queue). One message per dataset; the dataset ID is the dedup key. */
+export class SqsExtractionQueue implements ExtractionQueue {
+  constructor(private readonly queueUrl: string, private readonly region: string) {}
+  async send(datasetId: string): Promise<void> {
+    const body = new TextEncoder().encode(JSON.stringify({ QueueUrl: this.queueUrl, MessageBody: JSON.stringify({ datasetId }), MessageGroupId: datasetId, MessageDeduplicationId: datasetId }));
+    const response = await signedAwsRequest('sqs', this.region, 'POST', 'https://sqs.' + this.region + '.amazonaws.com/', body,
+      { 'content-type': 'application/x-amz-json-1.0', 'x-amz-target': 'AmazonSQS.SendMessage' });
+    const ack = await response.json() as { MessageId?: unknown };
+    if (typeof ack.MessageId !== 'string' || !ack.MessageId) throw new Error('SQS did not acknowledge message delivery');
   }
 }
 export class DynamoDatasets implements DatasetStore {
@@ -94,7 +106,7 @@ export class DynamoDatasets implements DatasetStore {
     const values: Record<string, unknown> = { ':from': from, ':to': to };
     let expression = 'SET #status = :to';
     for (const [key, value] of Object.entries(patch)) {
-      if (!['recordCount', 'error'].includes(key)) throw new Error('Invalid metadata patch');
+      if (!['recordCount', 'indexVersion', 'error', 'extractionDeadline'].includes(key)) throw new Error('Invalid metadata patch');
       names['#' + key] = key;
       values[':' + key] = value;
       expression += ', #' + key + ' = :' + key;
@@ -110,5 +122,6 @@ export function createAwsDatasetDependencies() {
   const bucket = process.env.DATASETS_BUCKET_NAME, table = process.env.DATASETS_TABLE_NAME, sessions = process.env.SESSIONS_TABLE_NAME, origin = process.env.ALLOWED_ORIGIN, region = process.env.AWS_REGION;
   if (!bucket || !table || !sessions || !origin || !region) throw new Error('Dataset Lambda configuration incomplete');
   const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
-  return { store: new DynamoDatasets(client, table, sessions), objects: new SignedS3(bucket, region), origin };
+  const queueUrl = process.env.EXTRACTION_QUEUE_URL;
+  return { store: new DynamoDatasets(client, table, sessions), objects: new SignedS3(bucket, region), origin, queue: queueUrl ? new SqsExtractionQueue(queueUrl, region) : undefined };
 }

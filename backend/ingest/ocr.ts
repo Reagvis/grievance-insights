@@ -136,7 +136,7 @@ export async function pageImagePng(lib: PdfJs, pdfBytes: Uint8Array, pageNumber:
  * OCR the given pages. All-or-nothing: if any requested page fails (unsupported layout, unreadable, low confidence)
  * the whole document is rejected naming the pages, so a partial extraction is never presented as complete.
  */
-export async function ocrPdfPages(pdfBytes: Uint8Array, pages: number[], engine: OcrEngine, pdfjs?: PdfJs): Promise<Map<number, OcrPage>> {
+export async function ocrPdfPages(pdfBytes: Uint8Array, pages: number[], engine: OcrEngine, pdfjs?: PdfJs, deadlineMs?: number): Promise<Map<number, OcrPage>> {
   if (pages.length > LIMITS.pdf.ocrPages) {
     throw new IngestError('OCR is limited to ' + LIMITS.pdf.ocrPages + ' pages per document; this PDF needs ' + pages.length + '. Split it and upload the parts.', 'limit');
   }
@@ -144,6 +144,7 @@ export async function ocrPdfPages(pdfBytes: Uint8Array, pages: number[], engine:
   const out = new Map<number, OcrPage>();
   const low: number[] = [];
   for (const page of pages) {
+    if (deadlineMs !== undefined && Date.now() > deadlineMs) throw new IngestError('OCR ran out of time at page ' + page + ' of ' + pages.length + ' pages needing OCR. The document was not imported; split it into smaller files.', 'ocr_failed');
     const png = await pageImagePng(lib, pdfBytes, page);
     let result: { text: string; confidence: number };
     try {
@@ -168,12 +169,12 @@ import { ingestDocument, type IngestResult } from './index';
  * Full pipeline for one file: direct extraction first; only the PDF pages that need it go through OCR; the merged
  * text then passes through the same normalisation and bounds as everything else.
  */
-export async function ingestWithOcr(input: { name: string; bytes: Uint8Array; engine: () => Promise<OcrEngine>; pdfjs?: PdfJs }): Promise<IngestResult> {
+export async function ingestWithOcr(input: { name: string; bytes: Uint8Array; engine: () => Promise<OcrEngine>; pdfjs?: PdfJs; deadlineMs?: number }): Promise<IngestResult> {
   const first = await ingestDocument({ name: input.name, bytes: input.bytes, pdfjs: input.pdfjs });
   if (first.kind === 'complete') return first;
   const engine = await input.engine();
   try {
-    const ocr = await ocrPdfPages(input.bytes, first.ocrPages, engine, input.pdfjs);
+    const ocr = await ocrPdfPages(input.bytes, first.ocrPages, engine, input.pdfjs, input.deadlineMs);
     return await ingestDocument({ name: input.name, bytes: input.bytes, ocr, pdfjs: input.pdfjs });
   } finally {
     await engine.terminate();

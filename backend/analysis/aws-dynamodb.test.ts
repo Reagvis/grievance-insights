@@ -10,8 +10,9 @@ describe('DynamoDB analysis job expressions', () => {
 
     const input = send.mock.calls[0][0].input;
     expect(input.UpdateExpression).toBe('SET #cursor = :next ADD failureCount :failed');
-    expect(input.ConditionExpression).toBe('#s = :running AND #cursor = :expected');
+    expect(input.ConditionExpression).toContain('#s = :running AND #cursor = :expected');
     expect(input.ExpressionAttributeNames).toMatchObject({ '#cursor': 'cursor' });
+    expect(input.ConditionExpression).toContain('attempt = :attempt');
   });
 
   it('aliases reserved attributes in the completion condition', async () => {
@@ -21,7 +22,7 @@ describe('DynamoDB analysis job expressions', () => {
     await jobs.complete('job-1', 'analyses/job-1/report.json', '2026-11-12T00:00:00.000Z');
 
     const input = send.mock.calls[0][0].input;
-    expect(input.ConditionExpression).toBe('#s = :running AND #cursor = #total');
+    expect(input.ConditionExpression).toContain('#s = :running AND #cursor = #total');
     expect(input.ExpressionAttributeNames).toMatchObject({ '#cursor': 'cursor', '#total': 'total' });
   });
 });

@@ -5,6 +5,7 @@ import { parseCsvImport, parseJsonImport, type ImportResult } from '../../src/ut
 import { extractDocxText } from './docx';
 import { formatFromName, IngestError, LIMITS, type SourceFormat } from './limits';
 import { extractPdfPages, type PdfJs } from './pdf';
+import { validateRecordBounds } from '../datasets/bounds';
 
 export { SOURCE_FORMATS, CONTENT_TYPE, LIMITS, IngestError, formatFromName, type SourceFormat } from './limits';
 
@@ -83,17 +84,15 @@ export function parseJsonl(fileName: string, text: string): ImportResult {
   };
 }
 
+/** Task 19's byte bounds on what may reach the model. Never truncates: an over-long record rejects the whole upload. */
 function checkBounds(records: GrievanceRecord[]): void {
-  for (const r of records) {
-    const c = r.complaintText.length;
-    const resp = r.responseText?.length ?? 0;
-    if (c > LIMITS.text.complaintChars || resp > LIMITS.text.responseChars || c + resp > LIMITS.text.recordChars) {
-      throw new IngestError(
-        'Grievance ' + r.id + ' is too long for AI analysis (limits: complaint ' + LIMITS.text.complaintChars + ', response ' + LIMITS.text.responseChars + ' characters). The text is never cut; shorten or split it.',
-        'limit',
-      );
+  records.forEach((r, i) => {
+    try {
+      validateRecordBounds(r);
+    } catch (e) {
+      throw new IngestError('Record ' + (i + 1) + ': ' + (e instanceof Error ? e.message : 'Input size exceeds the safety limit.'), 'limit');
     }
-  }
+  });
 }
 
 function tabular(format: 'csv' | 'json' | 'jsonl', name: string, text: string): ImportResult {
@@ -135,7 +134,7 @@ export async function ingestDocument(input: { name: string; bytes: Uint8Array; o
 
   if (format === 'csv' || format === 'json' || format === 'jsonl') {
     const parsed = tabular(format, name, decodeText(bytes));
-    if (parsed.totalRows > 200 || parsed.records.length > 200) throw new IngestError('Dataset exceeds the 200-record limit.', 'limit');
+    if (parsed.totalRows > LIMITS.records || parsed.records.length > LIMITS.records) throw new IngestError('Dataset exceeds the ' + LIMITS.records.toLocaleString('en-US') + '-record limit.', 'limit');
     if (parsed.rejectedRows.length || parsed.duplicates.length || parsed.emptyRows || !parsed.records.length) {
       throw new IngestError('Every row requires a unique ID and complaintText; empty, missing, or duplicate rows are not accepted.', 'invalid_content');
     }

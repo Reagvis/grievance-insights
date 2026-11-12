@@ -149,15 +149,16 @@ describe('CSV / JSON / JSONL', () => {
     expect((await fails(ingestDocument({ name: 'd.json', bytes: text('[{"id":"Y"}]') })))?.code).toBe('invalid_content');
     expect((await fails(ingestDocument({ name: 'd.json', bytes: text('[{"complaintText":"no id"}]') })))?.code).toBe('invalid_content');
   });
-  it('enforces the record cap and the per-record text bound (never truncating)', async () => {
-    const many = Array.from({ length: 201 }, (_, i) => ({ id: 'M' + i, complaintText: 'text ' + i }));
-    expect((await fails(ingestDocument({ name: 'd.json', bytes: text(JSON.stringify(many)) })))?.message).toContain('200-record limit');
-    const long = [{ id: 'L-1', complaintText: 'ఫ'.repeat(LIMITS.text.complaintChars + 1) }];
+  it('enforces the record cap and the AI-input byte bound (never truncating)', async () => {
+    const many = Array.from({ length: LIMITS.records + 1 }, (_, i) => ({ id: 'M' + i, complaintText: 'text ' + i }));
+    expect((await fails(ingestDocument({ name: 'd.json', bytes: text(JSON.stringify(many)) })))?.message).toContain('2,000-record limit');
+    const long = [{ id: 'L-1', complaintText: 'ఫ'.repeat(5000) }];
     const e = await fails(ingestDocument({ name: 'd.json', bytes: text(JSON.stringify(long)) }));
     expect(e?.code).toBe('limit');
+    expect(e?.message).toContain('12 KiB');
     expect(e?.message).not.toContain('ఫ'); // error messages never echo document text
-    const atLimit = [{ id: 'L-2', complaintText: 'ఫ'.repeat(LIMITS.text.complaintChars) }];
-    expect(complete(await ingestDocument({ name: 'd.json', bytes: text(JSON.stringify(atLimit)) })).records[0].complaintText).toHaveLength(LIMITS.text.complaintChars);
+    const ok = [{ id: 'L-2', complaintText: 'ఫ'.repeat(3000) }];
+    expect(complete(await ingestDocument({ name: 'd.json', bytes: text(JSON.stringify(ok)) })).records[0].complaintText).toHaveLength(3000);
   });
   it('rejects a PDF or ZIP renamed to .csv/.json/.jsonl', async () => {
     for (const name of ['a.csv', 'a.json', 'a.jsonl']) expect((await fails(ingestDocument({ name, bytes: fx('encrypted.pdf') })))?.code).toBe('content_mismatch');

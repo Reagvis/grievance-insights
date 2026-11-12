@@ -19,7 +19,9 @@ const MiB = 1024 * 1024;
 
 export const LIMITS = {
   /** Maximum upload size per format (bytes). CSV/JSON keep the existing pilot limit. */
-  bytes: { txt: 1 * MiB, md: 1 * MiB, csv: 1 * MiB, json: 1 * MiB, jsonl: 1 * MiB, docx: 5 * MiB, pdf: 10 * MiB } as Record<SourceFormat, number>,
+  bytes: { txt: 1 * MiB, md: 1 * MiB, csv: 20 * MiB, json: 20 * MiB, jsonl: 20 * MiB, docx: 5 * MiB, pdf: 10 * MiB } as Record<SourceFormat, number>,
+  /** Records per dataset (Task 19). Document formats always yield exactly one. */
+  records: 2000,
   docx: {
     /** Entries in the archive (a real grievance .docx has roughly 10–30). */
     entries: 200,
@@ -34,12 +36,6 @@ export const LIMITS = {
     /** Pages OCR will process in one document (cost bound). */
     ocrPages: 20,
   },
-  /**
-   * Source text bounds. Everything that reaches the analysis model is bounded here, at ingestion:
-   * the model gets 3 records per call, and Telugu can cost about one token per character, so one record
-   * must stay well inside a quarter of the context. Longer text is rejected, never silently cut.
-   */
-  text: { complaintChars: 6000, responseChars: 4000, recordChars: 8000 },
 } as const;
 
 export const EXTENSION_FORMAT: Record<string, SourceFormat> = Object.fromEntries(SOURCE_FORMATS.map((f) => ['.' + f, f]));
