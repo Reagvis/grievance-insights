@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GrievanceRecord } from '../domain/grievance';
-import { createAnalysis, listAnalyses, readAnalysis, readAnalysisResults, type AnalysisJob, type AnalysisReport } from '../services/analysisApi';
+import { createAnalysis, retryAnalysis, listAnalyses, readAnalysis, readAnalysisResults, type AnalysisJob, type AnalysisReport } from '../services/analysisApi';
 import { triggerDownload } from '../utils/downloads';
 
 type Props = {
@@ -48,7 +48,7 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
     };
     void tick();
     const timer = window.setInterval(() => {
-      if (!current || current.status === 'queued' || current.status === 'running' ||
+      if (!current || current.status === 'queued' || current.status === 'running' || current.status === 'failed' ||
         (current.status === 'completed' && !reportLoaded)) void tick();
     }, 7000);
     return () => { active = false; window.clearInterval(timer); };
@@ -71,6 +71,18 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not start AI analysis.');
+    } finally { setBusy(false); }
+  }
+  async function retry() {
+    if (!job || job.status !== 'failed') return;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await retryAnalysis(job.id);
+      setReport(null);
+      setJob(response.job);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not retry analysis.');
     } finally { setBusy(false); }
   }
   function download() {
@@ -103,6 +115,8 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
           'The AI job failed. No verified outcome or successful AI report is available.'}
         {job.error && <> Failure code: {job.error}.</>}
       </p>}
+      {job.status === 'failed' && (job.error === 'queue_unavailable' || job.error === 'retries_exhausted') &&
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void retry()}>{busy ? 'Retrying…' : 'Retry interrupted job'}</button>}
     </div>}
     {error && <p role="alert" className="analysis-error">{error}</p>}
   </section>;
