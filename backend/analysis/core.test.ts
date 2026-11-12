@@ -259,7 +259,8 @@ describe('terminal failures, idempotent checkpoints and dead letters', () => {
     const fakeClient = { send } as unknown as DynamoDBDocumentClient;
     await new DynamoJobs(fakeClient, 'jobs').fail(id, 'retries_exhausted', timestamp.toISOString());
     const command = send.mock.calls[0][0] as UpdateCommand;
-    expect(command.input.ConditionExpression).toBe('attribute_exists(id) AND (#s = :queued OR #s = :running)');
+    expect(command.input.ConditionExpression).toContain('attribute_exists(id) AND (#s = :queued OR #s = :running)');
+    expect(command.input.ConditionExpression).toContain('attempt = :attempt');
     expect(command.input.ExpressionAttributeValues).toMatchObject({ ':failed': 'failed', ':queued': 'queued', ':running': 'running' });
   });
 });
