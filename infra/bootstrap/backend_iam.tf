@@ -280,10 +280,9 @@ data "aws_iam_policy_document" "backend_data" {
       "s3:DeleteBucketOwnershipControls",
       "s3:DeleteBucketPolicy",
       "s3:DeleteBucketTagging",
-      "s3:GetBucket*",
-      "s3:GetEncryptionConfiguration",
-      "s3:GetLifecycleConfiguration",
-      "s3:GetPublicAccessBlock",
+      # Covers all S3 bucket metadata reads required by future provider refreshes.
+      # Object access remains limited to separately scoped object ARNs.
+      "s3:Get*",
       "s3:ListBucket",
       "s3:PutBucketPolicy",
       "s3:PutBucketPublicAccessBlock",
