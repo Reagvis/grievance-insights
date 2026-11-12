@@ -52,8 +52,8 @@ describe('private dataset validation', () => {
       expect(() => validateDataset('data.' + (content[0] === '{' ? 'json' : 'csv'), content[0] === '{' ? 'json' : 'csv', utf8(content))).toThrow(ApiError);
     }
     expect(() => validateDataset('x.csv', 'csv', new Uint8Array([255, 254]))).toThrow(ApiError);
-    expect(() => validateDataset('x.csv', 'csv', new Uint8Array(1024 * 1024 + 1))).toThrow(ApiError);
-    expect(() => validateDataset('x.csv', 'csv', utf8('id,complaintText\n' + Array.from({ length: 201 }, (_, i) => i + ',test').join('\n')))).toThrow(ApiError);
+    expect(() => validateDataset('x.csv', 'csv', new Uint8Array(20 * 1024 * 1024 + 1))).toThrow(ApiError);
+    expect(() => validateDataset('x.csv', 'csv', utf8('id,complaintText\n' + Array.from({ length: 2001 }, (_, i) => i + ',test').join('\n')))).toThrow(ApiError);
   });
 });
 describe('authenticated dataset lifecycle', () => {
@@ -106,6 +106,6 @@ describe('authenticated dataset lifecycle', () => {
     const foreign = event('POST','/api/datasets/uploads',true,{ name:'pilot.csv', bytes:10 });
     foreign.headers.origin = 'https://evil.example';
     expect((await f.handler(foreign)).statusCode).toBe(403);
-    expect((await f.handler(event('POST','/api/datasets/uploads',true,{ name:'pilot.csv', bytes:1048577 }))).statusCode).toBe(413);
+    expect((await f.handler(event('POST','/api/datasets/uploads',true,{ name:'pilot.csv', bytes:20 * 1048576 + 1 }))).statusCode).toBe(413);
   });
 });
