@@ -13,6 +13,7 @@ export function AnalysisWorkspace({ datasetId, records }: { datasetId: string; r
   useEffect(() => {
     let active = true;
     let current: AnalysisJob | null = null;
+    let reportLoaded = false;
     const tick = async () => {
       try {
         const next = current ? await readAnalysis(current.id) : (await listAnalyses(datasetId))[0] ?? null;
@@ -21,13 +22,14 @@ export function AnalysisWorkspace({ datasetId, records }: { datasetId: string; r
         setJob(next);
         if (next?.status === 'completed') {
           const output = await readAnalysisResults(next.id);
-          if (active) setReport(output.report);
+          if (active) { reportLoaded = true; setReport(output.report); setError(''); }
         }
       } catch (reason) { if (active) setError(reason instanceof Error ? reason.message : 'Could not load AI analysis.'); }
     };
     void tick();
     const timer = window.setInterval(() => {
-      if (!current || current.status === 'queued' || current.status === 'running') void tick();
+      if (!current || current.status === 'queued' || current.status === 'running' ||
+          (current.status === 'completed' && !reportLoaded)) void tick();
     }, 7000);
     return () => { active = false; window.clearInterval(timer); };
   }, [datasetId]);
