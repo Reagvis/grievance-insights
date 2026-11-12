@@ -305,6 +305,10 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
       isSynthetic: result.records.length > 0 && result.records.every((r) => r.isSyntheticDemo),
       sourceFileName: result.fileName,
     };
+    if (AWS_AUTH_ENABLED) {
+      sessionStorage.removeItem('grievance-insights.remoteDatasetId');
+      setRemoteId(null);
+    }
     resetForDataset();
     setImported(ds);
     setChoice('imported');
