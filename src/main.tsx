@@ -5,6 +5,7 @@ import AuthGate from './app/AuthGate';
 import { AWS_AUTH_ENABLED } from './services/runtimeServices';
 import './styles/tokens.css';
 import './styles/app.css';
+import './styles/dashboard.css';
 import './styles/print.css';
 
 createRoot(document.getElementById('root')!).render(

@@ -14,6 +14,8 @@ type Props = {
   analysisLoading?: boolean;
   analysisError?: string | null;
   onOpenRecord: (id: string) => void;
+  /** Opens the detailed deterministic report. Defaults to scrolling to it on the same page. */
+  onOpenReport?: () => void;
 };
 
 function Metric({ label, value, context, source, urgent = false }: {
@@ -96,7 +98,7 @@ function CaseEvidence({ record, report, onOpenRecord }: {
 }
 
 export function InsightsDashboard({ dataset, filteredCount, job, report,
-  analysisLoading = false, analysisError = null, onOpenRecord }: Props) {
+  analysisLoading = false, analysisError = null, onOpenRecord, onOpenReport }: Props) {
   const scopedReport = reportForDataset(dataset.id, job, report);
   const metrics = useMemo(() => buildInsights(dataset.records, scopedReport, job), [dataset.records, scopedReport, job]);
   const [selection, setSelection] = useState<InsightSelection | null>(null);
@@ -128,7 +130,9 @@ export function InsightsDashboard({ dataset, filteredCount, job, report,
           {filteredCount !== dataset.records.length && <> The case explorer currently shows {formatCount(filteredCount)} filtered records; charts remain full-dataset.</>}
         </p>
       </div>
-      <a className="btn btn-secondary btn-sm" href="#deterministic-report"><FileText size={15} aria-hidden /> Detailed deterministic report</a>
+      {onOpenReport
+        ? <button type="button" className="btn btn-secondary btn-sm" onClick={onOpenReport}><FileText size={15} aria-hidden /> Detailed deterministic report</button>
+        : <a className="btn btn-secondary btn-sm" href="#deterministic-report"><FileText size={15} aria-hidden /> Detailed deterministic report</a>}
     </header>
     <div className="insight-groups">
       <section aria-labelledby="source-metrics-heading">

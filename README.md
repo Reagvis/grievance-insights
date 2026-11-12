@@ -1,4 +1,27 @@
-# Grievance Insights — CM Helpline complaint intelligence (prototype)
+# Grievance Insights — CM Helpline complaint intelligence
+
+**Two modes, chosen by one setting.**
+
+| Mode | When | Data | Assistant | Summary |
+|---|---|---|---|---|
+| **Live** | `VITE_API_BASE_URL` is set | Loaded from your backend (`GET /complaints`) | Your backend (`POST /chat`, streamed, cites case IDs) | Your backend (`POST /summary`, scope only) |
+| **Demo** | not set | Bundled synthetic Telugu records, CSV/JSON import | Offline record lookup, labelled *not AI* | In-browser aggregation, labelled *not AI* |
+
+The backend contract is in [`docs/BACKEND_CONTRACT.md`](docs/BACKEND_CONTRACT.md). To try live mode before the real service exists:
+`npm run dev:mock-api` (runs against `server/mockBackend.ts`, which says `mode: "mock"` and shows a *Mock backend · not real data* badge).
+
+```bash
+# real backend (build-time setting)
+VITE_API_BASE_URL=https://helpline.example.gov/api/v1 npm run build      # PowerShell: $env:VITE_API_BASE_URL="..."; npm run build
+```
+
+Live mode in the UI: no sample/import/prototype controls; a header shows when the data was last loaded with a Refresh button; loading,
+error and retry screens; the assistant is switched off (with the reason) if the server says chat is unavailable; AI reports are labelled
+as AI and a report whose coverage does not match the requested scope is discarded. Auth: call `setAuthTokenProvider(() => token)`
+from `src/services/api/config.ts`, or use cookies with `VITE_API_CREDENTIALS=include`.
+
+The sections below describe the original demo build and still apply to demo mode.
+
 
 A frontend prototype for exploring Telugu citizen complaints and department responses, and turning the whole collection into **one consolidated, printable summary**.
 
@@ -16,6 +39,8 @@ Repository: `Reagvis/grievance-insights`. In Settings → Pages, use **Deploy fr
 
 The separate AWS static build uses `npm run build:aws`. It retains the same browser-only `pages` processing mode but emits root-relative `/assets/...` URLs for CloudFront SPA routes. The guarded GitHub Actions workflow uses this build; it does not change the legacy GitHub Pages command above.
 
+The AWS build contains **no sample data** (it is tree-shaken out of the bundle). After sign-in it shows an empty prompt until a real uploaded CSV/JSON dataset is opened, and the header shows that dataset's name instead of the prototype/sample labels.
+
 > **Prototype · Sample Data.** Every record bundled with this app is synthetic demonstration content written for the prototype. It is not CM Helpline data, and no figure in the app describes real government activity.
 
 ## What it does today
@@ -26,7 +51,6 @@ The separate AWS static build uses `npm run build:aws`. It retains the same brow
 | Search by case ID, Telugu/English text, category, issue type, department, district (Unicode/NFC-safe, AND terms) | Working |
 | Filter by category, status and response presence; reset; accurate counts | Working |
 | Record detail with complaint and response kept separate, prev/next, copy | Working |
-| Record translation bar: Original / English / Original + English | Bundled English translations for all sample templates; exact source-text matching also supports the expanded dataset. Imported text without a bundled translation retains its original with an availability message. Copy follows the selected view; note and ZIP exports keep the original. No translation requests leave the browser. |
 | Download one note (`GRV-000128-note.txt`, UTF-8) | Working |
 | Download all records as ZIP (notes + `manifest.csv` + README) | Working |
 | Export only the filtered records as ZIP (separate, clearly labelled action) | Working |
@@ -92,7 +116,19 @@ POST requests use `Content-Type: application/json`. Invalid requests return JSON
 
 ## Import format
 
-UTF-8 CSV (with or without BOM) or JSON. Templates can be downloaded from the Import dialog.
+**TXT / PDF notes (any number of files, or a whole folder).** One record per file.
+
+- **TXT**: UTF-8, or UTF-16 with a byte-order mark. A note exported by this app imports back as it was (ID, category, dates, status, complaint and response).
+  Other files are split into complaint and response only when they contain explicit headings such as `Complaint:` / `Response:` (or `ఫిర్యాదు:` / `స్పందన:`),
+  optionally preceded by `Case ID:`, `Category:`, `Department:`, `District:`, `Status:` lines. A file without headings is imported whole as the complaint, with no response;
+  the import summary says how many files were handled that way. The case ID is the file name when the file does not state one.
+- **PDF**: text is read from the PDF's text layer in the browser (pdf.js, loaded only when a PDF is chosen). Scanned PDFs have no text and are rejected (no OCR yet).
+  pdf.js cannot decode some Telugu conjunct letters (it returns blanks for those glyphs, e.g. PDFs printed from Chrome with Nirmala UI), so any PDF where more than 2% of
+  the letters cannot be decoded is **rejected** rather than imported with silently missing letters, and smaller losses are reported as a warning. For Telugu,
+  prefer TXT until a server-side extractor / OCR is connected.
+
+
+UTF-8 CSV (with or without BOM) or JSON.
 
 ```csv
 id,complaintText,responseText,language,category,issueType,department,district,submittedAt,respondedAt,status
@@ -106,7 +142,7 @@ JSON may be an array of records or `{ "records": [...] }`. Common aliases are ac
 - **language:** `te`, `en`, `mixed`, `unknown`; if missing, it is detected from the Unicode script used.
 - **Duplicates:** the first occurrence of an ID is kept; later rows are set aside and listed (not silently dropped).
 - Non-UTF-8 files, malformed CSV/JSON and files over 25 MB are rejected with a specific message.
-- PDF and scanned images are not supported yet.
+- Scanned images are not supported (no OCR).
 
 ## Architecture
 

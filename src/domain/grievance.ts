@@ -144,10 +144,12 @@ export type Dataset = {
   /** Stable identifier; changes whenever the loaded data changes. */
   id: string;
   name: string;
-  kind: 'sample' | 'synthetic-expansion' | 'imported';
+  kind: 'sample' | 'synthetic-expansion' | 'imported' | 'live';
   records: GrievanceRecord[];
   /** True when every record is synthetic demo content. */
   isSynthetic: boolean;
   /** Original file name for imported datasets. */
   sourceFileName?: string;
+  /** ISO time the data was fetched from the backend (live datasets). */
+  loadedAt?: string;
 };

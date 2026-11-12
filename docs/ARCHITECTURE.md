@@ -2,7 +2,7 @@
 
 ## Implemented today
 
-Grievance Insights is currently a React 19 and TypeScript single-page application built with Vite. The browser supports grievance browsing, Unicode-safe search and filtering, UTF-8 CSV/JSON import, deterministic summaries, deterministic record lookup, bundled sample translations, and text/Markdown/ZIP/print exports. Imported data remains in browser memory.
+Grievance Insights is currently a React 19 and TypeScript single-page application built with Vite. The browser supports grievance browsing, Unicode-safe search and filtering, UTF-8 CSV/JSON import, deterministic summaries, deterministic record lookup, and text/Markdown/ZIP/print exports. Imported data remains in browser memory.
 
 During `npm run dev` and `npm run preview`, a Vite middleware in `server/api.ts` exposes same-origin `/api/health`, `/api/records`, `/api/summary`, and `/api/assistant` endpoints. Processing is deterministic and in memory; it does not use AI or persistence. `npm run build:aws` uses Vite's `aws` mode with root-relative asset paths and performs deterministic processing entirely in the browser; it does not depend on the localhost middleware. AWS mode uses the same-origin authentication API and gates the existing synthetic-data workspace behind successful session validation. The existing GitHub Pages build retains relative paths for project-subdirectory hosting.
 

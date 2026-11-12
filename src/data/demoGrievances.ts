@@ -470,7 +470,8 @@ function toRecord(seed: Seed): GrievanceRecord {
   };
 }
 
-export const DEMO_GRIEVANCES: readonly GrievanceRecord[] = SEEDS.map(toRecord);
+// @__PURE__: lets the AWS build, which ships no sample data, tree-shake this whole module away.
+export const DEMO_GRIEVANCES: readonly GrievanceRecord[] = /* @__PURE__ */ SEEDS.map(toRecord);
 
 export function createSampleDataset(): Dataset {
   return {

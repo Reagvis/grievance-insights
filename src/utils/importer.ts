@@ -1,6 +1,8 @@
 import { isValidDate, normalizeStatus, type GrievanceRecord, type RecordLanguage } from '../domain/grievance';
 import { CsvParseError, parseCsv } from './csv';
 import { csvCell } from './downloads';
+import { parseDocumentText } from './documentImport';
+import { extractPdfText, PdfReadError, type PdfJsLike } from './pdfText';
 
 /**
  * Local, in-browser import of UTF-8 JSON / CSV grievance records.
@@ -19,7 +21,7 @@ export class ImportError extends Error {
 export type ImportIssue = { level: 'error' | 'warning'; message: string };
 
 export type ImportResult = {
-  format: 'csv' | 'json';
+  format: 'csv' | 'json' | 'documents';
   fileName: string;
   records: GrievanceRecord[];
   totalRows: number;
@@ -29,6 +31,19 @@ export type ImportResult = {
   /** IDs that appeared more than once; the first occurrence is kept. */
   duplicates: Array<{ id: string; keptRow: number; skippedRows: number[]; identical: boolean }>;
   issues: ImportIssue[];
+  /** Set when the import was a batch of TXT / PDF files. */
+  documents?: DocumentSummary;
+};
+
+export type DocumentSummary = {
+  txt: number;
+  pdf: number;
+  /** Files of other types that were skipped (e.g. when a whole folder is chosen). */
+  ignored: number;
+  /** Files split into complaint and response by an app note layout or explicit headings. */
+  split: number;
+  /** Files imported whole as the complaint because no headings were found. */
+  wholeText: number;
 };
 
 type FieldKey =
@@ -315,6 +330,163 @@ export async function readImportFile(file: File): Promise<ImportResult> {
   if (!isJson && !isCsv) throw new ImportError('Unsupported file type. Choose a .csv or .json file.');
   const content = decodeUtf8(await file.arrayBuffer());
   return isJson ? parseJsonImport(file.name, content) : parseCsvImport(file.name, content);
+}
+
+const fileKind = (f: File): 'csv' | 'json' | 'txt' | 'pdf' | null => {
+  const n = f.name.toLowerCase();
+  if (n.endsWith('.csv') || f.type === 'text/csv') return 'csv';
+  if (n.endsWith('.json') || f.type === 'application/json') return 'json';
+  if (n.endsWith('.txt') || f.type === 'text/plain') return 'txt';
+  if (n.endsWith('.pdf') || f.type === 'application/pdf') return 'pdf';
+  return null;
+};
+
+/** TXT files: strict UTF-8, or UTF-16 when the file starts with a byte-order mark (what Windows Notepad calls "Unicode"). */
+export function decodeTextFile(buffer: ArrayBuffer): string {
+  const b = new Uint8Array(buffer);
+  if (b.length >= 2 && b[0] === 0xff && b[1] === 0xfe) return new TextDecoder('utf-16le').decode(b.subarray(2));
+  if (b.length >= 2 && b[0] === 0xfe && b[1] === 0xff) return new TextDecoder('utf-16be').decode(b.subarray(2));
+  return decodeUtf8(buffer);
+}
+
+export type ReadFilesOptions = {
+  onProgress?: (done: number, total: number) => void;
+  signal?: AbortSignal;
+  /** Supplies pdf.js; defaults to the browser loader (tests inject their own). */
+  /** Supplies pdf.js. Injected (the browser UI passes `loadPdfJs` from pdfLoader.ts) so this module stays free of browser-only imports: the AWS dataset Lambda bundles it too. */
+  loadPdf?: () => Promise<PdfJsLike>;
+  concurrency?: number;
+};
+
+const n = (x: number) => x.toLocaleString('en-IN');
+
+/**
+ * Import from the user's selection:
+ *  - exactly one CSV or JSON file (structured records), or
+ *  - any number of TXT and/or PDF notes (one record per file).
+ */
+export async function readImportFiles(files: File[], opts: ReadFilesOptions = {}): Promise<ImportResult> {
+  if (files.length === 0) throw new ImportError('No files were selected.');
+  const kinds = files.map(fileKind);
+  const structured = files.filter((_, i) => kinds[i] === 'csv' || kinds[i] === 'json');
+  const docs = files.map((f, i) => ({ f, kind: kinds[i] })).filter((d): d is { f: File; kind: 'txt' | 'pdf' } => d.kind === 'txt' || d.kind === 'pdf');
+  const ignored = files.length - structured.length - docs.length;
+
+  if (structured.length > 0 && docs.length > 0) {
+    throw new ImportError('Choose either one CSV / JSON file, or TXT / PDF notes — not a mix of both.');
+  }
+  if (structured.length > 1) throw new ImportError('Choose one CSV or JSON file at a time.');
+  if (structured.length === 1) return readImportFile(structured[0]);
+  if (docs.length === 0) throw new ImportError('Unsupported file type. Choose a .csv or .json file, or .txt / .pdf notes.');
+
+  docs.sort((a, b) => a.f.name.localeCompare(b.f.name, 'en', { numeric: true }));
+  type Outcome = { row: number; name: string; record?: GrievanceRecord; layout?: 'app-note' | 'headings' | 'whole-text'; problem?: string; lossy?: number };
+  const outcomes: Outcome[] = new Array(docs.length);
+  let next = 0;
+  let done = 0;
+  let pdfjs: PdfJsLike | null = null;
+
+  const work = async () => {
+    for (;;) {
+      opts.signal?.throwIfAborted();
+      const i = next++;
+      if (i >= docs.length) return;
+      const { f, kind } = docs[i];
+      const out: Outcome = { row: i + 1, name: f.name };
+      try {
+        if (f.size === 0) throw new ImportError('The file is empty.');
+        if (f.size > MAX_IMPORT_BYTES) throw new ImportError('The file is larger than 25 MB.');
+        const buffer = await f.arrayBuffer();
+        let text: string;
+        if (kind === 'pdf') {
+          if (!opts.loadPdf) throw new ImportError('PDF files cannot be read in this environment.');
+          pdfjs ??= await opts.loadPdf();
+          const pdfText = await extractPdfText(pdfjs, buffer);
+          text = pdfText.text;
+          if (pdfText.undecodable > 0) out.lossy = pdfText.undecodable;
+        } else {
+          text = decodeTextFile(buffer);
+        }
+        const parsed = parseDocumentText(f.name, text, kind);
+        out.layout = parsed.layout;
+        if (parsed.record) out.record = parsed.record;
+        else out.problem = parsed.problem ?? 'No usable text.';
+      } catch (e) {
+        if (opts.signal?.aborted) throw e;
+        out.problem = e instanceof ImportError || e instanceof PdfReadError ? e.message : 'The file could not be read.';
+      }
+      outcomes[i] = out;
+      opts.onProgress?.(++done, docs.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(opts.concurrency ?? 3, docs.length) }, work));
+
+  const records: GrievanceRecord[] = [];
+  const rejectedRows: ImportResult['rejectedRows'] = [];
+  const firstSeen = new Map<string, { row: number; record: GrievanceRecord }>();
+  const dupMap = new Map<string, ImportResult['duplicates'][number]>();
+  let split = 0;
+  let wholeText = 0;
+  for (const o of outcomes) {
+    if (!o.record) {
+      rejectedRows.push({ row: o.row, reason: o.name + ': ' + o.problem });
+      continue;
+    }
+    const seen = firstSeen.get(o.record.id);
+    if (seen) {
+      const d = dupMap.get(o.record.id) ?? { id: o.record.id, keptRow: seen.row, skippedRows: [], identical: true };
+      d.skippedRows.push(o.row);
+      d.identical = d.identical && seen.record.complaintText === o.record.complaintText && seen.record.responseText === o.record.responseText;
+      dupMap.set(o.record.id, d);
+      continue;
+    }
+    firstSeen.set(o.record.id, { row: o.row, record: o.record });
+    records.push(o.record);
+    if (o.layout === 'whole-text') wholeText += 1;
+    else split += 1;
+  }
+
+  const issues: ImportIssue[] = [];
+  const pdf = docs.filter((d) => d.kind === 'pdf').length;
+  if (wholeText > 0) {
+    issues.push({
+      level: 'warning',
+      message:
+        n(wholeText) +
+        (wholeText === 1 ? ' file has' : ' files have') +
+        ' no "Complaint:" / "Response:" headings, so the whole text is imported as the complaint and no response is recorded. Nothing was guessed.',
+    });
+  }
+  if (pdf > 0 && records.some((r) => r.sourceType === 'document')) {
+    issues.push({
+      level: 'warning',
+      message:
+        "PDF text was read from each file's text layer. Check the preview: PDFs made with older non-Unicode Telugu fonts can read as unreadable characters, and scanned PDFs have no text (OCR is not available yet).",
+    });
+  }
+  const lossy = outcomes.filter((o) => o.record && o.lossy).length;
+  if (lossy > 0) {
+    issues.push({
+      level: 'warning',
+      message: n(lossy) + (lossy === 1 ? ' PDF has' : ' PDFs have') + ' a few letters that could not be decoded and were dropped, so that text may be incomplete. Compare it with the original before relying on it.',
+    });
+  }
+  if (ignored > 0) issues.push({ level: 'warning', message: n(ignored) + (ignored === 1 ? ' other file was' : ' other files were') + ' skipped (only .txt and .pdf are read).' });
+  if (records.some((r) => r.status === 'unknown')) {
+    issues.push({ level: 'warning', message: 'Status and dates are only read from a file when it states them; otherwise they stay “not recorded”.' });
+  }
+
+  return {
+    format: 'documents',
+    fileName: docs.length === 1 ? docs[0].f.name : n(docs.length) + ' files',
+    records,
+    totalRows: docs.length,
+    emptyRows: 0,
+    rejectedRows,
+    duplicates: [...dupMap.values()],
+    issues,
+    documents: { txt: docs.length - pdf, pdf, ignored, split, wholeText },
+  };
 }
 
 /** Template files offered for download in the import dialog. */

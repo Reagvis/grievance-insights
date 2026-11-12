@@ -5,6 +5,7 @@ import { normalizeStatus, type GrievanceRecord } from '../src/domain/grievance';
 import type { SummaryOptions } from '../src/domain/summary';
 import { buildConsolidatedSummary } from '../src/services/localDemoSummaryService';
 import { answerQuestion } from '../src/services/recordAssistant';
+import { handleMockBackend } from './mockBackend';
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 
@@ -90,6 +91,7 @@ export async function apiMiddleware(req: IncomingMessage, res: ServerResponse, n
     if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) {
       throw new ApiError(403, 'Only same-origin API requests are accepted.');
     }
+    if (url.pathname.startsWith('/api/v1/')) return await handleMockBackend(req, res, url.pathname, url);
     if (url.pathname === '/api/health' && req.method === 'GET') {
       return json(res, 200, { status: 'ok', processingMode: 'server-local', aiConfigured: false });
     }

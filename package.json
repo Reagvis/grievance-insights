@@ -8,6 +8,7 @@
     "backend:test": "vitest run backend",
     "backend:typecheck": "tsc -p backend/tsconfig.json",
     "dev": "vite",
+    "dev:mock-api": "vite --mode mockapi",
     "test": "vitest run",
     "build": "tsc -b && vite build",
     "build:aws": "tsc -b && vite build --mode aws --base=/",
