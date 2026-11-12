@@ -78,6 +78,16 @@ export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uin
   }
   return parsed.records;
 }
+const EXTRACTION_TIMEOUT_MESSAGE = 'Extraction did not finish in time. Delete this dataset and upload it again.';
+/** A dataset stuck in `extracting` past its deadline (queue/worker delivery lost) becomes `failed`, wherever it is observed. */
+async function expireIfStuck(store: DatasetStore, item: Metadata, nowSeconds: number): Promise<Metadata> {
+  if (item.status === 'extracting' && item.extractionDeadline !== undefined && item.extractionDeadline < nowSeconds
+    && await store.transition(item.id, 'extracting', 'failed', { error: EXTRACTION_TIMEOUT_MESSAGE })) {
+    return { ...item, status: 'failed', error: EXTRACTION_TIMEOUT_MESSAGE };
+  }
+  return item;
+}
+
 export function createDatasetHandler(store: DatasetStore, objects: PrivateObjects, allowedOrigin: string, now = () => Date.now(), uuid = randomUUID, queue?: ExtractionQueue) {
   return async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> => {
     const method = event.requestContext.http.method;
@@ -105,7 +115,9 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
       }
       if (method === 'GET' && path === '/api/datasets') {
         const items = await store.list();
-        return result(200, { datasets: items.filter(x => x.ownerId === session.userId).map(publicMetadata) });
+        const nowSeconds = Math.floor(now() / 1000);
+        const mine = await Promise.all(items.filter(x => x.ownerId === session.userId).map(x => expireIfStuck(store, x, nowSeconds)));
+        return result(200, { datasets: mine.map(publicMetadata) });
       }
       const match = /^\/api\/datasets\/([0-9a-f-]+)(\/finalize)?$/.exec(path);
       if (!match || !UUID.test(match[1])) throw new ApiError(404, 'Dataset not found.');
@@ -147,10 +159,8 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
         }
       }
       if (method === 'GET' && !match[2]) {
-        if (item.status === 'extracting' && item.extractionDeadline !== undefined && item.extractionDeadline < Math.floor(now() / 1000)) {
-          const message = 'Extraction did not finish in time. Delete this dataset and upload it again.';
-          if (await store.transition(id, 'extracting', 'failed', { error: message })) return result(200, { dataset: publicMetadata({ ...item, status: 'failed', error: message }), records: null });
-        }
+        const current = await expireIfStuck(store, item, Math.floor(now() / 1000));
+        if (current.status === 'failed' && item.status === 'extracting') return result(200, { dataset: publicMetadata(current), records: null });
         if (item.status !== 'ready') return result(200, { dataset: publicMetadata(item), records: null });
         const cursorText = event.queryStringParameters?.cursor ?? '0';
         if (!/^(0|[1-9][0-9]{0,3})$/.test(cursorText)) throw new ApiError(400, 'Invalid record cursor.');
@@ -164,7 +174,8 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
           nextCursor: end < item.recordCount ? end : null });
       }
       if (method === 'DELETE' && !match[2]) {
-        if (item.status === 'extracting') throw new ApiError(409, 'Extraction is in progress. Try again when it finishes.');
+        const live = await expireIfStuck(store, item, Math.floor(now() / 1000));
+        if (live.status === 'extracting') throw new ApiError(409, 'Extraction is in progress. Try again when it finishes.');
         // Keep metadata until all private objects are removed; a failed delete remains retriable.
         if (item.recordCount > 0) await removeDatasetIndex(item.key, item.recordCount, objects);
         await objects.remove(provenanceKey(item.key));

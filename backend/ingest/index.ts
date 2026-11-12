@@ -95,12 +95,21 @@ function checkBounds(records: GrievanceRecord[]): void {
   });
 }
 
+/**
+ * Parser messages can embed source text (JSON.parse quotes the offending token; the CSV importer lists header cells).
+ * They are never returned: only a fixed, format-specific message, plus line numbers for JSONL (which carry no text).
+ */
+const TABULAR_ERROR: Record<'csv' | 'json' | 'jsonl', string> = {
+  csv: 'The CSV file could not be read. It must be UTF-8 with a header row containing id and complaintText, and consistently quoted fields.',
+  json: 'The JSON file could not be read. It must be UTF-8 JSON: an array of records, or an object with a "records" array, each with id and complaintText.',
+  jsonl: 'The JSON Lines file could not be read. Each non-blank line must be one JSON object with id and complaintText.',
+};
 function tabular(format: 'csv' | 'json' | 'jsonl', name: string, text: string): ImportResult {
   try {
     return format === 'csv' ? parseCsvImport(name, text) : format === 'json' ? parseJsonImport(name, text) : parseJsonl(name, text);
   } catch (e) {
-    if (e instanceof IngestError) throw e;
-    throw new IngestError(e instanceof Error ? e.message : 'Invalid dataset.', 'invalid_content');
+    if (e instanceof IngestError) throw e; // JSONL line errors are fixed strings with a line number only
+    throw new IngestError(TABULAR_ERROR[format], 'invalid_content');
   }
 }
 

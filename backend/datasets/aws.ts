@@ -1,4 +1,4 @@
-import { createHash, createHmac } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, DeleteCommand, GetCommand, PutCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { CONTENT_TYPE, type SourceFormat } from '../ingest/limits';
@@ -73,7 +73,10 @@ export class SignedS3 implements PrivateObjects {
 export class SqsExtractionQueue implements ExtractionQueue {
   constructor(private readonly queueUrl: string, private readonly region: string) {}
   async send(datasetId: string): Promise<void> {
-    const body = new TextEncoder().encode(JSON.stringify({ QueueUrl: this.queueUrl, MessageBody: JSON.stringify({ datasetId }), MessageGroupId: datasetId, MessageDeduplicationId: datasetId }));
+    const body = new TextEncoder().encode(JSON.stringify({ QueueUrl: this.queueUrl, MessageBody: JSON.stringify({ datasetId }), MessageGroupId: datasetId,
+      // Unique per enqueue attempt. A fixed ID would let FIFO's 5-minute dedup window silently drop a legitimate retry after an
+      // ambiguous acknowledgement. Duplicates are harmless: the worker only acts on a dataset that is still `extracting`.
+      MessageDeduplicationId: datasetId + '-' + randomUUID() }));
     const response = await signedAwsRequest('sqs', this.region, 'POST', 'https://sqs.' + this.region + '.amazonaws.com/', body,
       { 'content-type': 'application/x-amz-json-1.0', 'x-amz-target': 'AmazonSQS.SendMessage' });
     const ack = await response.json() as { MessageId?: unknown };
