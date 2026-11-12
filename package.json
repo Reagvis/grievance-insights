@@ -14,7 +14,8 @@
     "build:pages": "tsc -b && vite build --mode pages --base=./",
     "deploy:pages": "node scripts/deploy-pages.mjs",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:dashboard:browser": "node scripts/test-dashboard-browser.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1166.0",

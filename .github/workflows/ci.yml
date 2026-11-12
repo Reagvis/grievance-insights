@@ -46,6 +46,9 @@ jobs:
       - name: Test frontend and backend
         run: npm test
 
+      - name: Exercise dashboard DOM interactions in headless Chrome
+        run: npm run test:dashboard:browser
+
       - name: Type-check backend
         run: npm run backend:typecheck
 
