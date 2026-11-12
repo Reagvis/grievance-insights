@@ -145,15 +145,25 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
         if (cursor > report.outcomes.length) throw new HttpError(400, 'Result cursor out of range.');
         if ((report.generation ?? 0) !== (job.generation ?? 0)) throw new Error('Report generation mismatch');
         let end = Math.min(report.outcomes.length, cursor + 100);
-        let payload = { job: publicJob(job), report: { ...report, outcomes: report.outcomes.slice(cursor, end) },
-          nextCursor: end < report.outcomes.length ? end : null };
-        // Byte-budget responses, not just record counts; never truncate an outcome.
-        while (end > cursor + 1 && Buffer.byteLength(JSON.stringify(payload)) > 2 * 1024 * 1024) {
+        // Category memberships are just as large as outcome IDs: distribute them
+        // with their outcomes, otherwise a valid 2,000-record report can exceed
+        // 2 MiB even when the outcome page contains a single record.
+        const pageAt = (last: number) => {
+          const outcomes = report.outcomes.slice(cursor, last);
+          const ids = new Set(outcomes.map(item => item.id));
+          return { job: publicJob(job), report: { ...report, outcomes,
+            categories: report.categories.map(category => ({ ...category,
+              sourceIds: category.sourceIds.filter(sourceId => ids.has(sourceId)) })) },
+            nextCursor: last < report.outcomes.length ? last : null };
+        };
+        let payload = pageAt(end);
+        // Byte-budget the whole response, including category source IDs.
+        // Every outcome and every source ID remains available on its own page.
+        while (end > cursor + 1 && Buffer.byteLength(JSON.stringify(payload), 'utf8') > 2 * 1024 * 1024) {
           end--;
-          payload = { job: publicJob(job), report: { ...report, outcomes: report.outcomes.slice(cursor, end) },
-            nextCursor: end < report.outcomes.length ? end : null };
+          payload = pageAt(end);
         }
-        if (Buffer.byteLength(JSON.stringify(payload)) > 2 * 1024 * 1024) throw new Error('AI result page exceeds safety budget');
+        if (Buffer.byteLength(JSON.stringify(payload), 'utf8') > 2 * 1024 * 1024) throw new Error('AI result page exceeds safety budget');
         return json(200, payload);
       }
       throw new HttpError(404, 'Analysis endpoint not found.');
