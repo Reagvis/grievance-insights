@@ -157,6 +157,7 @@ data "aws_iam_policy_document" "terraform" {
       "s3:CreateBucket",
       "s3:DeleteBucket",
       "s3:GetBucket*",
+      "s3:GetAccelerateConfiguration",
       "s3:GetEncryptionConfiguration",
       "s3:GetLifecycleConfiguration",
       "s3:ListBucket",
@@ -264,8 +265,12 @@ data "aws_iam_policy_document" "terraform" {
   }
 
   statement {
-    sid       = "CloudFrontManagedCachePolicyLookup"
-    actions   = ["cloudfront:GetCachePolicy", "cloudfront:ListCachePolicies"]
+    sid       = "CloudFrontManagedPolicyLookup"
+    actions = [
+      "cloudfront:GetCachePolicy",
+      "cloudfront:ListCachePolicies",
+      "cloudfront:ListOriginRequestPolicies",
+    ]
     resources = ["*"]
   }
 
@@ -325,7 +330,7 @@ data "aws_iam_policy_document" "terraform" {
 
   statement {
     sid       = "Route53ZoneDiscovery"
-    actions   = ["route53:ListHostedZonesByName"]
+    actions   = ["route53:ListHostedZones", "route53:ListHostedZonesByName"]
     resources = ["*"]
   }
 
