@@ -62,7 +62,7 @@ export class SqsJobQueue implements JobQueue {
   async send(id: string, cursor: number) {
     const body = textBytes({
       QueueUrl: this.queueUrl, MessageBody: JSON.stringify({ jobId: id }),
-      MessageGroupId: 'pilot-analyses', MessageDeduplicationId: id + '-' + cursor,
+      MessageGroupId: id, MessageDeduplicationId: id + '-' + cursor,
     });
     const response = await signedAwsRequest('sqs', MODEL_REGION, 'POST', 'https://sqs.' + MODEL_REGION + '.amazonaws.com/', body,
       { 'content-type': 'application/x-amz-json-1.0', 'x-amz-target': 'AmazonSQS.SendMessage' });
