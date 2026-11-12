@@ -24,8 +24,8 @@ export class DynamoJobs implements JobStore {
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
         UpdateExpression: 'SET #s = :running, startedAt = :started',
-        ConditionExpression: '#s = :queued AND (attempt = :attempt OR (attribute_not_exists(attempt) AND :attempt = :zero))',
-        ExpressionAttributeNames: { '#s': 'status' },
+        ConditionExpression: '#s = :queued AND (#attempt = :attempt OR (attribute_not_exists(#attempt) AND :attempt = :zero))',
+        ExpressionAttributeNames: { '#s': 'status', '#attempt': 'attempt' },
         ExpressionAttributeValues: { ':running': 'running', ':queued': 'queued', ':started': startedAt, ':attempt': attempt, ':zero': 0 } }));
     } catch (error) { if (!conditional(error)) throw error; }
   }
@@ -33,8 +33,8 @@ export class DynamoJobs implements JobStore {
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
         UpdateExpression: 'SET #cursor = :next ADD failureCount :failed',
-        ConditionExpression: '#s = :running AND #cursor = :expected AND (attempt = :attempt OR (attribute_not_exists(attempt) AND :attempt = :zero))',
-        ExpressionAttributeNames: { '#s': 'status', '#cursor': 'cursor' },
+        ConditionExpression: '#s = :running AND #cursor = :expected AND (#attempt = :attempt OR (attribute_not_exists(#attempt) AND :attempt = :zero))',
+        ExpressionAttributeNames: { '#s': 'status', '#cursor': 'cursor', '#attempt': 'attempt' },
         ExpressionAttributeValues: { ':next': expected + 1, ':expected': expected, ':failed': failed ? 1 : 0, ':running': 'running', ':attempt': attempt, ':zero': 0 } }));
       return true;
     } catch (error) { if (conditional(error)) return false; throw error; }
@@ -42,8 +42,8 @@ export class DynamoJobs implements JobStore {
   async complete(id: string, key: string, timestamp: string, attempt = 0) {
     await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
       UpdateExpression: 'SET #s = :completed, resultsKey = :key, finishedAt = :now',
-      ConditionExpression: '#s = :running AND #cursor = #total AND (attempt = :attempt OR (attribute_not_exists(attempt) AND :attempt = :zero))',
-      ExpressionAttributeNames: { '#s': 'status', '#cursor': 'cursor', '#total': 'total' },
+      ConditionExpression: '#s = :running AND #cursor = #total AND (#attempt = :attempt OR (attribute_not_exists(#attempt) AND :attempt = :zero))',
+      ExpressionAttributeNames: { '#s': 'status', '#cursor': 'cursor', '#total': 'total', '#attempt': 'attempt' },
       ExpressionAttributeValues: { ':completed': 'completed', ':running': 'running', ':key': key, ':now': timestamp, ':attempt': attempt, ':zero': 0 } }));
   }
   async retry(id: string, mode: 'resume' | 'fresh' = 'resume'): Promise<boolean> {
@@ -53,10 +53,11 @@ export class DynamoJobs implements JobStore {
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
         UpdateExpression: 'SET #s = :queued, #error = :null, finishedAt = :null, startedAt = :null, ' +
-          'attempt = if_not_exists(attempt, :zero) + :one' +
-          (fresh ? ', generation = if_not_exists(generation, :zero) + :one, #cursor = :zero, failureCount = :zero, resultsKey = :null' : ''),
+          '#attempt = if_not_exists(#attempt, :zero) + :one' +
+          (fresh ? ', #generation = if_not_exists(#generation, :zero) + :one, #cursor = :zero, failureCount = :zero, resultsKey = :null' : ''),
         ConditionExpression: '#s = :failed AND ' + reasons + ' AND #cursor <= #total',
-        ExpressionAttributeNames: { '#s': 'status', '#error': 'error', '#cursor': 'cursor', '#total': 'total' },
+        ExpressionAttributeNames: { '#s': 'status', '#error': 'error', '#cursor': 'cursor', '#total': 'total',
+          '#attempt': 'attempt', ...(fresh ? { '#generation': 'generation' } : {}) },
         ExpressionAttributeValues: { ':queued': 'queued', ':failed': 'failed', ':exhausted': 'retries_exhausted',
           ':unavailable': 'queue_unavailable', ...(fresh ? { ':allfailed': 'all_records_failed' } : {}),
           ':null': null, ':zero': 0, ':one': 1 } }));
@@ -68,8 +69,8 @@ export class DynamoJobs implements JobStore {
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
         UpdateExpression: 'SET #s = :failed, #error = :code, finishedAt = :now',
-        ConditionExpression: 'attribute_exists(id) AND (#s = :queued OR #s = :running) AND (attempt = :attempt OR (attribute_not_exists(attempt) AND :attempt = :zero))',
-        ExpressionAttributeNames: { '#s': 'status', '#error': 'error' },
+        ConditionExpression: 'attribute_exists(id) AND (#s = :queued OR #s = :running) AND (#attempt = :attempt OR (attribute_not_exists(#attempt) AND :attempt = :zero))',
+        ExpressionAttributeNames: { '#s': 'status', '#error': 'error', '#attempt': 'attempt' },
         ExpressionAttributeValues: { ':failed': 'failed', ':queued': 'queued', ':running': 'running', ':code': code, ':now': timestamp, ':attempt': attempt, ':zero': 0 } }));
     } catch (error) { if (!conditional(error)) throw error; }
   }
