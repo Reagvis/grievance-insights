@@ -122,9 +122,16 @@ export class QwenBedrock implements Inference {
     const path = 'https://bedrock-runtime.' + MODEL_REGION + '.amazonaws.com/model/' + encodeURIComponent(MODEL_ID) + '/converse';
     const response = await signedAwsRequest('bedrock', MODEL_REGION, 'POST', path, payload, { 'content-type': 'application/json' });
     const parsed = await response.json() as {
+      usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
       stopReason?: string;
       output?: { message?: { content?: { text?: string }[] } };
     };
+    if (parsed.usage) {
+      console.info('analysis_bedrock_usage', {
+        model: MODEL_ID, inputTokens: parsed.usage.inputTokens ?? 0,
+        outputTokens: parsed.usage.outputTokens ?? 0, totalTokens: parsed.usage.totalTokens ?? 0,
+      });
+    }
     if (parsed.stopReason !== 'end_turn') {
       throw new InvalidModelOutput('Model did not finish structured response');
     }
