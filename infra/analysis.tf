@@ -101,8 +101,8 @@ data "aws_iam_policy_document" "analyses_bucket" {
 }
 
 resource "aws_s3_bucket_policy" "analyses" {
-  bucket     = aws_s3_bucket.analyses.id
-  policy     = data.aws_iam_policy_document.analyses_bucket.json
+  bucket = aws_s3_bucket.analyses.id
+  policy = data.aws_iam_policy_document.analyses_bucket.json
 
   depends_on = [aws_s3_bucket_public_access_block.analyses]
 }
@@ -221,14 +221,14 @@ locals {
   analysis_api_zip    = abspath("${path.module}/../artifacts/analysis-api-lambda.zip")
   analysis_worker_zip = abspath("${path.module}/../artifacts/analysis-worker-lambda.zip")
   analysis_lambda_environment = {
-    ALLOWED_ORIGIN        = "https://${var.hostname}"
-    DATASETS_BUCKET_NAME  = aws_s3_bucket.datasets.id
-    DATASETS_TABLE_NAME   = aws_dynamodb_table.datasets.name
-    SESSIONS_TABLE_NAME   = aws_dynamodb_table.sessions.name
-    ANALYSES_BUCKET_NAME  = aws_s3_bucket.analyses.id
-    ANALYSES_TABLE_NAME   = aws_dynamodb_table.analyses.name
-    ANALYSES_QUEUE_URL    = aws_sqs_queue.analyses.id
-    ANALYSES_DLQ_ARN      = aws_sqs_queue.analyses_dlq.arn
+    ALLOWED_ORIGIN       = "https://${var.hostname}"
+    DATASETS_BUCKET_NAME = aws_s3_bucket.datasets.id
+    DATASETS_TABLE_NAME  = aws_dynamodb_table.datasets.name
+    SESSIONS_TABLE_NAME  = aws_dynamodb_table.sessions.name
+    ANALYSES_BUCKET_NAME = aws_s3_bucket.analyses.id
+    ANALYSES_TABLE_NAME  = aws_dynamodb_table.analyses.name
+    ANALYSES_QUEUE_URL   = aws_sqs_queue.analyses.id
+    ANALYSES_DLQ_ARN     = aws_sqs_queue.analyses_dlq.arn
   }
 }
 
