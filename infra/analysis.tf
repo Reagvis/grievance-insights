@@ -285,8 +285,11 @@ resource "aws_lambda_event_source_mapping" "analysis_queue" {
   function_name    = aws_lambda_function.analysis_worker.arn
   batch_size       = 1
   enabled          = true
-  scaling_config {
-    maximum_concurrency = var.analysis_worker_concurrency < 2 ? 2 : var.analysis_worker_concurrency
+  dynamic "scaling_config" {
+    for_each = var.analysis_worker_concurrency >= 2 ? [1] : []
+    content {
+      maximum_concurrency = var.analysis_worker_concurrency
+    }
   }
 }
 
