@@ -118,7 +118,7 @@ describe('authenticated dataset lifecycle', () => {
     f.items.set(id, { id, key: 'raw/' + id + '/source.csv', name: 'old.csv',
       format: 'csv', status: 'ready', ownerId: 'admin-1', bytes: 0, recordCount: 1,
       createdAt: new Date(now).toISOString(), uploadExpiresAt: 0 });
-    f.setFile(utf8('id,complaintText\\nLEGACY-1,' + longText));
+    f.setFile(utf8('id,complaintText\nLEGACY-1,' + longText));
     const response = await f.handler(event('GET', '/api/datasets/' + id));
     expect(response.statusCode).toBe(200);
     expect(data(response).records[0].complaintText).toBe(longText);
