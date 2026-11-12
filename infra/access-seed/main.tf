@@ -70,6 +70,15 @@ data "aws_iam_policy_document" "bootstrap_permissions" {
     }
   }
 
+  # Terraform's aws_s3_bucket refresh uses HeadBucket, which requires
+  # s3:ListBucket without an s3:prefix request parameter. This grants
+  # bucket discovery only; main-state object access remains prohibited.
+  statement {
+    sid       = "BootstrapStateBucketHeadCheck"
+    actions   = ["s3:ListBucket"]
+    resources = [local.state_bucket_arn]
+  }
+
   statement {
     sid       = "BootstrapStateReadWrite"
     actions   = ["s3:GetObject", "s3:PutObject"]
