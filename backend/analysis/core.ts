@@ -199,10 +199,10 @@ export function createAnalysisWorker(datasets: DatasetStore, files: PrivateObjec
       if (!await jobs.checkpoint(jobId, next, !!outcome.failure)) return;
       next++;
     }
-    console.info('analysis_batch_progress', {
-      processed: next, total: job.total, chunkRecords: end - job.cursor,
-      elapsedMs: Date.now() - batchStarted, attempt: job.attempt ?? 0,
-    });
+    console.info(JSON.stringify({
+      event: 'analysis_batch_progress', processed: next, total: job.total,
+      chunkRecords: end - job.cursor, elapsedMs: Date.now() - batchStarted, attempt: job.attempt ?? 0,
+    }));
     if (next < job.total) { await queue.send(jobId, next, job.attempt ?? 0); return; }
     const completed: RecordOutcome[] = [];
     for (let index = 0; index < job.total; index++) {
@@ -225,6 +225,8 @@ export function createAnalysisWorker(datasets: DatasetStore, files: PrivateObjec
       return;
     }
     await jobs.complete(jobId, key, now().toISOString());
-    console.info('analysis_job_completed', { total: job.total, analyzed: report.stats.analyzed, failed: report.stats.failed });
+    console.info(JSON.stringify({
+      event: 'analysis_job_completed', total: job.total, analyzed: report.stats.analyzed, failed: report.stats.failed,
+    }));
   };
 }
