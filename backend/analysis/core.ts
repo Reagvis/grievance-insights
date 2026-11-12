@@ -64,7 +64,7 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
       if (!session || session.expiresAt <= Math.floor(now().getTime() / 1000)) throw new HttpError(401, 'Authentication required.');
       if (method === 'POST' && (event.headers.origin ?? event.headers.Origin) !== allowedOrigin) throw new HttpError(403, 'Origin not allowed.');
       const datasetRoute = /^\/api\/datasets\/([0-9a-f-]+)\/(analyze|analyses)$/.exec(path);
-      const jobRoute = /^\/api\/analyses\/([0-9a-f-]+)(\/results)?$/.exec(path);
+      const jobRoute = /^\/api\/analyses\/([0-9a-f-]+)(\/results|\/retry)?$/.exec(path);
       const id = datasetRoute?.[1] ?? jobRoute?.[1];
       if (!id || !ID_PATTERN.test(id)) throw new HttpError(404, 'Analysis not found.');
       const dataset = await datasets.get(id);
