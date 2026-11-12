@@ -55,7 +55,7 @@ export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uin
   if (!bytes.length || bytes.length > MAX_DATASET_BYTES) throw new ApiError(422, 'File must be between 1 byte and 20 MiB.');
   let parsed;
   try {
-    const text = decodeUtf8(Uint8Array.from(bytes).buffer);
+    const text = decodeUtf8(bytes);
     parsed = format === 'csv' ? parseCsvImport(name, text) : parseJsonImport(name, text);
   } catch (error) {
     // Parser error messages may embed arbitrarily long source column values. Never echo citizen data.
