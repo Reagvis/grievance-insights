@@ -19,6 +19,29 @@ CI performs `npm ci`, lint, the full Vitest suite, real Chromium dashboard inter
 
 `backend/analysis/capacity.test.ts` generates 2,000 synthetic Telugu source records and performs all 2,000 model calls through a mocked inference adapter, with persisted record outcomes, all checkpoints, complete aggregation and exact evidence validation. Additional cases exercise interrupted SQS handoff, safe attempt fencing, separate simultaneous jobs, input bounds, and repeated delivery. Frontend tests exercise reconstruction of full 2,000-record source datasets and multi-page AI reports. `backend/analysis/capacity-stress.test.ts` also runs the production finalizer, 40 authenticated source pages and 667 three-record mocked analysis batches against a near-20-MiB Telugu CSV using byte-accurate in-memory S3 storage; it records read amplification, timing and memory. Separate tests cover a >6-MiB single-record attack, old-dataset compatibility, fresh immutable reanalysis, AWS conditional expressions, output byte budgeting and job-level token telemetry.
 
+## Measured 19.49 MiB benchmark (mocked AWS and model)
+
+GitHub Actions CI on 12 November 2026, run [43177348357](https://github.com/Reagvis/grievance-insights/actions/runs/43177348357):
+
+| Check | Measurement |
+| --- | ---: |
+| Synthetic CSV source | **19.49 MiB**, 2,000 unique Telugu records |
+| Maximum accepted upload | **20 MiB**; 2,001 records or >20 MiB rejected |
+| Record input validation | **12 KiB UTF-8 AI prompt**, **24 KiB JSON record**; no truncation |
+| Full source S3 reads in simulated finalization + processing + 40 pages | **1** |
+| Immutable chunk objects written | **40** |
+| S3 chunk GET calls (all phases) | **773** |
+| Sum of indexed S3 response bytes | **385.81 MiB** |
+| Indexed read amplification vs source | **19.8×**, instead of ~707 full-file rereads in the previous implementation |
+| Mocked inferences and durable checkpoints | **2,000/2,000**, **0 failures**, **667 processing chunks** |
+| Authenticated retrieval | **40 source pages**; AI result pages independently byte-limited |
+| Simulated finalization plus source pages | **3.17 s** in CI |
+| Simulated worker phase | **4.55 s** in CI |
+| Co-located test-runner RSS | **113.2 MiB baseline; 552.6 MiB peak (439.4 MiB delta)** |
+| Checks | **142/142 Vitest**, **47 Chromium assertions**; lint, TypeScript, Lambda packaging, all frontend builds and Terraform validation passed |
+
+The RSS figure is intentionally reported rather than discarded: this Vitest process co-locates the raw CSV string, raw S3 buffer, all 40 mock S3 chunks, both the dataset API and the worker, and test-runner overhead. **It is not an isolated Lambda RSS or an AWS quota result.** No SQS network latency or Bedrock inference delay is included. The controlled deployment review must verify per-Lambda peak memory and 20-second finalize latency on AWS using a representative limited-cost smoke case, not 2,000 paid model calls.
+
 ## Review and deployment limitations
 
 - This is a **simulation**. It measures software correctness and simulated throughput, not Bedrock inference capacity, regional quota, actual model quality, end-to-end AWS throughput or cost.
