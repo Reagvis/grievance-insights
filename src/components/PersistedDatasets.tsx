@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dataset } from '../domain/grievance';
 import { SOURCE_FORMATS } from '../domain/sourceFormats';
+import { formatDateTime } from '../utils/format';
 import { listDatasets, openDataset, removeDataset, uploadDataset, type RemoteDataset } from '../services/datasetApi';
 
 const SELECTION = 'grievance-insights.remoteDatasetId';
@@ -73,20 +74,40 @@ export function PersistedDatasets({ onSelect, onClear, activeId }: Props) {
     } catch (err) { setError(err instanceof Error ? err.message : 'Delete failed; retry.'); }
     finally { setBusy(false); }
   }
-  return <section className="notice notice--info dataset-notice" aria-label="Persisted datasets">
-    <div style={{ width: '100%' }}>
-      <strong>Private uploaded datasets</strong>
-      <p>.txt, .md, .docx and .pdf (one grievance per file) · .csv, .json and .jsonl (up to 2,000 grievances, 20 MiB) · PDF up to 10 MiB and 50 pages (scans are read by OCR), DOCX up to 5 MiB, TXT/MD up to 1 MiB · stored privately in AWS. Uploads are available after refresh.</p>
-      <input id="remote-dataset-file" ref={fileRef} type="file" accept={SOURCE_FORMATS.map(f => '.' + f).join(',')} aria-label="Upload private grievance dataset" disabled={busy} onChange={e => void upload(e.target.files?.[0])} />
-      {progress && <p role="status">{progress}</p>}
-      {error && <p role="alert" className="notice--error">{error}</p>}
-      <ul className="details-list" aria-label="Saved datasets">
-        {items.map(item => <li key={item.id}>
-          <span>{item.name} — {item.status}{item.status === 'ready' ? ' (' + item.recordCount + ' records)' : ''}{item.error ? ': ' + item.error : ''}</span>{' '}
-          <button type="button" className="btn btn-secondary btn-sm" disabled={busy || item.status !== 'ready'} onClick={() => void select(item)}>{activeId === item.id ? 'Selected' : 'Open'}</button>{' '}
-          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void remove(item)}>Delete</button>
-        </li>)}
-      </ul>
+  const STATUS: Record<RemoteDataset['status'], string> = { ready: 'Ready', extracting: 'Extracting…', validating: 'Validating…', pending_upload: 'Upload pending', failed: 'Failed' };
+  return <section className="datasets-panel dataset-notice" aria-label="Persisted datasets">
+    <div className="datasets-head">
+      <div>
+        <h2>Your datasets</h2>
+        <p className="datasets-hint">Stored privately in AWS and still here after a refresh. Open one to see its dashboard.</p>
+      </div>
+      <label className={'btn btn-primary datasets-upload' + (busy ? ' is-disabled' : '')} htmlFor="remote-dataset-file">Upload file</label>
+      <input id="remote-dataset-file" ref={fileRef} className="sr-only" type="file" accept={SOURCE_FORMATS.map(f => '.' + f).join(',')} aria-label="Upload private grievance dataset" disabled={busy} onChange={e => void upload(e.target.files?.[0])} />
     </div>
+    <p className="datasets-formats">
+      <strong>One grievance per file:</strong> TXT, MD, DOCX, PDF (scanned PDFs are read by OCR). <strong>Many per file:</strong> CSV, JSON, JSONL, up to 2,000 grievances.
+      Size limits: PDF 10 MiB and 50 pages, DOCX 5 MiB, TXT/MD 1 MiB, CSV/JSON/JSONL 20 MiB.
+    </p>
+    {progress && <p role="status" className="datasets-progress">{progress}</p>}
+    {error && <p role="alert" className="datasets-error">{error}</p>}
+    {items.length === 0
+      ? <p className="datasets-empty">No datasets yet. Upload your first file.</p>
+      : <ul className="dataset-list" aria-label="Saved datasets">
+        {items.map(item => <li key={item.id} className={'dataset-row' + (activeId === item.id ? ' is-active' : '')}>
+          <div className="dataset-main">
+            <span className="dataset-name" title={item.name}>{item.name}</span>
+            <span className="dataset-meta">
+              <span className={'dataset-status dataset-status--' + item.status}>{STATUS[item.status]}</span>
+              {item.status === 'ready' && <span>{item.recordCount} {item.recordCount === 1 ? 'record' : 'records'}</span>}
+              <span>{formatDateTime(item.createdAt)}</span>
+            </span>
+            {item.error && <span className="dataset-row-error">{item.error}</span>}
+          </div>
+          <div className="dataset-actions">
+            <button type="button" className="btn btn-secondary btn-sm" disabled={busy || item.status !== 'ready'} onClick={() => void select(item)}>{activeId === item.id ? 'Selected' : 'Open'}</button>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void remove(item)}>Delete</button>
+          </div>
+        </li>)}
+      </ul>}
   </section>;
 }

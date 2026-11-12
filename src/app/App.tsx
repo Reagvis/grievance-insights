@@ -493,7 +493,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
 
   useEffect(() => {
     const label = { dashboard: 'Dashboard', complaints: 'All Complaints', summary: 'Consolidated Summary' }[route.page];
-    document.title = `${label} · Grievance Insights`;
+    document.title = `${label} · Reagvis Labs`;
   }, [route.page]);
 
   const includedSpan =
@@ -590,15 +590,8 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
         {awaitingDataset && (
           <main className="main" id="main">
             <div className="main-inner">
-              <EmptyState
-                icon={<FileSearch size={28} aria-hidden />}
-                action={
-                  <button type="button" className="btn btn-primary" onClick={() => document.getElementById('remote-dataset-file')?.click()}>
-                    Upload a file
-                  </button>
-                }
-              >
-                No dataset is open. Upload a CSV or JSON file of complaints, or open one you saved earlier from the list above.
+              <EmptyState icon={<FileSearch size={28} aria-hidden />}>
+                No dataset is open. Upload a file with the button above, or open one of your saved datasets.
               </EmptyState>
             </div>
           </main>
