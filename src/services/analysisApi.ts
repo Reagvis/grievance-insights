@@ -3,7 +3,7 @@ import { signalAuthExpired } from './authApi';
 export type AnalysisJob = {
   id: string; datasetId: string; status: 'queued' | 'running' | 'completed' | 'failed';
   createdAt: string; startedAt: string | null; finishedAt: string | null;
-  processed: number; total: number; failureCount: number; attempt: number;
+  processed: number; total: number; failureCount: number; attempt: number; generation?: number;
   modelId: string; region: string; promptVersion: string; error: string | null;
 };
 export type AnalysisItem = {
@@ -15,15 +15,16 @@ export type AnalysisItem = {
   verifiedOutcome: null; verificationStatus: 'not_verified';
 };
 export type AnalysisReport = {
-  jobId: string; datasetId: string; modelId: string; region: string; promptVersion: string; generatedAt: string;
+  jobId: string; datasetId: string; modelId: string; region: string; promptVersion: string; generation?: number; generatedAt: string;
   stats: { grievances: number; analyzed: number; failed: number; categoryCounts: Record<string, number>;
     potentiallyUrgent: number; withResponses: number; responsesRelevant: number;
     responsesInsufficient: number; responsesInconclusive: number };
   categories: { category: string; count: number; summaryTe: string; sourceIds: string[] }[];
   outcomes: ({ id: string; analysis: AnalysisItem; failure?: never } | { id: string; failure: string; analysis?: never })[];
 };
-async function request<T>(path: string, method: 'GET' | 'POST' = 'GET'): Promise<T> {
-  const response = await fetch(path, { method, credentials: 'same-origin', cache: 'no-store', redirect: 'error' });
+async function request<T>(path: string, method: 'GET' | 'POST' = 'GET', body?: string): Promise<T> {
+  const response = await fetch(path, { method, ...(body ? { body, headers: { 'content-type': 'application/json' } } : {}),
+    credentials: 'same-origin', cache: 'no-store', redirect: 'error' });
   if (response.status === 401) {
     signalAuthExpired();
     throw new Error('Your administrator session has expired.');
@@ -37,8 +38,8 @@ async function request<T>(path: string, method: 'GET' | 'POST' = 'GET'): Promise
 export async function createAnalysis(datasetId: string) {
   return request<{ job: AnalysisJob; alreadyExists: boolean }>('/api/datasets/' + encodeURIComponent(datasetId) + '/analyze', 'POST');
 }
-export async function retryAnalysis(jobId: string) {
-  return request<{ job: AnalysisJob }>('/api/analyses/' + encodeURIComponent(jobId) + '/retry', 'POST');
+export async function retryAnalysis(jobId: string, mode: 'resume' | 'fresh' = 'resume') {
+  return request<{ job: AnalysisJob }>('/api/analyses/' + encodeURIComponent(jobId) + '/retry', 'POST', JSON.stringify({ mode }));
 }
 export async function listAnalyses(datasetId: string) {
   return (await request<{ jobs: AnalysisJob[] }>('/api/datasets/' + encodeURIComponent(datasetId) + '/analyses')).jobs;
@@ -55,7 +56,7 @@ export async function readAnalysisResults(jobId: string) {
     const page: { job: AnalysisJob; report: AnalysisReport; nextCursor: number | null } =
       await request(path + '?cursor=' + cursor);
     if (page.job.id !== jobId || page.report.jobId !== jobId || page.report.datasetId !== page.job.datasetId ||
-        page.job.status !== 'completed') throw new Error('AI result page does not match the requested job.');
+        page.job.status !== 'completed' || (page.report.generation ?? 0) !== (page.job.generation ?? 0)) throw new Error('AI result page does not match the requested job.');
     if (result && (result.report.generatedAt !== page.report.generatedAt || result.report.stats.grievances !== page.report.stats.grievances)) {
       throw new Error('AI report changed while downloading.');
     }
