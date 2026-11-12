@@ -5,7 +5,6 @@ import { AppNav } from '../components/AppNav';
 import { AssistantLauncher, ChatPanel, useChatStore, type ScopeOption } from '../components/ChatPanel';
 import { DashboardPage, type BrowseTarget } from '../components/DashboardPage';
 import { LoadingScreen } from '../components/LoadingScreen';
-import { InsightsDashboard } from '../components/InsightsDashboard';
 import { ImportDialog } from '../components/ImportDialog';
 import { PAGE_SIZE, RecordExplorer } from '../components/RecordExplorer';
 import { RecordDetail } from '../components/RecordDetail';
@@ -22,11 +21,10 @@ import type { HealthInfo } from '../services/api/wire';
 import { LookupChatService, type ChatScope, type ChatService } from '../services/chat';
 import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServices';
 import { FileProblems } from '../components/FileProblems';
+import { SummaryFilters } from '../components/SummaryFilters';
 import { UploadPage, type BatchResult } from '../components/UploadPage';
 import { loadAllComplaints, type AllComplaints, type SourceRef } from '../services/allComplaints';
 import { removeDataset } from '../services/datasetApi';
-import { AnalysisWorkspace } from '../components/AnalysisWorkspace';
-import type { AnalysisJob, AnalysisReport } from '../services/analysisApi';
 import {
   buildNoteText,
   buildRecordsZip,
@@ -39,7 +37,8 @@ import {
 } from '../utils/downloads';
 import { formatCount, formatDate } from '../utils/format';
 import type { ImportResult } from '../utils/importer';
-import { DEFAULT_FILTERS, describeFilters, filterRecords, filtersKey, isFiltered, listCategories, type RecordFilters } from '../utils/recordSearch';
+import { DEFAULT_FILTERS, describeFilters, filterRecords, isFiltered, listCategories, type RecordFilters } from '../utils/recordSearch';
+import { applySummaryFilter, describeSummaryFilter, isSummaryFiltered, NO_SUMMARY_FILTER, summaryFilterKey, type SummaryFilter } from '../utils/summaryFilter';
 import { buildSummaryMarkdown, summaryFileName } from '../utils/summaryExport';
 import { useRoute, type Page } from '../utils/route';
 import { useMediaQuery } from '../utils/useMediaQuery';
@@ -117,7 +116,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   // ── Signed-in build: every uploaded file merged into one list ───────────
   const [all, setAll] = useState<AllComplaints | null>(null);
   const [allError, setAllError] = useState<string | null>(null);
-  const [analysisDatasetId, setAnalysisDatasetId] = useState<string | null>(null);
   const reloadAll = useCallback(async () => {
     try {
       setAll(await loadAllComplaints());
@@ -138,15 +136,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   const awsDataset = useMemo<Dataset>(() => ({ id: 'all-complaints', name: 'All complaints', kind: 'imported', records: all?.records ?? [], isSynthetic: false }), [all]);
   const addedAtById = useMemo(() => (all ? new Map([...all.sourceOf].map(([recordId, src]) => [recordId, src.addedAt])) : undefined), [all]);
   const readyFiles = useMemo(() => all?.files.filter((f) => f.status === 'ready') ?? [], [all]);
-  const activeAnalysisId = readyFiles.find((f) => f.id === analysisDatasetId)?.id ?? readyFiles[0]?.id ?? null;
-  const [analysisSnapshot, setAnalysisSnapshot] = useState<{
-    datasetId: string; job: AnalysisJob | null; report: AnalysisReport | null; loading: boolean; error: string;
-  } | null>(null);
-  const onAnalysisStateChange = useCallback((datasetId: string, job: AnalysisJob | null, report: AnalysisReport | null,
-    loading: boolean, error: string) => {
-    setAnalysisSnapshot(previous => previous?.datasetId === datasetId && previous.job === job && previous.report === report &&
-      previous.loading === loading && previous.error === error ? previous : { datasetId, job, report, loading, error });
-  }, []);
   const [live, setLive] = useState<LiveState>({ status: 'loading', dataset: null, error: null, progress: null, refreshing: false });
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
@@ -226,29 +215,32 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   /** Last record opened — stays highlighted in the list after the detail panel closes. */
   const [lastOpenedId, setLastOpenedId] = useState<string | null>(null);
 
-  // An async result from another dataset must never enter this dataset's dashboard.
-  const currentAnalysis = activeAnalysisId && analysisSnapshot?.datasetId === activeAnalysisId ? analysisSnapshot : null;
   const filtered = useMemo(() => filterRecords(dataset.records, filters), [dataset, filters]);
   const filtersActive = isFiltered(filters);
   const categories = useMemo(() => listCategories(dataset.records), [dataset]);
   const recordById = useMemo(() => new Map(dataset.records.map((r) => [r.id, r])), [dataset]);
 
   // ── Summary state ───────────────────────────────────────────────────
-  const [scope, setScope] = useState<SummaryScope>('all');
   const [summaryState, setSummaryState] = useState<SummaryState>({ status: 'idle', summary: null, error: null });
   const [summaryKey, setSummaryKey] = useState<string | null>(null);
   const generation = useRef(0);
   const reportRef = useRef<HTMLElement | null>(null);
   const generateRef = useRef<HTMLButtonElement | null>(null);
 
-  const included = scope === 'all' ? dataset.records : filtered;
+  // The Summary page has its own filter (separate from the All Complaints list filters).
+  const [summaryFilter, setSummaryFilter] = useState<SummaryFilter>(NO_SUMMARY_FILTER);
+  const fileIdOf = useCallback((r: GrievanceRecord) => all?.sourceOf.get(r.id)?.datasetId, [all]);
+  const fileNameOf = useCallback((id: string) => all?.files.find((f) => f.id === id)?.name, [all]);
+  const included = useMemo(() => applySummaryFilter(dataset.records, summaryFilter, AWS_AUTH_ENABLED ? fileIdOf : undefined), [dataset, summaryFilter, fileIdOf]);
+  const scope: SummaryScope = isSummaryFiltered(summaryFilter) ? 'filtered' : 'all';
+  const summaryScopeText = describeSummaryFilter(summaryFilter, fileNameOf);
   const includedStats = useMemo(() => computeStats(included), [included]);
-  const currentKey = `${dataset.id}|${scope}|${scope === 'filtered' ? filtersKey(filters) : '*'}`;
+  const currentKey = `${dataset.id}|${summaryFilterKey(summaryFilter)}`;
   const stale = summaryState.summary !== null && summaryKey !== currentKey;
   const staleReason =
     summaryState.summary && summaryState.summary.scope !== scope
       ? 'The report scope was changed.'
-      : 'The search or filters changed since it was generated.';
+      : 'The summary filters changed since it was generated.';
 
   // ── UI chrome state ─────────────────────────────────────────────────
   const [importOpen, setImportOpen] = useState(false);
@@ -294,7 +286,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     navigate({ ...route, noteId: null }, { replace: true });
     setDashRange({ from: '', to: '' });
     setLastOpenedId(null);
-    setScope('all');
+    setSummaryFilter(NO_SUMMARY_FILTER);
     setSummaryState({ status: 'idle', summary: null, error: null });
     setSummaryKey(null);
   };
@@ -399,7 +391,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     try {
       const summary = await summaryService.generate([...records], {
         scope,
-        scopeDescription: describeFilters(filters),
+        scopeDescription: summaryScopeText,
         reportLanguage: 'en',
         datasetName: dataset.name,
         isSyntheticData: dataset.isSynthetic,
@@ -533,11 +525,9 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   /** Dashboard → Summary with an explicit scope (all records, or the dashboard date range as a filtered scope). */
   const summarizeFromDashboard = (which: 'all' | 'range') => {
     if (which === 'range') {
-      setFilters({ ...DEFAULT_FILTERS, dateFrom: dashRange.from, dateTo: dashRange.to });
-      setPage(0);
-      setScope('filtered');
+      setSummaryFilter({ ...NO_SUMMARY_FILTER, dateFrom: dashRange.from, dateTo: dashRange.to });
     } else {
-      setScope('all');
+      setSummaryFilter(NO_SUMMARY_FILTER);
     }
     goToSummary();
   };
@@ -714,14 +704,25 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
                 <p>One report across your complaints and the responses recorded for them.</p>
               </div>
               {datasetBanners}
+              <SummaryFilters
+                records={dataset.records}
+                filter={summaryFilter}
+                onChange={setSummaryFilter}
+                includedCount={included.length}
+                files={AWS_AUTH_ENABLED ? readyFiles.map((f) => ({ id: f.id, name: f.name, count: f.recordCount })) : undefined}
+                fileIdOf={AWS_AUTH_ENABLED ? fileIdOf : undefined}
+              />
               <div id="deterministic-report">
                 <SummaryWorkspace
                 scope={scope}
-                onScopeChange={setScope}
+                scopeControl={<span />}
+                onScopeChange={(next) => {
+                  if (next === 'all') setSummaryFilter(NO_SUMMARY_FILTER);
+                }}
                 allCount={dataset.records.length}
-                filteredCount={filtered.length}
-                filtersActive={filtersActive}
-                filtersDescription={describeFilters(filters)}
+                filteredCount={included.length}
+                filtersActive={isSummaryFiltered(summaryFilter)}
+                filtersDescription={summaryScopeText}
                 included={{ count: included.length, categories: includedStats.categoryCount, dateSpan: includedSpan }}
                 state={summaryState}
                 stale={stale}
@@ -739,33 +740,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
                 />
               </div>
               {!summary && <div className="print-only print-empty">Generate a consolidated summary before printing.</div>}
-
-              {AWS_AUTH_ENABLED && activeAnalysisId && (
-                <section className="ai-analysis-section" aria-label="AI analysis">
-                  <h2>AI analysis</h2>
-                  <p>AI analysis runs on one uploaded file at a time. Choose the file, start the analysis, and the results appear below.</p>
-                  <label className="ai-file-picker">
-                    File{' '}
-                    <select className="select" value={activeAnalysisId} onChange={(e) => setAnalysisDatasetId(e.target.value)}>
-                      {readyFiles.map((f) => (
-                        <option key={f.id} value={f.id}>{f.name} ({f.recordCount} {f.recordCount === 1 ? 'complaint' : 'complaints'})</option>
-                      ))}
-                    </select>
-                  </label>
-                  <AnalysisWorkspace key={'run-' + activeAnalysisId} datasetId={activeAnalysisId} records={all?.recordsByDataset.get(activeAnalysisId) ?? []} onStateChange={onAnalysisStateChange} />
-                  <InsightsDashboard
-                    key={'view-' + activeAnalysisId}
-                    dataset={{ id: activeAnalysisId, name: readyFiles.find((f) => f.id === activeAnalysisId)?.name ?? 'File', kind: 'imported', records: all?.recordsByDataset.get(activeAnalysisId) ?? [], isSynthetic: false }}
-                    filteredCount={all?.recordsByDataset.get(activeAnalysisId)?.length ?? 0}
-                    job={currentAnalysis?.job ?? null}
-                    report={currentAnalysis?.report ?? null}
-                    analysisLoading={!currentAnalysis || currentAnalysis.loading}
-                    analysisError={currentAnalysis?.error ?? null}
-                    onOpenRecord={openRecord}
-                    onOpenReport={() => document.getElementById('deterministic-report')?.scrollIntoView({ behavior: 'smooth' })}
-                  />
-                </section>
-              )}
             </div>
           </main>
         )}
