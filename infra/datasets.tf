@@ -109,14 +109,12 @@ data "aws_iam_policy_document" "datasets_runtime" {
   }
 }
 
-resource "aws_iam_policy" "datasets_runtime" {
+# Use an inline role policy: bootstrap permits iam:PutRolePolicy on the
+# approved api-execution role, but not creation of an arbitrary managed policy.
+resource "aws_iam_role_policy" "datasets_runtime" {
   name   = "${local.name_prefix}-datasets-runtime"
+  role   = aws_iam_role.api_execution.id
   policy = data.aws_iam_policy_document.datasets_runtime.json
-}
-
-resource "aws_iam_role_policy_attachment" "datasets_runtime" {
-  role       = aws_iam_role.api_execution.name
-  policy_arn = aws_iam_policy.datasets_runtime.arn
 }
 
 resource "aws_lambda_function" "datasets_api" {
@@ -139,7 +137,7 @@ resource "aws_lambda_function" "datasets_api" {
       SESSIONS_TABLE_NAME  = aws_dynamodb_table.sessions.name
     }
   }
-  depends_on = [aws_cloudwatch_log_group.datasets_lambda, aws_iam_role_policy_attachment.datasets_runtime]
+  depends_on = [aws_cloudwatch_log_group.datasets_lambda, aws_iam_role_policy.datasets_runtime]
 }
 
 resource "aws_apigatewayv2_integration" "datasets_lambda" {
