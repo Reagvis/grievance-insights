@@ -89,7 +89,7 @@ describe('authenticated asynchronous job API', () => {
   it('checks current session on all four routes and hides other owners', async () => {
     const f = fixture();
     const paths = [['POST','/api/datasets/' + id + '/analyze'],['GET','/api/datasets/' + id + '/analyses'],
-      ['GET','/api/analyses/' + id],['GET','/api/analyses/' + id + '/results']];
+      ['GET','/api/analyses/' + id],['GET','/api/analyses/' + id + '/results'],['POST','/api/analyses/' + id + '/retry']];
     for (const [method, path] of paths) expect((await f.api(event(method, path, false))).statusCode).toBe(401);
     expect(f.jobs.get).not.toHaveBeenCalled();
     f.dataset.ownerId = 'another-user';
@@ -109,6 +109,36 @@ describe('authenticated asynchronous job API', () => {
     const f = fixture();
     f.dataset.status = 'failed';
     expect((await f.api(event('POST','/api/datasets/' + id + '/analyze'))).statusCode).toBe(409);
+  });
+  it('retries an interrupted job through authenticated CAS, and rejects repeated retries', async () => {
+    const f = fixture();
+    await f.api(event('POST','/api/datasets/' + id + '/analyze'));
+    await f.jobs.fail(id, 'retries_exhausted', timestamp.toISOString());
+    const retried = await f.api(event('POST','/api/analyses/' + id + '/retry'));
+    expect(retried.statusCode).toBe(202);
+    expect(f.current()).toMatchObject({ status: 'queued', cursor: 0, attempt: 1, error: null });
+    expect(f.queue.send).toHaveBeenLastCalledWith(id, 0, 1);
+    expect((await f.api(event('POST','/api/analyses/' + id + '/retry'))).statusCode).toBe(409);
+    await f.worker(id, true, 0);
+    expect(f.current()?.status).toBe('queued');
+    await f.worker(id, false, 1);
+    expect(f.current()?.cursor).toBe(3);
+  });
+  it('rejects unsafe retry after a failed dataset or irrecoverable model output', async () => {
+    const f = fixture();
+    await f.api(event('POST','/api/datasets/' + id + '/analyze'));
+    await f.jobs.fail(id, 'all_records_failed', timestamp.toISOString());
+    expect((await f.api(event('POST','/api/analyses/' + id + '/retry'))).statusCode).toBe(409);
+  });
+  it('returns bounded, ordered result pages for authenticated clients', async () => {
+    const f = fixture();
+    await f.api(event('POST','/api/datasets/' + id + '/analyze'));
+    await f.worker(id); await f.worker(id);
+    const page = await f.api(event('GET','/api/analyses/' + id + '/results'));
+    expect(safeResponse(page).report.outcomes).toHaveLength(4);
+    const invalid = event('GET','/api/analyses/' + id + '/results');
+    invalid.queryStringParameters = { cursor: '100000' };
+    expect((await f.api(invalid)).statusCode).toBe(400);
   });
   it('fails job if queue handoff fails', async () => {
     const f = fixture();
