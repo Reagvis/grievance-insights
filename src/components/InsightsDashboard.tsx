@@ -152,7 +152,7 @@ export function InsightsDashboard({ dataset, filteredCount, job, report, onOpenR
       </section>
     </div>
     <div className="insight-disclaimer" role="note"><ShieldAlert size={18} aria-hidden />
-      <span>Source status is recorded data, not independent verification. AI categories, response assessments and urgency flags are interpretations requiring human review. No department claim is treated as proven resolution.</span>
+      <span>Source status is recorded data, not independent verification. AI categories, response assessments and urgency flags are interpretations requiring human review. Not independently verified: no department claim is treated as proven resolution.</span>
     </div>
     {dataset.records.length === 0 && <div className="insight-empty" role="status">No grievance records in this dataset. Import or select a dataset to populate the charts.</div>}
     {job && job.status !== 'completed' && <div className="insight-progress" role="status">

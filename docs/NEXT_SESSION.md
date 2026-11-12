@@ -57,3 +57,8 @@ PR #18, branch `feature/task-16-bedrock-processing`, is stacked against PR #16 `
 ## Task 17 hardening handoff
 
 PR #18 now uses the preauthorized physical `-results` bucket, strict SQS/Bedrock HTTP failure handling, SendMessage acknowledgements, S3-specific 404/412 semantics, all-record-failed terminal status, and guarded terminal DynamoDB transitions. Added mocked transport, IAM allowlist, checkpoint, duplicate-message and DLQ regression tests. Dataset deletion still leaves private AI results until S3's 90-day lifecycle expires, and job records until asynchronous DynamoDB TTL (day 89); API authorization blocks access after dataset deletion. Future immediate cleanup needs a coordinated Task 15 delete operation and scoped result-key deletion permission. No infrastructure deployment or live Bedrock call in this branch.
+
+
+## Task 18 dashboard handoff
+
+Draft PR #22 (`feature/task-18-insights-dashboard`) is stacked on the verified PR #18 head `577330cdb852a36e002c76a5f7b6e0a14a3e0fc2`. It introduces a cohesive source/AI insights dashboard with accessible CSS charts, dataset-scoped completed reports, report/source distinction, source-evidence drill-down, partial-failure display, responsive layout, and synthetic tests; no AWS or infrastructure changes. Existing record explorer and deterministic report/export remain independent. Once Codex completes PR #16/#18 integration, inspect the new main and PR diff before retargeting; do not force-push or change deployment settings in this feature.

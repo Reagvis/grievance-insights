@@ -111,7 +111,6 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
   const currentAnalysis = remoteId && analysisSnapshot?.datasetId === remoteId ? analysisSnapshot : null;
   const filtered = useMemo(() => filterRecords(dataset.records, filters), [dataset, filters]);
   const filtersActive = isFiltered(filters);
-  const stats = useMemo(() => computeStats(dataset.records), [dataset]);
   const categories = useMemo(() => listCategories(dataset.records), [dataset]);
   const recordById = useMemo(() => new Map(dataset.records.map((r) => [r.id, r])), [dataset]);
 
@@ -419,7 +418,7 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
               )}
 
               <div id="deterministic-report">
-              <SummaryWorkspace
+                <SummaryWorkspace
                 scope={scope}
                 onScopeChange={setScope}
                 allCount={dataset.records.length}
@@ -437,8 +436,8 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
                 onPrint={printReport}
                 onOpenRecord={openRecord}
                 reportRef={reportRef}
-                generateRef={generateRef}
-              />
+                  generateRef={generateRef}
+                />
               </div>
               {!summary && <div className="print-only print-empty">Generate a consolidated summary before printing.</div>}
             </div>
