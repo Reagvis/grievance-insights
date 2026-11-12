@@ -33,3 +33,9 @@ The hosting layer is deployed. Authentication/API resources are implemented in c
 ## Domain and DNS
 
 The application origin is `https://telangana-gov-pilot.reagvis.com`. DNS is hosted in the existing `reagvis.com` Route 53 zone. Hosting resources are in `ap-south-1`; the CloudFront ACM certificate is in `us-east-1`. The origin currently returns the expected empty-bucket response because assets have not been published.
+
+## Task 19 capacity hardening (November 2026 — draft PR #27)
+
+For new persisted uploads, the finalization API validates the entire original UTF-8 CSV/JSON file (up to 20 MiB, 2,000 records), rejects records above a 12-KiB serialized Bedrock prompt or 24-KiB serialized row, and creates immutable private indexed 50-record objects under the existing `raw/{dataset}/index-v1/` path. The source object remains unchanged. DynamoDB readiness is published only after indexing succeeds. Dataset pages read one bounded indexed object, while the SQS worker reads only the indexed range for its next three records; a final 40-chunk scan supports exact aggregation. Previously persisted pilot sources remain readable through the legacy raw-file path even if they exceed the new per-record inference limit.
+
+The one-job-one-DynamoDB-item model now contains a message `attempt` fence and independent immutable result `generation`. Resuming interrupted work advances `attempt` and continues existing checkpointed results. An explicitly requested fresh reanalysis increments both, resets the cursor and stores outputs under `analyses/{job}/generations/{generation}/`, leaving prior results immutable. All active state transitions check the attempt, protecting against stale SQS and DLQ activity. Log events contain job UUID, attempt, generation, record index and token counts, never citizen contents. New code remains review-only until explicitly authorized deployment.

@@ -4,7 +4,7 @@ import type { GrievanceRecord } from '../../src/domain/grievance';
 export const MODEL_ID = 'qwen.qwen3-32b-v1:0';
 export const MODEL_REGION = 'ap-south-1';
 export const PROMPT_VERSION = 'te-grievance-response-v1';
-export const MAX_ANALYSIS_RECORDS = 30;
+export const MAX_ANALYSIS_RECORDS = 2000;
 export const RECORDS_PER_INVOCATION = 3;
 export const CATEGORIES = ['water', 'pension', 'roads', 'electricity', 'sanitation', 'healthcare', 'ration', 'land', 'education', 'public_safety', 'other'] as const;
 export type Category = typeof CATEGORIES[number];
@@ -33,6 +33,7 @@ export type Report = {
   modelId: typeof MODEL_ID;
   region: typeof MODEL_REGION;
   promptVersion: typeof PROMPT_VERSION;
+  generation?: number;
   generatedAt: string;
   stats: {
     grievances: number;

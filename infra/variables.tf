@@ -93,3 +93,23 @@ variable "auth_log_retention_days" {
     error_message = "auth_log_retention_days must be a supported bounded CloudWatch retention value."
   }
 }
+
+variable "analysis_worker_concurrency" {
+  description = "Analysis worker reserved concurrency. Defaults to current production concurrency; raise up to 4 only after AWS/Bedrock quota verification."
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.analysis_worker_concurrency >= 1 && var.analysis_worker_concurrency <= 4 && floor(var.analysis_worker_concurrency) == var.analysis_worker_concurrency
+    error_message = "Analysis concurrency must be an integer from 1 through 4."
+  }
+}
+
+variable "extraction_worker_concurrency" {
+  description = "Reserved concurrency of the PDF/OCR extraction worker. One keeps cost and memory pressure minimal for the pilot."
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.extraction_worker_concurrency >= 1 && var.extraction_worker_concurrency <= 4 && floor(var.extraction_worker_concurrency) == var.extraction_worker_concurrency
+    error_message = "Extraction concurrency must be an integer from 1 through 4."
+  }
+}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GrievanceRecord } from '../domain/grievance';
-import { createAnalysis, listAnalyses, readAnalysis, readAnalysisResults, type AnalysisJob, type AnalysisReport } from '../services/analysisApi';
+import { createAnalysis, retryAnalysis, listAnalyses, readAnalysis, readAnalysisResults, type AnalysisJob, type AnalysisReport } from '../services/analysisApi';
 import { triggerDownload } from '../utils/downloads';
 
 type Props = {
@@ -48,14 +48,14 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
     };
     void tick();
     const timer = window.setInterval(() => {
-      if (!current || current.status === 'queued' || current.status === 'running' ||
+      if (!current || current.status === 'queued' || current.status === 'running' || current.status === 'failed' ||
         (current.status === 'completed' && !reportLoaded)) void tick();
     }, 7000);
     return () => { active = false; window.clearInterval(timer); };
   }, [datasetId]);
 
   async function start() {
-    if (records.length === 0 || records.length > 30) return;
+    if (records.length === 0 || records.length > 2000) return;
     setBusy(true);
     setError('');
     try {
@@ -73,6 +73,18 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
       setError(reason instanceof Error ? reason.message : 'Could not start AI analysis.');
     } finally { setBusy(false); }
   }
+  async function retry(mode: 'resume' | 'fresh') {
+    if (!job || job.status !== 'failed') return;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await retryAnalysis(job.id, mode);
+      setReport(null);
+      setJob(response.job);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not retry analysis.');
+    } finally { setBusy(false); }
+  }
   function download() {
     if (!report || job?.status !== 'completed') return;
     triggerDownload(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json;charset=utf-8' }),
@@ -82,15 +94,15 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
   return <section className="analysis-control" aria-label="AI analysis job and export">
     <header>
       <div><h2>AI analysis</h2>
-        <p>Available only for persisted AWS datasets of 1–30 records. Completed AI interpretations appear in the dashboard; deterministic reporting stays separate.</p>
+        <p>Available only for persisted AWS datasets of 1–2,000 records. Completed AI interpretations appear in the dashboard; deterministic reporting stays separate.</p>
       </div>
       {job?.status === 'completed' && report && <button className="btn btn-secondary btn-sm" type="button" onClick={download}>Export validated AI JSON</button>}
     </header>
     {loading && <p role="status">Checking for a saved AI analysis…</p>}
     {!loading && !job && <div className="analysis-action-row">
-      <button type="button" className="btn btn-primary" disabled={busy || records.length === 0 || records.length > 30}
+      <button type="button" className="btn btn-primary" disabled={busy || records.length === 0 || records.length > 2000}
         onClick={() => void start()}>{busy ? 'Submitting…' : 'Analyze with AI'}</button>
-      {records.length > 30 ? <p>This dataset exceeds the 30-record AI pilot limit. Source analytics remain available above.</p> :
+      {records.length > 2000 ? <p>This dataset exceeds the 2,000-record AI limit. Source analytics remain available above.</p> :
         records.length === 0 ? <p>Select a nonempty dataset first.</p> : <p>No AI job has been requested for this dataset.</p>}
     </div>}
     {job && <div className="analysis-progress" role="status">
@@ -103,6 +115,14 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
           'The AI job failed. No verified outcome or successful AI report is available.'}
         {job.error && <> Failure code: {job.error}.</>}
       </p>}
+      {job.status === 'failed' && (job.error === 'queue_unavailable' || job.error === 'retries_exhausted') &&
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void retry('resume')}>{busy ? 'Retrying…' : 'Retry interrupted job'}</button>}
+      {job.status === 'failed' && ['all_records_failed', 'retries_exhausted', 'queue_unavailable'].includes(job.error ?? '') &&
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void retry('fresh')}>
+          {busy ? 'Submitting…' : 'Start fresh AI analysis attempt'}
+        </button>}
+      {job.status === 'failed' && ['all_records_failed', 'retries_exhausted', 'queue_unavailable'].includes(job.error ?? '') &&
+        <p>Fresh analysis creates a new immutable result generation. Earlier attempts remain private and unchanged.</p>}
     </div>}
     {error && <p role="alert" className="analysis-error">{error}</p>}
   </section>;

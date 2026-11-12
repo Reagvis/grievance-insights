@@ -1,7 +1,9 @@
-import { createHash, createHmac } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, DeleteCommand, GetCommand, PutCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import type { DatasetStore, Metadata, PrivateObjects, Session, Status } from './core';
+import { CONTENT_TYPE, type SourceFormat } from '../ingest/limits';
+import type { DatasetStore, ExtractionQueue, Metadata, PrivateObjects, Session, Status } from './core';
+import { signedAwsRequest, objectUrl } from '../analysis/aws-http';
 
 const enc = (value: string) => encodeURIComponent(value).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
 const sha = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');
@@ -13,7 +15,7 @@ function awsCredentials() {
 }
 export class SignedS3 implements PrivateObjects {
   constructor(private readonly bucket: string, private readonly region: string) {}
-  private sign(method: string, key: string, expiry?: number, format?: 'csv' | 'json') {
+  private sign(method: string, key: string, expiry?: number, format?: SourceFormat, body?: { bytes: Uint8Array; contentType: string }) {
     const credentials = awsCredentials();
     const date = new Date();
     const timestamp = date.toISOString().replace(/[:-]|\.\d{3}/g, '');
@@ -23,12 +25,13 @@ export class SignedS3 implements PrivateObjects {
     const scope = day + '/' + this.region + '/s3/aws4_request';
     const headers: Record<string, string> = { host };
     if (expiry) {
-      headers['content-type'] = format === 'csv' ? 'text/csv' : 'application/json';
+      headers['content-type'] = CONTENT_TYPE[format ?? 'json'];
       headers['if-none-match'] = '*';
     } else {
       headers['x-amz-date'] = timestamp;
       headers['x-amz-security-token'] = credentials.token;
-      headers['x-amz-content-sha256'] = sha('');
+      headers['x-amz-content-sha256'] = sha(body?.bytes ?? '');
+      if (body) headers['content-type'] = body.contentType;
     }
     const names = Object.keys(headers).sort();
     const signedHeaders = names.join(';');
@@ -39,7 +42,7 @@ export class SignedS3 implements PrivateObjects {
       ['X-Amz-Security-Token', credentials.token], ['X-Amz-SignedHeaders', signedHeaders],
     ] : [];
     const query = queryEntries.map(([k,v]) => [enc(k), enc(v)]).sort((a,b) => a[0].localeCompare(b[0])).map(([k,v]) => k + '=' + v).join('&');
-    const payloadHash = expiry ? 'UNSIGNED-PAYLOAD' : sha('');
+    const payloadHash = expiry ? 'UNSIGNED-PAYLOAD' : sha(body?.bytes ?? '');
     const canonical = [method, path, query, canonicalHeaders, signedHeaders, payloadHash].join('\n');
     const stringToSign = ['AWS4-HMAC-SHA256', timestamp, scope, sha(canonical)].join('\n');
     const signingKey = hmac(hmac(hmac(hmac('AWS4' + credentials.secret, day), this.region), 's3'), 'aws4_request');
@@ -49,7 +52,7 @@ export class SignedS3 implements PrivateObjects {
     delete headers.host;
     return { url, headers };
   }
-  async presign(key: string, format: 'csv' | 'json', expires: number) { return this.sign('PUT', key, expires, format); }
+  async presign(key: string, format: SourceFormat, expires: number) { return this.sign('PUT', key, expires, format); }
   private async request(method: string, key: string) {
     const signed = this.sign(method, key);
     const response = await fetch(signed.url, { method, headers: signed.headers });
@@ -59,7 +62,26 @@ export class SignedS3 implements PrivateObjects {
   }
   async size(key: string) { const response = await this.request('HEAD', key); return response ? Number(response.headers.get('content-length')) : null; }
   async read(key: string) { const response = await this.request('GET', key); if (!response) throw new Error('S3 object missing'); return new Uint8Array(await response.arrayBuffer()); }
+  async write(key: string, bytes: Uint8Array): Promise<void> {
+    const response = await signedAwsRequest('s3', this.region, 'PUT', objectUrl(this.bucket, this.region, key), bytes,
+      { 'content-type': 'application/json', 'if-none-match': '*' });
+    if (response.status === 412) throw new Error('Immutable dataset index already exists');
+  }
   async remove(key: string) { await this.request('DELETE', key); }
+}
+/** FIFO extraction queue (same pattern as the analysis queue). One message per dataset; the dataset ID is the dedup key. */
+export class SqsExtractionQueue implements ExtractionQueue {
+  constructor(private readonly queueUrl: string, private readonly region: string) {}
+  async send(datasetId: string): Promise<void> {
+    const body = new TextEncoder().encode(JSON.stringify({ QueueUrl: this.queueUrl, MessageBody: JSON.stringify({ datasetId }), MessageGroupId: datasetId,
+      // Unique per enqueue attempt. A fixed ID would let FIFO's 5-minute dedup window silently drop a legitimate retry after an
+      // ambiguous acknowledgement. Duplicates are harmless: the worker only acts on a dataset that is still `extracting`.
+      MessageDeduplicationId: datasetId + '-' + randomUUID() }));
+    const response = await signedAwsRequest('sqs', this.region, 'POST', 'https://sqs.' + this.region + '.amazonaws.com/', body,
+      { 'content-type': 'application/x-amz-json-1.0', 'x-amz-target': 'AmazonSQS.SendMessage' });
+    const ack = await response.json() as { MessageId?: unknown };
+    if (typeof ack.MessageId !== 'string' || !ack.MessageId) throw new Error('SQS did not acknowledge message delivery');
+  }
 }
 export class DynamoDatasets implements DatasetStore {
   constructor(private readonly client: DynamoDBDocumentClient, private readonly table: string, private readonly sessions: string) {}
@@ -87,7 +109,7 @@ export class DynamoDatasets implements DatasetStore {
     const values: Record<string, unknown> = { ':from': from, ':to': to };
     let expression = 'SET #status = :to';
     for (const [key, value] of Object.entries(patch)) {
-      if (!['recordCount', 'error'].includes(key)) throw new Error('Invalid metadata patch');
+      if (!['recordCount', 'indexVersion', 'error', 'extractionDeadline'].includes(key)) throw new Error('Invalid metadata patch');
       names['#' + key] = key;
       values[':' + key] = value;
       expression += ', #' + key + ' = :' + key;
@@ -103,5 +125,6 @@ export function createAwsDatasetDependencies() {
   const bucket = process.env.DATASETS_BUCKET_NAME, table = process.env.DATASETS_TABLE_NAME, sessions = process.env.SESSIONS_TABLE_NAME, origin = process.env.ALLOWED_ORIGIN, region = process.env.AWS_REGION;
   if (!bucket || !table || !sessions || !origin || !region) throw new Error('Dataset Lambda configuration incomplete');
   const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
-  return { store: new DynamoDatasets(client, table, sessions), objects: new SignedS3(bucket, region), origin };
+  const queueUrl = process.env.EXTRACTION_QUEUE_URL;
+  return { store: new DynamoDatasets(client, table, sessions), objects: new SignedS3(bucket, region), origin, queue: queueUrl ? new SqsExtractionQueue(queueUrl, region) : undefined };
 }

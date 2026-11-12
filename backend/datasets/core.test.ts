@@ -17,6 +17,7 @@ function fixture() {
   const items = new Map<string, Metadata>();
   const file = utf8(csv);
   let stored: Uint8Array | null = file;
+  const indexed = new Map<string, Uint8Array>();
   const store: DatasetStore = {
     session: vi.fn(async (value) => value === hash ? { userId: 'admin-1', expiresAt: now / 1000 + 100 } : undefined),
     create: vi.fn(async (item) => { items.set(item.id, item); }),
@@ -33,8 +34,14 @@ function fixture() {
   const objects: PrivateObjects = {
     presign: vi.fn(async () => ({ url: 'https://s3.example.invalid/presigned', headers: { 'if-none-match': '*' } })),
     size: vi.fn(async () => stored?.byteLength ?? null),
-    read: vi.fn(async () => { if (!stored) throw new Error('missing'); return stored; }),
-    remove: vi.fn(async () => { stored = null; }),
+    read: vi.fn(async (key) => {
+      if (key.endsWith('/source.csv')) { if (!stored) throw new Error('missing'); return stored; }
+      const chunk = indexed.get(key);
+      if (!chunk) throw new Error('missing index');
+      return chunk;
+    }),
+    write: vi.fn(async (key, bytes) => { if (indexed.has(key)) throw new Error('immutable'); indexed.set(key, bytes); }),
+    remove: vi.fn(async (key) => { if (key.endsWith('/source.csv')) stored = null; else indexed.delete(key); }),
   };
   const handler = createDatasetHandler(store, objects, origin, () => now, () => id);
   return { items, store, objects, handler, setFile: (next: Uint8Array | null) => { stored = next; } };
@@ -52,8 +59,12 @@ describe('private dataset validation', () => {
       expect(() => validateDataset('data.' + (content[0] === '{' ? 'json' : 'csv'), content[0] === '{' ? 'json' : 'csv', utf8(content))).toThrow(ApiError);
     }
     expect(() => validateDataset('x.csv', 'csv', new Uint8Array([255, 254]))).toThrow(ApiError);
-    expect(() => validateDataset('x.csv', 'csv', new Uint8Array(1024 * 1024 + 1))).toThrow(ApiError);
-    expect(() => validateDataset('x.csv', 'csv', utf8('id,complaintText\n' + Array.from({ length: 201 }, (_, i) => i + ',test').join('\n')))).toThrow(ApiError);
+    expect(() => validateDataset('x.csv', 'csv', new Uint8Array(20 * 1024 * 1024 + 1))).toThrow(ApiError);
+    expect(() => validateDataset('x.csv', 'csv', utf8('id,complaintText\n' + Array.from({ length: 2001 }, (_, i) => i + ',test').join('\n')))).toThrow(ApiError);
+    const huge = utf8('id,complaintText\nGR-1,' + 'అ'.repeat(2_600_000));
+    expect(huge.length).toBeGreaterThan(6 * 1024 * 1024);
+    expect(() => validateDataset('x.csv', 'csv', huge)).toThrow(/12 KiB AI-input limit/);
+    expect(() => validateDataset('x.json', 'json', utf8(JSON.stringify([{ id: 'GR-1', complaintText: 'అ'.repeat(6000) }])))).toThrow(/12 KiB AI-input limit/);
   });
 });
 describe('authenticated dataset lifecycle', () => {
@@ -80,12 +91,38 @@ describe('authenticated dataset lifecycle', () => {
     expect(objects.remove).toHaveBeenCalled();
     expect((await handler(event('GET', '/api/datasets/' + id))).statusCode).toBe(404);
   });
+  it('does not echo multi-megabyte citizen text in a malformed-upload error', async () => {
+    const f = fixture();
+    const malformed = utf8('id,complaintText,' + 'అ'.repeat(2_500_000));
+    await f.handler(event('POST', '/api/datasets/uploads', true, { name: 'malformed.csv', bytes: malformed.length }));
+    f.setFile(malformed);
+    const response = await f.handler(event('POST', '/api/datasets/' + id + '/finalize'));
+    expect(response.statusCode).toBe(422);
+    expect(Buffer.byteLength(response.body ?? '')).toBeLessThan(1024);
+    expect(response.body).not.toContain('అఅఅఅఅఅ');
+  });
   it('rejects mismatched upload sizes and persists failed validation state', async () => {
     const f = fixture();
     await f.handler(event('POST','/api/datasets/uploads',true,{ name:'pilot.csv', bytes:1 }));
     const response = await f.handler(event('POST', '/api/datasets/' + id + '/finalize'));
     expect(response.statusCode).toBe(422);
     expect(data(await f.handler(event('GET', '/api/datasets'))).datasets[0].status).toBe('failed');
+  });
+  it('keeps failed partial indexing private and removable after S3 write failure', async () => {
+    const f = fixture();
+    const rows = utf8('id,complaintText\n' +
+      Array.from({ length: 101 }, (_, i) => 'REC-' + i + ',నీరు లేదు').join('\n'));
+    f.setFile(rows);
+    await f.handler(event('POST', '/api/datasets/uploads', true, { name: 'many.csv', bytes: rows.length }));
+    vi.mocked(f.objects.write!).mockRejectedValueOnce(new Error('S3 unavailable'));
+    const response = await f.handler(event('POST', '/api/datasets/' + id + '/finalize'));
+    expect(response.statusCode).toBe(422);
+    expect(data(response).error).toBe('Validation or private indexing failed.');
+    const saved = f.items.get(id);
+    expect(saved).toMatchObject({ status: 'failed', recordCount: 101 });
+    expect(vi.mocked(f.objects.remove).mock.calls.some(([key]) => key.includes('/index-v1/'))).toBe(true);
+    expect((await f.handler(event('DELETE', '/api/datasets/' + id))).statusCode).toBe(204);
+    expect(f.items.has(id)).toBe(false);
   });
   it('does not delete metadata when object deletion fails', async () => {
     const f = fixture();
@@ -101,11 +138,22 @@ describe('authenticated dataset lifecycle', () => {
     expect((await f.handler(event('GET','/api/datasets/' + id))).statusCode).toBe(404);
     expect(data(await f.handler(event('GET','/api/datasets'))).datasets).toEqual([]);
   });
+  it('still retrieves pre-upgrade ready records with long text, without truncation or AI revalidation', async () => {
+    const f = fixture();
+    const longText = 'అ'.repeat(6500);
+    f.items.set(id, { id, key: 'raw/' + id + '/source.csv', name: 'old.csv',
+      format: 'csv', status: 'ready', ownerId: 'admin-1', bytes: 0, recordCount: 1,
+      createdAt: new Date(now).toISOString(), uploadExpiresAt: 0 });
+    f.setFile(utf8('id,complaintText\nLEGACY-1,' + longText));
+    const response = await f.handler(event('GET', '/api/datasets/' + id));
+    expect(response.statusCode).toBe(200);
+    expect(data(response).records[0].complaintText).toBe(longText);
+  });
   it('requires the production origin for mutations and enforces file limits', async () => {
     const f = fixture();
     const foreign = event('POST','/api/datasets/uploads',true,{ name:'pilot.csv', bytes:10 });
     foreign.headers.origin = 'https://evil.example';
     expect((await f.handler(foreign)).statusCode).toBe(403);
-    expect((await f.handler(event('POST','/api/datasets/uploads',true,{ name:'pilot.csv', bytes:1048577 }))).statusCode).toBe(413);
+    expect((await f.handler(event('POST','/api/datasets/uploads',true,{ name:'pilot.csv', bytes:20 * 1048576 + 1 }))).statusCode).toBe(413);
   });
 });

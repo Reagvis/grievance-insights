@@ -60,6 +60,21 @@ describe('AWS service-specific HTTP failures (all requests mocked)', () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledTimes(1);
   });
+  it('logs private, job-attributable token counts without complaint text', async () => {
+    const usage = { inputTokens: 120, outputTokens: 35, totalTokens: 155 };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(200, { stopReason: 'max_tokens', usage })));
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    await expect(new QwenBedrock().analyze(record, {
+      jobId: id, attempt: 3, generation: 2, recordIndex: 42,
+    })).rejects.toThrow();
+    const line = String(info.mock.calls[0][0]);
+    expect(JSON.parse(line)).toMatchObject({
+      event: 'analysis_bedrock_usage', jobId: id, attempt: 3, generation: 2, recordIndex: 42,
+      inputTokens: 120, outputTokens: 35, totalTokens: 155,
+    });
+    expect(line).not.toContain(record.complaintText);
+    expect(line).not.toContain('test-secret-only');
+  });
   it('rejects Bedrock 404 even with an empty or non-JSON error body', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('missing', { status: 404 })));
     await expect(new QwenBedrock().analyze(record))

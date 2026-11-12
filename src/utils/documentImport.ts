@@ -106,6 +106,11 @@ function readHeader(lines: string[]): Header {
 
 const COMPLAINT_LABEL = /^\s*(?:citizen\s+complaint|complaint|grievance|query|పౌరుని\s+ఫిర్యాదు|ఫిర్యాదు)\s*(?:[:：]\s*(.*))?$/iu;
 const RESPONSE_LABEL = /^\s*(?:department\s+response|official\s+response|response|reply|action\s+taken|విభాగం\s+స్పందన|అధికారిక\s+స్పందన|స్పందన)\s*(?:[:：]\s*(.*))?$/iu;
+/** True for a label this parser understands (a header field, "Complaint" or "Response"); used to read two-column Word tables. */
+export function isKnownLabel(label: string): boolean {
+  const l = label.trim();
+  return HEADER_KEYS.some(([re]) => re.test(l)) || COMPLAINT_LABEL.test(l) || RESPONSE_LABEL.test(l);
+}
 const UNDERLINE = /^\s*[-=_–—]{3,}\s*$/;
 const NO_RESPONSE_SENTINEL = /^no response recorded in the source data\.?$/i;
 
@@ -136,10 +141,31 @@ function build(
   };
 }
 
+export type DocumentKind = 'txt' | 'md' | 'docx' | 'pdf';
+
+/**
+ * Markdown decoration is removed from LABEL and HEADER lines only ("## Complaint", "**Case ID:** X"), so the
+ * explicit-heading rules below also work for .md files. Every other line, including the complaint text itself, is left verbatim.
+ */
+export function stripMarkdownLabels(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      const heading = /^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
+      if (heading && (COMPLAINT_LABEL.test(heading[1]) || RESPONSE_LABEL.test(heading[1]))) return heading[1].replace(/[:：]\s*$/, '') + ':';
+      const bold = /^\s*(?:[-*]\s+)?(?:\*\*|__)([^*_:：]{1,24}?)\s*[:：]?\s*(?:\*\*|__)\s*[:：]?\s*(.*)$/.exec(line);
+      if (bold && (HEADER_KEYS.some(([re]) => re.test(bold[1].trim())) || COMPLAINT_LABEL.test(bold[1]) || RESPONSE_LABEL.test(bold[1]))) {
+        return bold[1].trim() + ': ' + bold[2];
+      }
+      return line;
+    })
+    .join('\n');
+}
+
 /** Parse the text of one document. `kind` only decides the recorded source type. */
-export function parseDocumentText(fileName: string, raw: string, kind: 'txt' | 'pdf'): DocumentParse {
-  const text = cleanText(raw);
-  const sourceType: GrievanceRecord['sourceType'] = kind === 'pdf' ? 'document' : 'note';
+export function parseDocumentText(fileName: string, raw: string, kind: DocumentKind): DocumentParse {
+  const text = kind === 'md' ? stripMarkdownLabels(cleanText(raw)) : cleanText(raw);
+  const sourceType: GrievanceRecord['sourceType'] = kind === 'pdf' || kind === 'docx' ? 'document' : 'note';
   if (!text) return { record: null, problem: 'The file has no text.', layout: 'whole-text' };
   const lines = text.split('\n');
 

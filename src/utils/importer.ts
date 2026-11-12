@@ -102,7 +102,7 @@ export const TEMPLATE_COLUMNS: FieldKey[] = [
 ];
 
 /** Decode bytes as strict UTF-8; rejects files in other encodings instead of mangling Telugu. */
-export function decodeUtf8(buffer: ArrayBuffer): string {
+export function decodeUtf8(buffer: ArrayBuffer | Uint8Array): string {
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
   } catch {

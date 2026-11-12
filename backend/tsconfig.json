@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["auth/**/*.ts", "datasets/**/*.ts", "analysis/**/*.ts"]
+  "include": ["auth/**/*.ts", "datasets/**/*.ts", "analysis/**/*.ts", "ingest/**/*.ts"]
 }
