@@ -8,10 +8,10 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
 export function indexChunkKey(sourceKey: string, chunk: number): string {
-  if (!/^raw\/[0-9a-f-]+\/source\.(csv|json)$/.test(sourceKey) || !Number.isInteger(chunk) || chunk < 0 || chunk >= 40) {
+  if (!/^raw\/[0-9a-f-]+\/source\.(txt|md|docx|csv|json|jsonl|pdf)$/.test(sourceKey) || !Number.isInteger(chunk) || chunk < 0 || chunk >= 40) {
     throw new Error('Invalid dataset index key');
   }
-  return sourceKey.replace(/source\.(csv|json)$/, 'index-v1/' + chunk + '.json');
+  return sourceKey.replace(/source\.(txt|md|docx|csv|json|jsonl|pdf)$/, 'index-v1/' + chunk + '.json');
 }
 export function indexChunkCount(total: number): number {
   return Math.ceil(total / INDEX_CHUNK_RECORDS);

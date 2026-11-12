@@ -3,7 +3,9 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from '
 import type { GrievanceRecord } from '../../src/domain/grievance';
 import { decodeUtf8, parseCsvImport, parseJsonImport } from '../../src/utils/importer';
 import { validateRecordBounds } from './bounds';
-import { writeDatasetIndex, readIndexedRange, removeDatasetIndex, INDEX_CHUNK_RECORDS } from './index';
+import { readIndexedRange, removeDatasetIndex, INDEX_CHUNK_RECORDS } from './index';
+import { commitDataset, provenanceKey } from './commit';
+import { formatFromName, ingestDocument, IngestError, LIMITS as INGEST_LIMITS, SOURCE_FORMATS, type SourceFormat } from '../ingest';
 
 export const MAX_DATASET_BYTES = 20 * 1024 * 1024;
 export const MAX_DATASET_RECORDS = 2000;
@@ -12,8 +14,10 @@ const COOKIE = '__Host-grievance_session';
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export type Status = 'pending_upload' | 'validating' | 'ready' | 'failed';
-export type Metadata = { id: string; key: string; name: string; format: 'csv' | 'json'; status: Status; createdAt: string; bytes: number; recordCount: number; indexVersion?: number; error?: string; ownerId: string; uploadExpiresAt: number };
+export type Status = 'pending_upload' | 'validating' | 'extracting' | 'ready' | 'failed';
+/** How long a PDF may stay `extracting` (seconds). Lambda timeout is 300 s and the queue retries 3 times; this is the lazy safety net. */
+export const EXTRACTION_DEADLINE_SECONDS = 3600;
+export type Metadata = { id: string; key: string; name: string; format: SourceFormat; status: Status; createdAt: string; bytes: number; recordCount: number; indexVersion?: number; extractionDeadline?: number; error?: string; ownerId: string; uploadExpiresAt: number };
 export type Session = { userId: string; expiresAt: number };
 export interface DatasetStore {
   session(hash: string): Promise<Session | undefined>;
@@ -24,11 +28,15 @@ export interface DatasetStore {
   delete(id: string): Promise<void>;
 }
 export interface PrivateObjects {
-  presign(key: string, format: 'csv' | 'json', expires: number): Promise<{ url: string; headers: Record<string, string> }>;
+  presign(key: string, format: SourceFormat, expires: number): Promise<{ url: string; headers: Record<string, string> }>;
   size(key: string): Promise<number | null>;
   read(key: string): Promise<Uint8Array>;
   write?(key: string, bytes: Uint8Array): Promise<void>;
   remove(key: string): Promise<void>;
+}
+/** Starts asynchronous (PDF/OCR) extraction. At-least-once; the worker is idempotent. */
+export interface ExtractionQueue {
+  send(datasetId: string): Promise<void>;
 }
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -70,7 +78,17 @@ export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uin
   }
   return parsed.records;
 }
-export function createDatasetHandler(store: DatasetStore, objects: PrivateObjects, allowedOrigin: string, now = () => Date.now(), uuid = randomUUID) {
+const EXTRACTION_TIMEOUT_MESSAGE = 'Extraction did not finish in time. Delete this dataset and upload it again.';
+/** A dataset stuck in `extracting` past its deadline (queue/worker delivery lost) becomes `failed`, wherever it is observed. */
+async function expireIfStuck(store: DatasetStore, item: Metadata, nowSeconds: number): Promise<Metadata> {
+  if (item.status === 'extracting' && item.extractionDeadline !== undefined && item.extractionDeadline < nowSeconds
+    && await store.transition(item.id, 'extracting', 'failed', { error: EXTRACTION_TIMEOUT_MESSAGE })) {
+    return { ...item, status: 'failed', error: EXTRACTION_TIMEOUT_MESSAGE };
+  }
+  return item;
+}
+
+export function createDatasetHandler(store: DatasetStore, objects: PrivateObjects, allowedOrigin: string, now = () => Date.now(), uuid = randomUUID, queue?: ExtractionQueue) {
   return async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> => {
     const method = event.requestContext.http.method;
     const path = event.requestContext.http.path;
@@ -84,10 +102,10 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
       if (method === 'POST' && path === '/api/datasets/uploads') {
         const request = body(event);
         const name = request.name;
-        if (typeof name !== 'string' || !/^.{1,120}\.(csv|json)$/i.test(name) || (/[\\/]/.test(name) || [...name].some(c => c.charCodeAt(0) < 32))) throw new ApiError(400, 'Provide a CSV or JSON filename (maximum 120 characters).');
-        const format = name.toLowerCase().endsWith('.csv') ? 'csv' : 'json';
+        const format = typeof name === 'string' && name.length <= 120 ? formatFromName(name) : null;
+        if (typeof name !== 'string' || !format || /[\\/]/.test(name) || [...name].some(c => c.charCodeAt(0) < 32)) throw new ApiError(400, 'Provide a ' + SOURCE_FORMATS.map(f => '.' + f).join(', ') + ' filename (maximum 120 characters).');
         const size = request.bytes;
-        if (typeof size !== 'number' || !Number.isInteger(size) || size < 1 || size > MAX_DATASET_BYTES) throw new ApiError(413, 'File exceeds the 20 MiB limit or is empty.');
+        if (typeof size !== 'number' || !Number.isInteger(size) || size < 1 || size > INGEST_LIMITS.bytes[format]) throw new ApiError(413, 'File exceeds the ' + Math.round(INGEST_LIMITS.bytes[format] / 1048576) + ' MiB limit for .' + format + ' files, or is empty.');
         const id = uuid();
         const key = 'raw/' + id + '/source.' + format;
         const item: Metadata = { id, key, name, format, status: 'pending_upload', createdAt: new Date(now()).toISOString(), bytes: size, recordCount: 0, ownerId: session.userId, uploadExpiresAt: Math.floor(now() / 1000) + UPLOAD_TTL_SECONDS };
@@ -97,7 +115,9 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
       }
       if (method === 'GET' && path === '/api/datasets') {
         const items = await store.list();
-        return result(200, { datasets: items.filter(x => x.ownerId === session.userId).map(publicMetadata) });
+        const nowSeconds = Math.floor(now() / 1000);
+        const mine = await Promise.all(items.filter(x => x.ownerId === session.userId).map(x => expireIfStuck(store, x, nowSeconds)));
+        return result(200, { datasets: mine.map(publicMetadata) });
       }
       const match = /^\/api\/datasets\/([0-9a-f-]+)(\/finalize)?$/.exec(path);
       if (!match || !UUID.test(match[1])) throw new ApiError(404, 'Dataset not found.');
@@ -107,30 +127,40 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
       if (method === 'POST' && match[2] === '/finalize') {
         if (item.status !== 'pending_upload') throw new ApiError(409, 'Upload already finalized.');
         if (item.uploadExpiresAt < Math.floor(now() / 1000)) throw new ApiError(409, 'Upload request expired. Delete this dataset and retry.');
-        if (!await store.transition(id, 'pending_upload', 'validating')) throw new ApiError(409, 'Upload is already being validated.');
-        let indexedKeys: string[] = [];
+        const pdf = item.format === 'pdf';
+        if (pdf && !queue) throw new ApiError(503, 'PDF processing is not available in this environment.');
+        const next = pdf ? 'extracting' : 'validating';
+        if (!await store.transition(id, 'pending_upload', next, pdf ? { extractionDeadline: Math.floor(now() / 1000) + EXTRACTION_DEADLINE_SECONDS } : {})) throw new ApiError(409, 'Upload is already being validated.');
         try {
           const bytes = await objects.size(item.key);
           if (bytes === null) throw new ApiError(422, 'Upload is incomplete or missing.');
-          if (bytes !== item.bytes || bytes > MAX_DATASET_BYTES) throw new ApiError(422, 'Uploaded size differs from the requested size.');
-          const records = validateDataset(item.name, item.format, await objects.read(item.key));
-          // Record count is durable before creating chunks, permitting cleanup even if indexing fails.
-          if (!await store.transition(id, 'validating', 'validating', { recordCount: records.length })) {
-            throw new Error('Dataset validation state changed');
+          if (bytes !== item.bytes || bytes > INGEST_LIMITS.bytes[item.format]) throw new ApiError(422, 'Uploaded size differs from the requested size.');
+          if (pdf) {
+            // Extraction (text layer and, where needed, OCR) runs in the queue worker. The dataset is NOT ready until it succeeds.
+            try { await queue!.send(id); }
+            catch {
+              // Not queued: return to pending_upload so finalize can simply be retried.
+              await store.transition(id, 'extracting', 'pending_upload');
+              throw new ApiError(503, 'Could not start extraction. Try again.');
+            }
+            return result(202, { dataset: publicMetadata({ ...item, status: 'extracting' }) });
           }
-          indexedKeys = await writeDatasetIndex(item.key, records, objects);
-          if (!await store.transition(id, 'validating', 'ready', { recordCount: records.length, indexVersion: 1 })) {
-            throw new Error('Dataset finalization state changed');
-          }
+          const outcome = await ingestDocument({ name: item.name, bytes: await objects.read(item.key) });
+          if (outcome.kind !== 'complete') throw new ApiError(422, 'This file cannot be processed synchronously.');
+          const { records, ...rest } = outcome.canonical;
+          await commitDataset(item, records, { ...rest, extractedAt: new Date(now()).toISOString() }, 'validating', store, objects);
           return result(200, { dataset: publicMetadata({ ...item, status: 'ready', recordCount: records.length }) });
         } catch (error) {
-          await Promise.allSettled(indexedKeys.map(key => objects.remove(key)));
-          const message = error instanceof ApiError && error.status === 422 ? error.message : 'Validation or private indexing failed.';
-          await store.transition(id, 'validating', 'failed', { error: message });
+          if (error instanceof ApiError && error.status === 503) throw error;
+          const safe = error instanceof ApiError && error.status === 422 ? error.message : error instanceof IngestError ? error.message : null;
+          const message = safe ?? 'Validation or private indexing failed.';
+          await store.transition(id, next, 'failed', { error: message });
           return result(422, { error: message });
         }
       }
       if (method === 'GET' && !match[2]) {
+        const current = await expireIfStuck(store, item, Math.floor(now() / 1000));
+        if (current.status === 'failed' && item.status === 'extracting') return result(200, { dataset: publicMetadata(current), records: null });
         if (item.status !== 'ready') return result(200, { dataset: publicMetadata(item), records: null });
         const cursorText = event.queryStringParameters?.cursor ?? '0';
         if (!/^(0|[1-9][0-9]{0,3})$/.test(cursorText)) throw new ApiError(400, 'Invalid record cursor.');
@@ -139,13 +169,16 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
         const end = Math.min(item.recordCount, cursor + INDEX_CHUNK_RECORDS);
         const records = item.indexVersion === 1
           ? await readIndexedRange(item, objects, cursor, end)
-          : validateDataset(item.name, item.format, await objects.read(item.key), false).slice(cursor, end);
+          : validateDataset(item.name, item.format as 'csv' | 'json', await objects.read(item.key), false).slice(cursor, end);
         return result(200, { dataset: publicMetadata(item), records,
           nextCursor: end < item.recordCount ? end : null });
       }
       if (method === 'DELETE' && !match[2]) {
+        const live = await expireIfStuck(store, item, Math.floor(now() / 1000));
+        if (live.status === 'extracting') throw new ApiError(409, 'Extraction is in progress. Try again when it finishes.');
         // Keep metadata until all private objects are removed; a failed delete remains retriable.
         if (item.recordCount > 0) await removeDatasetIndex(item.key, item.recordCount, objects);
+        await objects.remove(provenanceKey(item.key));
         await objects.remove(item.key);
         await store.delete(id);
         return { statusCode: 204, headers: { 'cache-control': 'no-store' } };

@@ -54,7 +54,7 @@ describe('near-20-MiB full-capacity regression', () => {
       }),
       write: vi.fn(async (key, bytes) => {
         if (blobs.has(key)) throw new Error('Immutable conflict');
-        indexWrites++;
+        if (key.includes('/index-v1/')) indexWrites++; // the provenance object (Task 21) is a separate write
         blobs.set(key, bytes);
       }),
       remove: vi.fn(async (key) => { blobs.delete(key); }),

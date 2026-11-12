@@ -25,7 +25,13 @@ async function freePort() {
 }
 const chrome = browserPath();
 const port = await freePort();
-const url = 'http://127.0.0.1:' + port + '/tests/dashboard-interactive.html';
+const base = 'http://127.0.0.1:' + port;
+// Each page is a synthetic, offline React harness run in real headless Chromium.
+const pages = [
+  { html: '/tests/dashboard-interactive.html', result: 'dashboard-browser-result', label: 'Dashboard', budget: 12000 },
+  { html: '/tests/upload-interactive.html', result: 'upload-browser-result', label: 'Upload', budget: 60000 },
+];
+const url = base + pages[0].html;
 const userDataDir = await mkdtemp(join(tmpdir(), 'grievance-dashboard-browser-'));
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1',
   '--port', String(port), '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -42,18 +48,19 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   if (!started) throw new Error('Vite server failed to start: ' + stderr.slice(-1000));
-  const result = spawnSync(chrome, [
-    '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
-    '--no-first-run', '--disable-background-networking', '--hide-scrollbars',
-    '--user-data-dir=' + userDataDir, '--virtual-time-budget=12000', '--dump-dom', url,
-  ], { encoding: 'utf8', timeout: 50000, maxBuffer: 8 * 1024 * 1024 });
-  const dom = result.stdout ?? '';
-  if (result.status !== 0 || !dom.includes('id="dashboard-browser-result" data-status="passed"')) {
-    const testResult = dom.match(/<pre id="dashboard-browser-result"[^>]*>([\s\S]*?)<\/pre>/)?.[1];
-    throw new Error('Dashboard browser interactions failed: ' + (testResult || result.stderr || dom.slice(-2500)).slice(0,4000));
+  for (const page of pages) {
+    const result = spawnSync(chrome, [
+      '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+      '--no-first-run', '--disable-background-networking', '--hide-scrollbars',
+      '--user-data-dir=' + userDataDir, '--virtual-time-budget=' + page.budget, '--dump-dom', base + page.html,
+    ], { encoding: 'utf8', timeout: 90000, maxBuffer: 8 * 1024 * 1024 });
+    const dom = result.stdout ?? '';
+    if (result.status !== 0 || !dom.includes('id="' + page.result + '" data-status="passed"')) {
+      const testResult = dom.match(new RegExp('<pre id="' + page.result + '"[^>]*>([\\s\\S]*?)</pre>'))?.[1];
+      throw new Error(page.label + ' browser interactions failed: ' + (testResult || result.stderr || dom.slice(-2500)).slice(0, 4000));
+    }
+    console.log(dom.match(/PASS \d+ real-browser [a-z ]*assertions/)?.[0] ?? page.label + ' browser interactions passed');
   }
-  const passed = dom.match(/PASS \d+ real-browser interactive assertions/)?.[0] ?? 'Browser interactions passed';
-  console.log(passed);
 } finally {
   server.kill('SIGTERM');
   await rm(userDataDir, { recursive: true, force: true });

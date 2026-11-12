@@ -176,7 +176,7 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
 }
 async function readDataset(dataset: Metadata, files: PrivateObjects, start = 0, end = dataset.recordCount): Promise<GrievanceRecord[]> {
   if (dataset.indexVersion === 1) return readIndexedRange(dataset, files, start, end);
-  return validateDataset(dataset.name, dataset.format, await files.read(dataset.key)).slice(start, end);
+  return validateDataset(dataset.name, dataset.format as 'csv' | 'json', await files.read(dataset.key)).slice(start, end);
 }
 function resultScope(job: Job): string {
   return (job.generation ?? 0) === 0 ? job.id : job.id + '/generations/' + job.generation;
