@@ -49,8 +49,8 @@ export class DynamoJobs implements JobStore {
   async retry(id: string): Promise<boolean> {
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
-        UpdateExpression: 'SET #s = :queued, #error = :null, finishedAt = :null, attempt = if_not_exists(attempt, :zero) + :one',
-        ConditionExpression: '#s = :failed AND (#error = :exhausted OR #error = :unavailable) AND #cursor < #total',
+        UpdateExpression: 'SET #s = :queued, #error = :null, finishedAt = :null, startedAt = :null, attempt = if_not_exists(attempt, :zero) + :one',
+        ConditionExpression: '#s = :failed AND (#error = :exhausted OR #error = :unavailable) AND #cursor <= #total',
         ExpressionAttributeNames: { '#s': 'status', '#error': 'error', '#cursor': 'cursor', '#total': 'total' },
         ExpressionAttributeValues: { ':queued': 'queued', ':failed': 'failed', ':exhausted': 'retries_exhausted',
           ':unavailable': 'queue_unavailable', ':null': null, ':zero': 0, ':one': 1 } }));
