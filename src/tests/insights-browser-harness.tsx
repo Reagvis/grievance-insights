@@ -92,12 +92,15 @@ function render(dataset: Dataset, activeJob: AnalysisJob | null, report: Analysi
 function chartButton(container: string, term: string): HTMLButtonElement {
   const buttons = [...element<HTMLElement>(container).querySelectorAll<HTMLButtonElement>('button')];
   const selected = buttons.find(button => button.getAttribute('aria-label')?.includes(term));
-  check(!!selected, 'Chart option missing: ' + container + ' ' + term);
+  check(!!selected, 'Chart option missing: ' + container + ' ' + term +
+    ' | labels=' + buttons.map(button => button.getAttribute('aria-label')).join('; ') +
+    ' | markup=' + element<HTMLElement>(container).outerHTML.slice(0, 1200));
   return selected!;
 }
 async function run() {
   // 1. Select source category in real DOM and inspect matching grievance IDs.
   render(datasetA, jobA, reportA);
+  await settle();
   const water = chartButton('#source-cat-chart', 'for Water,');
   check(water.getAttribute('aria-label')?.includes('66.7%'), 'Chart must disclose precise source percentage');
   water.focus();
