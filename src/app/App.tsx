@@ -5,7 +5,6 @@ import { AppNav } from '../components/AppNav';
 import { AssistantLauncher, ChatPanel, useChatStore, type ScopeOption } from '../components/ChatPanel';
 import { DashboardPage, type BrowseTarget } from '../components/DashboardPage';
 import { LoadingScreen } from '../components/LoadingScreen';
-import { InsightsDashboard } from '../components/InsightsDashboard';
 import { ImportDialog } from '../components/ImportDialog';
 import { PAGE_SIZE, RecordExplorer } from '../components/RecordExplorer';
 import { RecordDetail } from '../components/RecordDetail';
@@ -26,8 +25,6 @@ import { SummaryFilters } from '../components/SummaryFilters';
 import { UploadPage, type BatchResult } from '../components/UploadPage';
 import { loadAllComplaints, type AllComplaints, type SourceRef } from '../services/allComplaints';
 import { removeDataset } from '../services/datasetApi';
-import { AnalysisWorkspace } from '../components/AnalysisWorkspace';
-import type { AnalysisJob, AnalysisReport } from '../services/analysisApi';
 import {
   buildNoteText,
   buildRecordsZip,
@@ -119,7 +116,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   // ── Signed-in build: every uploaded file merged into one list ───────────
   const [all, setAll] = useState<AllComplaints | null>(null);
   const [allError, setAllError] = useState<string | null>(null);
-  const [analysisDatasetId, setAnalysisDatasetId] = useState<string | null>(null);
   const reloadAll = useCallback(async () => {
     try {
       setAll(await loadAllComplaints());
@@ -140,15 +136,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   const awsDataset = useMemo<Dataset>(() => ({ id: 'all-complaints', name: 'All complaints', kind: 'imported', records: all?.records ?? [], isSynthetic: false }), [all]);
   const addedAtById = useMemo(() => (all ? new Map([...all.sourceOf].map(([recordId, src]) => [recordId, src.addedAt])) : undefined), [all]);
   const readyFiles = useMemo(() => all?.files.filter((f) => f.status === 'ready') ?? [], [all]);
-  const activeAnalysisId = readyFiles.find((f) => f.id === analysisDatasetId)?.id ?? readyFiles[0]?.id ?? null;
-  const [analysisSnapshot, setAnalysisSnapshot] = useState<{
-    datasetId: string; job: AnalysisJob | null; report: AnalysisReport | null; loading: boolean; error: string;
-  } | null>(null);
-  const onAnalysisStateChange = useCallback((datasetId: string, job: AnalysisJob | null, report: AnalysisReport | null,
-    loading: boolean, error: string) => {
-    setAnalysisSnapshot(previous => previous?.datasetId === datasetId && previous.job === job && previous.report === report &&
-      previous.loading === loading && previous.error === error ? previous : { datasetId, job, report, loading, error });
-  }, []);
   const [live, setLive] = useState<LiveState>({ status: 'loading', dataset: null, error: null, progress: null, refreshing: false });
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
@@ -228,8 +215,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   /** Last record opened — stays highlighted in the list after the detail panel closes. */
   const [lastOpenedId, setLastOpenedId] = useState<string | null>(null);
 
-  // An async result from another dataset must never enter this dataset's dashboard.
-  const currentAnalysis = activeAnalysisId && analysisSnapshot?.datasetId === activeAnalysisId ? analysisSnapshot : null;
   const filtered = useMemo(() => filterRecords(dataset.records, filters), [dataset, filters]);
   const filtersActive = isFiltered(filters);
   const categories = useMemo(() => listCategories(dataset.records), [dataset]);
@@ -755,33 +740,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
                 />
               </div>
               {!summary && <div className="print-only print-empty">Generate a consolidated summary before printing.</div>}
-
-              {AWS_AUTH_ENABLED && activeAnalysisId && (
-                <section className="ai-analysis-section" aria-label="AI analysis">
-                  <h2>AI analysis</h2>
-                  <p>AI analysis runs on one uploaded file at a time. Choose the file, start the analysis, and the results appear below.</p>
-                  <label className="ai-file-picker">
-                    File{' '}
-                    <select className="select" value={activeAnalysisId} onChange={(e) => setAnalysisDatasetId(e.target.value)}>
-                      {readyFiles.map((f) => (
-                        <option key={f.id} value={f.id}>{f.name} ({f.recordCount} {f.recordCount === 1 ? 'complaint' : 'complaints'})</option>
-                      ))}
-                    </select>
-                  </label>
-                  <AnalysisWorkspace key={'run-' + activeAnalysisId} datasetId={activeAnalysisId} records={all?.recordsByDataset.get(activeAnalysisId) ?? []} onStateChange={onAnalysisStateChange} />
-                  <InsightsDashboard
-                    key={'view-' + activeAnalysisId}
-                    dataset={{ id: activeAnalysisId, name: readyFiles.find((f) => f.id === activeAnalysisId)?.name ?? 'File', kind: 'imported', records: all?.recordsByDataset.get(activeAnalysisId) ?? [], isSynthetic: false }}
-                    filteredCount={all?.recordsByDataset.get(activeAnalysisId)?.length ?? 0}
-                    job={currentAnalysis?.job ?? null}
-                    report={currentAnalysis?.report ?? null}
-                    analysisLoading={!currentAnalysis || currentAnalysis.loading}
-                    analysisError={currentAnalysis?.error ?? null}
-                    onOpenRecord={openRecord}
-                    onOpenReport={() => document.getElementById('deterministic-report')?.scrollIntoView({ behavior: 'smooth' })}
-                  />
-                </section>
-              )}
             </div>
           </main>
         )}
