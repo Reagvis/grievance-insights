@@ -95,11 +95,11 @@ variable "auth_log_retention_days" {
 }
 
 variable "analysis_worker_concurrency" {
-  description = "Analysis worker reserved concurrency. Default 2 to permit source and DLQ mappings; raise to 4 only after AWS/Bedrock quota verification."
+  description = "Analysis worker reserved concurrency. Defaults to current production concurrency; raise up to 4 only after AWS/Bedrock quota verification."
   type        = number
-  default     = 2
+  default     = 1
   validation {
-    condition     = var.analysis_worker_concurrency >= 2 && var.analysis_worker_concurrency <= 4 && floor(var.analysis_worker_concurrency) == var.analysis_worker_concurrency
-    error_message = "Analysis concurrency must be an integer from 2 through 4."
+    condition     = var.analysis_worker_concurrency >= 1 && var.analysis_worker_concurrency <= 4 && floor(var.analysis_worker_concurrency) == var.analysis_worker_concurrency
+    error_message = "Analysis concurrency must be an integer from 1 through 4."
   }
 }
