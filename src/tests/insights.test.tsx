@@ -28,7 +28,7 @@ const analysis = (id: string, category: string, relevance: AnalysisItem['respons
 });
 const job: AnalysisJob = { id: 'job-1', datasetId: 'ds-1', status: 'completed',
   createdAt: '2026-11-12T00:00:00Z', startedAt: '2026-11-12T00:00:00Z',
-  finishedAt: '2026-11-12T00:00:00Z', processed: 5, total: 5, failureCount: 1,
+  finishedAt: '2026-11-12T00:00:00Z', processed: 5, total: 5, attempt: 0, failureCount: 1,
   modelId: 'qwen.qwen3-32b-v1:0', region: 'ap-south-1', promptVersion: 'te-grievance-response-v1', error: null };
 const report: AnalysisReport = {
   jobId: job.id, datasetId: job.datasetId, modelId: job.modelId, region: job.region, promptVersion: job.promptVersion,
