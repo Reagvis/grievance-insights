@@ -112,7 +112,7 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
               !('mode' in value) || !['resume', 'fresh'].includes(String(value.mode))) {
             throw new HttpError(400, 'Retry mode must be resume or fresh.');
           }
-          mode = value.mode as typeof mode;
+          mode = String(value.mode) as 'resume' | 'fresh';
         }
         const safeReasons = mode === 'fresh'
           ? ['all_records_failed', 'queue_unavailable', 'retries_exhausted']
@@ -240,7 +240,7 @@ export function createAnalysisWorker(datasets: DatasetStore, files: PrivateObjec
     console.info(JSON.stringify({
       event: 'analysis_batch_progress', jobId, attempt: job.attempt ?? 0,
       generation: job.generation ?? 0, processed: next, total: job.total,
-      chunkRecords: end - job.cursor, elapsedMs: Date.now() - batchStarted, attempt: job.attempt ?? 0,
+      chunkRecords: end - job.cursor, elapsedMs: Date.now() - batchStarted,
     }));
     if (next < job.total) { await queue.send(jobId, next, job.attempt ?? 0); return; }
     const completed: RecordOutcome[] = [];
