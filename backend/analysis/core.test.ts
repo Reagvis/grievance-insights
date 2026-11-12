@@ -40,27 +40,43 @@ function fixture() {
   const jobs: JobStore = {
     get: vi.fn(async () => current),
     create: vi.fn(async (item: Job) => { if (current) return false; current = item; return true; }),
-    start: vi.fn(async (_id: string, at: string) => { if (current && current.status === 'queued') current = { ...current, status: 'running', startedAt: at }; }),
-    checkpoint: vi.fn(async (_id: string, expected: number, failed: boolean) => {
-      if (!current || current.cursor !== expected || current.status !== 'running') return false;
+    start: vi.fn(async (_id: string, at: string, attempt = 0) => { if (current && current.status === 'queued' && current.attempt === attempt) current = { ...current, status: 'running', startedAt: at }; }),
+    checkpoint: vi.fn(async (_id: string, expected: number, failed: boolean, attempt = 0) => {
+      if (!current || current.cursor !== expected || current.status !== 'running' || current.attempt !== attempt) return false;
       current = { ...current, cursor: expected + 1, failureCount: current.failureCount + Number(failed) };
       return true;
     }),
-    complete: vi.fn(async (_id: string, key: string, at: string) => {
-      if (!current || current.cursor !== current.total) throw new Error('Incorrect finalization');
+    complete: vi.fn(async (_id: string, key: string, at: string, attempt = 0) => {
+      if (!current || current.cursor !== current.total || current.attempt !== attempt) throw new Error('Incorrect finalization');
       current = { ...current, status: 'completed', resultsKey: key, finishedAt: at };
     }),
-    fail: vi.fn(async (_id: string, code: string, at: string) => {
-      if (current && (current.status === 'queued' || current.status === 'running')) current = { ...current, status: 'failed', error: code, finishedAt: at };
+    retry: vi.fn(async (_id: string, mode: 'resume' | 'fresh' = 'resume') => {
+      if (!current || current.status !== 'failed' || !['queue_unavailable','retries_exhausted',
+        ...(mode === 'fresh' ? ['all_records_failed'] : [])].includes(current.error ?? '')) return false;
+      current = { ...current, status: 'queued', attempt: (current.attempt ?? 0) + 1,
+        generation: (current.generation ?? 0) + Number(mode === 'fresh'),
+        cursor: mode === 'fresh' ? 0 : current.cursor,
+        failureCount: mode === 'fresh' ? 0 : current.failureCount,
+        resultsKey: mode === 'fresh' ? null : current.resultsKey,
+        error: null, finishedAt: null, startedAt: null };
+      return true;
+    }),
+    fail: vi.fn(async (_id: string, code: string, at: string, attempt = 0) => {
+      if (current && current.attempt === attempt && (current.status === 'queued' || current.status === 'running')) current = { ...current, status: 'failed', error: code, finishedAt: at };
     }),
   };
   const queue: JobQueue = { send: vi.fn(async () => {}) };
   const stored = new Map<number, RecordOutcome>();
+  const generations = new Map<string, Map<number, RecordOutcome>>([[id, stored]]);
+  const bucket = (scope: string) => {
+    if (!generations.has(scope)) generations.set(scope, new Map());
+    return generations.get(scope)!;
+  };
   let report: Report | undefined;
   const results: ResultObjects = {
-    readRecord: vi.fn(async (_id, index) => stored.get(index) ?? null),
-    writeRecord: vi.fn(async (_id, index, value) => { if (!stored.has(index)) stored.set(index, value); }),
-    writeReport: vi.fn(async () => { report = reportValue(); return 'analyses/' + id + '/report.json'; }),
+    readRecord: vi.fn(async (scope, index) => bucket(scope).get(index) ?? null),
+    writeRecord: vi.fn(async (scope, index, value) => { if (!bucket(scope).has(index)) bucket(scope).set(index, value); }),
+    writeReport: vi.fn(async (scope, value) => { report = value; return 'analyses/' + scope + '/report.json'; }),
     readReport: vi.fn(async () => report ?? reportValue()),
   };
   function reportValue(): Report {
@@ -82,13 +98,14 @@ function fixture() {
   }, record)) };
   const api = createAnalysisApi(datasets, files, jobs, queue, results, origin, () => timestamp);
   const worker = createAnalysisWorker(datasets, files, jobs, queue, results, model, () => timestamp);
-  return { dataset, datasets, files, jobs, queue, results, model, api, worker, stored, current: () => current };
+  return { dataset, datasets, files, jobs, queue, results, model, api, worker, stored, generations,
+    current: () => current };
 }
 describe('authenticated asynchronous job API', () => {
   it('checks current session on all four routes and hides other owners', async () => {
     const f = fixture();
     const paths = [['POST','/api/datasets/' + id + '/analyze'],['GET','/api/datasets/' + id + '/analyses'],
-      ['GET','/api/analyses/' + id],['GET','/api/analyses/' + id + '/results']];
+      ['GET','/api/analyses/' + id],['GET','/api/analyses/' + id + '/results'],['POST','/api/analyses/' + id + '/retry']];
     for (const [method, path] of paths) expect((await f.api(event(method, path, false))).statusCode).toBe(401);
     expect(f.jobs.get).not.toHaveBeenCalled();
     f.dataset.ownerId = 'another-user';
@@ -108,6 +125,85 @@ describe('authenticated asynchronous job API', () => {
     const f = fixture();
     f.dataset.status = 'failed';
     expect((await f.api(event('POST','/api/datasets/' + id + '/analyze'))).statusCode).toBe(409);
+  });
+  it('retries an interrupted job through authenticated CAS, and rejects repeated retries', async () => {
+    const f = fixture();
+    await f.api(event('POST','/api/datasets/' + id + '/analyze'));
+    await f.jobs.fail(id, 'retries_exhausted', timestamp.toISOString());
+    const retried = await f.api(event('POST','/api/analyses/' + id + '/retry'));
+    expect(retried.statusCode).toBe(202);
+    expect(f.current()).toMatchObject({ status: 'queued', cursor: 0, attempt: 1, error: null });
+    expect(f.queue.send).toHaveBeenLastCalledWith(id, 0, 1);
+    expect((await f.api(event('POST','/api/analyses/' + id + '/retry'))).statusCode).toBe(409);
+    await f.worker(id, true, 0);
+    expect(f.current()?.status).toBe('queued');
+    await f.worker(id, false, 1);
+    expect(f.current()?.cursor).toBe(3);
+  });
+  it('rejects unsafe retry after a failed dataset or irrecoverable model output', async () => {
+    const f = fixture();
+    await f.api(event('POST','/api/datasets/' + id + '/analyze'));
+    await f.jobs.fail(id, 'all_records_failed', timestamp.toISOString());
+    expect((await f.api(event('POST','/api/analyses/' + id + '/retry'))).statusCode).toBe(409);
+  });
+  it('creates a fresh immutable generation after all model output failed and fences old messages', async () => {
+    const f = fixture();
+    const originalModel = vi.mocked(f.model.analyze).getMockImplementation()!;
+    await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
+    vi.mocked(f.model.analyze).mockRejectedValue(new InvalidModelOutput('Invalid test output'));
+    await f.worker(id, false, 0); await f.worker(id, false, 0);
+    expect(f.current()).toMatchObject({ status: 'failed', error: 'all_records_failed', cursor: 4, failureCount: 4 });
+    const oldOutcomes = [...f.stored.values()];
+    const request = event('POST', '/api/analyses/' + id + '/retry');
+    request.body = JSON.stringify({ mode: 'fresh' });
+    const retried = await f.api(request);
+    expect(retried.statusCode).toBe(202);
+    expect(f.current()).toMatchObject({ status: 'queued', cursor: 0, failureCount: 0,
+      attempt: 1, generation: 1, resultsKey: null });
+    await f.worker(id, true, 0); // Stale terminal message cannot mark the new generation failed.
+    expect(f.current()?.status).toBe('queued');
+    vi.mocked(f.model.analyze).mockImplementation(originalModel);
+    await f.worker(id, false, 1); await f.worker(id, false, 1);
+    expect(f.current()).toMatchObject({ status: 'completed', cursor: 4, attempt: 1, generation: 1,
+      failureCount: 0, resultsKey: 'analyses/' + id + '/generations/1/report.json' });
+    expect(f.generations.get(id + '/generations/1')?.size).toBe(4);
+    expect([...f.stored.values()]).toEqual(oldOutcomes); // Original private outcomes remain immutable.
+    expect(safeResponse(await f.api(event('GET', '/api/analyses/' + id + '/results'))).report.generation).toBe(1);
+    await f.worker(id, false, 0);
+    expect(f.generations.get(id + '/generations/1')?.size).toBe(4);
+  });
+  it('enforces generational CAS on persistent attempts', async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const jobs = new DynamoJobs({ send } as unknown as DynamoDBDocumentClient, 'jobs');
+    await jobs.retry(id, 'fresh');
+    const command = send.mock.calls[0][0] as UpdateCommand;
+    expect(command.input.UpdateExpression).toContain('#generation = if_not_exists(#generation, :zero) + :one');
+    expect(command.input.UpdateExpression).toContain('failureCount = :zero');
+    expect(command.input.ConditionExpression).toContain('#s = :failed');
+    await jobs.checkpoint(id, 0, false, 3);
+    const checkpoint = send.mock.calls[1][0] as UpdateCommand;
+    expect(checkpoint.input.ExpressionAttributeValues).toMatchObject({ ':attempt': 3 });
+    expect(checkpoint.input.ConditionExpression).toContain('attempt = :attempt');
+  });
+  it('returns bounded, ordered result pages for authenticated clients', async () => {
+    const f = fixture();
+    await f.api(event('POST','/api/datasets/' + id + '/analyze'));
+    await f.worker(id); await f.worker(id);
+    const page = await f.api(event('GET','/api/analyses/' + id + '/results'));
+    expect(safeResponse(page).report.outcomes).toHaveLength(4);
+    const invalid = event('GET','/api/analyses/' + id + '/results');
+    invalid.queryStringParameters = { cursor: '100000' };
+    expect((await f.api(invalid)).statusCode).toBe(400);
+  });
+  it('rejects a historical oversized AI prompt without hiding its source or invoking Bedrock', async () => {
+    const f = fixture();
+    vi.mocked(f.files.read).mockResolvedValue(new TextEncoder().encode(
+      'id,complaintText\nLEGACY-1,' + 'అ'.repeat(6500)));
+    const response = await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
+    expect(response.statusCode).toBe(422);
+    expect(safeResponse(response).error).toContain('12 KiB AI-input limit');
+    expect(f.model.analyze).not.toHaveBeenCalled();
+    expect(f.queue.send).not.toHaveBeenCalled();
   });
   it('fails job if queue handoff fails', async () => {
     const f = fixture();
@@ -185,6 +281,39 @@ describe('terminal failures, idempotent checkpoints and dead letters', () => {
     expect(f.results.writeReport).not.toHaveBeenCalled();
     expect((await f.api(event('GET', '/api/analyses/' + id + '/results'))).statusCode).toBe(409);
   });
+  it('enforces a 2-MiB byte budget for large report pages, without losing outcomes', async () => {
+    const f = fixture();
+    await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
+    const old = f.current()!;
+    vi.mocked(f.jobs.get).mockResolvedValue({ ...old, status: 'completed', cursor: 100,
+      total: 100, resultsKey: 'analyses/' + id + '/report.json' });
+    const base = await f.results.readReport('any');
+    const outcomes = Array.from({ length: 100 }, (_, i) => ({
+      id: 'GR-' + i,
+      analysis: {
+        id: 'GR-' + i, category: 'water' as const, complaintSummary: 'అ'.repeat(1500),
+        issueClassification: 'అ'.repeat(1500), requestedAction: 'అ'.repeat(1500),
+        potentiallyUrgent: true, urgencyReason: 'అ'.repeat(1500),
+        complaintEvidence: 'నీరు రావడం లేదు', responseSummary: 'అ'.repeat(1500),
+        departmentClaim: 'అ'.repeat(1500), responseRelevance: 'inconclusive' as const,
+        responseAssessment: 'అ'.repeat(1500), responseEvidence: 'పరిశీలిస్తున్నాము',
+        verifiedOutcome: null, verificationStatus: 'not_verified' as const,
+      },
+    }));
+    vi.mocked(f.results.readReport).mockResolvedValue({ ...base,
+      stats: { ...base.stats, grievances: 100, analyzed: 100 }, outcomes });
+    const response = await f.api(event('GET', '/api/analyses/' + id + '/results'));
+    expect(response.statusCode).toBe(200);
+    expect(Buffer.byteLength(response.body ?? '')).toBeLessThan(2 * 1024 * 1024);
+    const page = safeResponse(response);
+    expect(page.nextCursor).toBeGreaterThan(0);
+    expect(page.nextCursor).toBeLessThan(100);
+    expect(page.report.outcomes).toHaveLength(page.nextCursor);
+    const later = event('GET', '/api/analyses/' + id + '/results');
+    later.queryStringParameters = { cursor: String(page.nextCursor) };
+    const second = safeResponse(await f.api(later));
+    expect(second.report.outcomes[0].id).toBe('GR-' + page.nextCursor);
+  });
   it('retries after conditional DynamoDB checkpoint rejection without duplicating model inference', async () => {
     const f = fixture();
     await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
@@ -228,7 +357,8 @@ describe('terminal failures, idempotent checkpoints and dead letters', () => {
     const fakeClient = { send } as unknown as DynamoDBDocumentClient;
     await new DynamoJobs(fakeClient, 'jobs').fail(id, 'retries_exhausted', timestamp.toISOString());
     const command = send.mock.calls[0][0] as UpdateCommand;
-    expect(command.input.ConditionExpression).toBe('attribute_exists(id) AND (#s = :queued OR #s = :running)');
+    expect(command.input.ConditionExpression).toContain('attribute_exists(id) AND (#s = :queued OR #s = :running)');
+    expect(command.input.ConditionExpression).toContain('attempt = :attempt');
     expect(command.input.ExpressionAttributeValues).toMatchObject({ ':failed': 'failed', ':queued': 'queued', ':running': 'running' });
   });
 });

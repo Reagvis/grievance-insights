@@ -12,10 +12,32 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
 }
 export async function listDatasets() { return (await api<{ datasets: RemoteDataset[] }>('/api/datasets')).datasets; }
-export async function openDataset(id: string) { return api<{ dataset: RemoteDataset; records: GrievanceRecord[] | null }>('/api/datasets/' + encodeURIComponent(id)); }
+export async function openDataset(id: string) {
+  const path = '/api/datasets/' + encodeURIComponent(id);
+  let cursor: number | null = 0;
+  let dataset: RemoteDataset | null = null;
+  const records: GrievanceRecord[] = [];
+  while (cursor !== null) {
+    const page: { dataset: RemoteDataset; records: GrievanceRecord[] | null; nextCursor?: number | null } =
+      await api(path + '?cursor=' + cursor);
+    if (page.dataset.id !== id || dataset && page.dataset.recordCount !== dataset.recordCount) {
+      throw new Error('Dataset changed during retrieval.');
+    }
+    dataset = page.dataset;
+    if (page.records === null) return { dataset, records: null };
+    if (page.records.length > 50 || page.nextCursor != null &&
+        (page.nextCursor !== cursor + page.records.length || page.nextCursor > 2000)) {
+      throw new Error('Invalid dataset pagination.');
+    }
+    records.push(...page.records);
+    cursor = page.nextCursor ?? null;
+  }
+  if (!dataset || records.length !== dataset.recordCount) throw new Error('Incomplete dataset retrieval.');
+  return { dataset, records };
+}
 export async function removeDataset(id: string) { await api('/api/datasets/' + encodeURIComponent(id), { method: 'DELETE', headers: { Origin: window.location.origin } }); }
 export async function uploadDataset(file: File, onStep: (step: string) => void): Promise<RemoteDataset> {
-  if (!/\.(csv|json)$/i.test(file.name) || !file.size || file.size > 1024 * 1024) throw new Error('Choose a nonempty CSV or JSON file of at most 1 MiB.');
+  if (!/\.(csv|json)$/i.test(file.name) || !file.size || file.size > 20 * 1024 * 1024) throw new Error('Choose a nonempty CSV or JSON file of at most 20 MiB.');
   onStep('Requesting secure upload…');
   const response = await api<{ dataset: RemoteDataset; upload: { url: string; headers: Record<string, string> } }>('/api/datasets/uploads', {
     method: 'POST', body: JSON.stringify({ name: file.name, bytes: file.size }), headers: { Origin: window.location.origin },

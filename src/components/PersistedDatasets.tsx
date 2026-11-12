@@ -68,7 +68,7 @@ export function PersistedDatasets({ onSelect, onClear, activeId }: Props) {
   return <section className="notice notice--info dataset-notice" aria-label="Persisted datasets">
     <div style={{ width: '100%' }}>
       <strong>Private uploaded datasets</strong>
-      <p>CSV/JSON · maximum 1 MiB and 200 records · stored privately in AWS. Uploads are available after refresh.</p>
+      <p>CSV/JSON · maximum 20 MiB and 2,000 records · each record requires at most 12 KiB of AI prompt data and 24 KiB when serialized. Oversized records are rejected, never truncated. Files are stored privately in AWS.</p>
       <input id="remote-dataset-file" ref={fileRef} type="file" accept=".csv,.json" aria-label="Upload private grievance dataset" disabled={busy} onChange={e => void upload(e.target.files?.[0])} />
       {progress && <p role="status">{progress}</p>}
       {error && <p role="alert" className="notice--error">{error}</p>}

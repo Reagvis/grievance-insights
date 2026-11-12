@@ -271,7 +271,7 @@ resource "aws_lambda_function" "analysis_worker" {
   architectures                  = ["x86_64"]
   memory_size                    = 512
   timeout                        = 600
-  reserved_concurrent_executions = 1
+  reserved_concurrent_executions = var.analysis_worker_concurrency
 
   environment {
     variables = local.analysis_lambda_environment
@@ -285,6 +285,12 @@ resource "aws_lambda_event_source_mapping" "analysis_queue" {
   function_name    = aws_lambda_function.analysis_worker.arn
   batch_size       = 1
   enabled          = true
+  dynamic "scaling_config" {
+    for_each = var.analysis_worker_concurrency >= 2 ? [1] : []
+    content {
+      maximum_concurrency = var.analysis_worker_concurrency
+    }
+  }
 }
 
 resource "aws_lambda_event_source_mapping" "analysis_dlq" {
@@ -308,6 +314,7 @@ resource "aws_apigatewayv2_route" "analyses" {
     "GET /api/datasets/{id}/analyses",
     "GET /api/analyses/{jobId}",
     "GET /api/analyses/{jobId}/results",
+    "POST /api/analyses/{jobId}/retry",
   ])
 
   api_id             = aws_apigatewayv2_api.auth.id

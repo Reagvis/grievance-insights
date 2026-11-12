@@ -22,3 +22,10 @@ These decisions describe direction, not deployed capability. Amend this log when
 ## AWS frontend authentication
 
 The AWS static build uses dedicated Vite `aws` mode and a fail-closed session gate backed by same-origin HttpOnly cookies. GitHub Pages and local dev retain the synthetic public demo. No tokens or passwords are retained in local storage. Client UI gating is not backend authorization for real data. Implemented in code; not deployed.
+
+## Task 19 capacity decisions (draft integration review)
+
+- **Reject, never truncate:** New persisted sources must satisfy a 20-MiB/2,000-row cap plus a 12-KiB UTF-8 prompt and 24-KiB serialized-record ceiling. Oversized source records yield clear validation errors while the original private source remains unchanged; historical ready sources are still retrievable.
+- **Immutable derived index, same infrastructure:** During successful upload finalization, write versioned 50-record index chunks with conditional S3 PUT under existing private `raw/*` permissions. The DynamoDB ready transition follows successful indexing. Use only these bounded chunks for new dataset retrieval and worker processing; continue legacy reads for old metadata.
+- **Versioned reanalysis:** Preserve original analysis outcome keys for generation 0. A fresh user-authorized analysis after a recoverable or all-record-invalid failure increments an independent result generation and attempt fencing token atomically, never overwriting prior immutable results. Interrupted resume increments only the message attempt and retains durable progress. Do not automatically retry source-integrity failures.
+- **Observability/privacy:** Emit job UUID/attempt/generation/record-ordinal token usage, progress and exception classes; never log source text or model response bodies. No infrastructure resource replacement, deployment or large paid live inference test is part of this correction.

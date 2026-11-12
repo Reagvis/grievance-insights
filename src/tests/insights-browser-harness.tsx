@@ -48,7 +48,7 @@ const datasetB: Dataset = { id: 'dataset-b', name: 'Synthetic B', records: bReco
 function job(datasetId: string, id: string, state: AnalysisJob['status'] = 'completed'): AnalysisJob {
   return {
     id, datasetId, status: state, processed: state === 'queued' ? 0 : 3,
-    total: datasetId === 'dataset-a' ? 3 : 1, failureCount: 1,
+    total: datasetId === 'dataset-a' ? 3 : 1, failureCount: 1, attempt: 0,
     createdAt: '2026-11-12T00:00:00Z', startedAt: null, finishedAt: state === 'completed' ? '2026-11-12T01:00:00Z' : null,
     modelId: 'qwen.qwen3-32b-v1:0', region: 'ap-south-1',
     promptVersion: 'te-grievance-response-v1', error: state === 'failed' ? 'model_request_failed' : null,
@@ -178,7 +178,7 @@ async function run() {
       return new Promise<Response>(resolve => { resolveOld = resolve; });
     }
     if (url.endsWith('/api/datasets/dataset-b/analyses')) return Promise.resolve(reply({ jobs: [jobB] }));
-    if (url.endsWith('/api/analyses/analysis-b/results')) return Promise.resolve(reply({ job: jobB, report: reportB }));
+    if (url === '/api/analyses/analysis-b/results?cursor=0') return Promise.resolve(reply({ job: jobB, report: reportB, nextCursor: null }));
     return Promise.reject(new Error('Unexpected synthetic network request: ' + url));
   }) as typeof fetch;
   const onStateChange = (datasetId: string, _job: AnalysisJob | null, report: AnalysisReport | null) =>
