@@ -72,3 +72,38 @@ Object.assign(process.env, {
 const datasetModule = createRequire(import.meta.url)(datasetBundlePath.pathname);
 if (typeof datasetModule.handler !== 'function') throw new Error('Dataset Lambda handler is missing');
 console.log(`Packaged ${datasetZipPath.pathname}`);
+
+const analysisTargets = [
+  ['analysis-api', '../backend/analysis/api-handler.ts'],
+  ['analysis-worker', '../backend/analysis/worker-handler.ts'],
+];
+Object.assign(process.env, {
+  ANALYSES_BUCKET_NAME: 'packaging-results',
+  ANALYSES_TABLE_NAME: 'packaging-analysis-jobs',
+  ANALYSES_QUEUE_URL: 'https://sqs.ap-south-1.amazonaws.com/123456789012/packaging-analysis.fifo',
+  ANALYSES_DLQ_ARN: 'arn:aws:sqs:ap-south-1:123456789012:packaging-dlq.fifo',
+});
+for (const [name, entryPoint] of analysisTargets) {
+  const bundlePath = new URL(name + '-lambda.cjs', outputDirectory);
+  const zipPath = new URL(name + '-lambda.zip', outputDirectory);
+  await build({
+    entryPoints: [new URL(entryPoint, import.meta.url).pathname],
+    bundle: true,
+    format: 'cjs',
+    platform: 'node',
+    target: 'node22',
+    outfile: bundlePath.pathname,
+    sourcemap: false,
+    legalComments: 'none',
+    minify: false,
+  });
+  const bundle = new Uint8Array(await readFile(bundlePath));
+  await writeFile(zipPath, zipSync(
+    { 'index.js': [bundle, { mtime: new Date(1980, 0, 1, 0, 0, 0) }] },
+    { level: 9 },
+  ), { mode: 0o600 });
+  const packaged = createRequire(import.meta.url)(bundlePath.pathname);
+  if (typeof packaged.handler !== 'function') throw new Error(name + ' handler missing from Lambda bundle');
+  if (name === 'analysis-worker') await packaged.handler({ Records: [] });
+  console.log('Packaged ' + zipPath.pathname);
+}

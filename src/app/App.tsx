@@ -14,6 +14,7 @@ import type { SummaryScope, SummaryService } from '../domain/summary';
 import { I18nContext, makeI18n, type UiLanguage } from '../i18n/strings';
 import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServices';
 import { PersistedDatasets } from '../components/PersistedDatasets';
+import { AnalysisWorkspace } from '../components/AnalysisWorkspace';
 import {
   buildNoteText,
   buildRecordsZip,
@@ -383,6 +384,8 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
               </div>
 
               {AWS_AUTH_ENABLED && <PersistedDatasets onSelect={useRemoteDataset} onClear={clearRemoteDataset} activeId={remoteId} />}
+
+              {AWS_AUTH_ENABLED && remoteId && <AnalysisWorkspace key={remoteId} datasetId={remoteId} records={dataset.records} />}
 
               <DatasetOverview stats={stats} />
 
