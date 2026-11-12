@@ -15,7 +15,7 @@ export async function listDatasets() { return (await api<{ datasets: RemoteDatas
 export async function openDataset(id: string) { return api<{ dataset: RemoteDataset; records: GrievanceRecord[] | null }>('/api/datasets/' + encodeURIComponent(id)); }
 export async function removeDataset(id: string) { await api('/api/datasets/' + encodeURIComponent(id), { method: 'DELETE', headers: { Origin: window.location.origin } }); }
 export async function uploadDataset(file: File, onStep: (step: string) => void): Promise<RemoteDataset> {
-  if (!/\.(csv|json)$/i.test(file.name) || !file.size || file.size > 1024 * 1024) throw new Error('Choose a nonempty CSV or JSON file of at most 1 MiB.');
+  if (!/\.(csv|json)$/i.test(file.name) || !file.size || file.size > 20 * 1024 * 1024) throw new Error('Choose a nonempty CSV or JSON file of at most 20 MiB.');
   onStep('Requesting secure upload…');
   const response = await api<{ dataset: RemoteDataset; upload: { url: string; headers: Record<string, string> } }>('/api/datasets/uploads', {
     method: 'POST', body: JSON.stringify({ name: file.name, bytes: file.size }), headers: { Origin: window.location.origin },
