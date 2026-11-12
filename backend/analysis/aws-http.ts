@@ -36,13 +36,24 @@ export async function signedAwsRequest(service: 's3' | 'sqs' | 'bedrock', region
     method, headers, ...(body ? { body: Buffer.from(body) } : {}),
     signal: AbortSignal.timeout(service === 'bedrock' ? 75000 : 20000),
   });
-  if (!response.ok && response.status !== 404 && response.status !== 412) {
-    // Only the AWS exception name is safe for logs; never surface service bodies.
-    let name = 'ServiceError';
-    try {
-      const error = await response.json() as { __type?: string; code?: string };
-      name = error.__type ?? error.code ?? name;
-    } catch { /* safe generic fallback */ }
+  // Only S3 GET missing-key and conditional PUT conflicts are meaningful non-2xx
+  // results to callers. SQS SendMessage and Bedrock Converse must never accept them.
+  const expectedS3Status = service === 's3' &&
+    ((method === 'GET' && response.status === 404) || (method === 'PUT' && response.status === 412));
+  if (!response.ok && !expectedS3Status) {
+    // Extract only the AWS exception class, never log response bodies or messages.
+    const fallback = response.status === 429 ? 'ThrottlingException' :
+      response.status === 503 ? 'ServiceUnavailableException' :
+      response.status >= 500 ? 'InternalServerException' :
+      response.status === 404 ? 'ResourceNotFoundException' : 'ServiceError';
+    let raw = response.headers.get('x-amzn-errortype') ?? fallback;
+    if (raw === fallback) {
+      try {
+        const error = await response.json() as { __type?: string; code?: string; Code?: string };
+        raw = error.__type ?? error.code ?? error.Code ?? fallback;
+      } catch { /* Return a generic exception type, never the response text. */ }
+    }
+    const name = raw.replace(/^.*[#/]/, '').split(':')[0].replace(/[^A-Za-z0-9_.]/g, '').slice(0, 80) || fallback;
     throw new AwsServiceError(response.status, name);
   }
   return response;

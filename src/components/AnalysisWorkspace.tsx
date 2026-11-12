@@ -61,6 +61,11 @@ export function AnalysisWorkspace({ datasetId, records }: { datasetId: string; r
         {job.failureCount > 0 ? ' · ' + job.failureCount + ' record failures' : ''}
         {job.error ? ' · ' + job.error : ''}
       </div>}
+      {job?.status === 'failed' && <p role="alert" className="auth-error">
+        {job.error === 'all_records_failed'
+          ? 'AI analysis unusable: none of the records produced a valid grounded result. All per-record failures are counted; no completed analysis is available.'
+          : 'AI analysis failed. The reported failure code is for administrator review.'}
+      </p>}
       {error && <p role="alert" className="auth-error">{error}</p>}
       {job?.status === 'completed' && !report && <p>Loading validated results…</p>}
       {report && <>

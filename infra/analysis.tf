@@ -28,7 +28,7 @@ resource "aws_dynamodb_table" "analyses" {
 }
 
 resource "aws_s3_bucket" "analyses" {
-  bucket        = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}-analyses"
+  bucket        = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}-results"
   force_destroy = false
 
   lifecycle {
@@ -181,6 +181,14 @@ data "aws_iam_policy_document" "analysis_runtime" {
     sid       = "ReadSourceDatasets"
     actions   = ["s3:GetObject"]
     resources = ["${aws_s3_bucket.datasets.arn}/raw/*"]
+  }
+
+  # A missing S3 GET returns 403 without ListBucket; checkpointed workers
+  # must distinguish a not-yet-written result object from access failures.
+  statement {
+    sid       = "IdentifyMissingPrivateResults"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.analyses.arn]
   }
 
   statement {

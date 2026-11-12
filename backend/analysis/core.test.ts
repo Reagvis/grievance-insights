@@ -3,7 +3,9 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { describe, expect, it, vi } from 'vitest';
 import type { DatasetStore, Metadata, PrivateObjects, Session } from '../datasets/core';
 import { createAnalysisApi, createAnalysisWorker, inferWithRetry, type Job, type JobQueue, type JobStore, type ResultObjects, type Inference } from './core';
-import { validateModelOutput, type RecordOutcome, type Report } from './schema';
+import { InvalidModelOutput, validateModelOutput, type RecordOutcome, type Report } from './schema';
+import { DynamoJobs } from './aws';
+import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { GrievanceRecord } from '../../src/domain/grievance';
 
 const id = '12345678-abcd-4f12-9abc-123456789abc';
@@ -49,7 +51,7 @@ function fixture() {
       current = { ...current, status: 'completed', resultsKey: key, finishedAt: at };
     }),
     fail: vi.fn(async (_id: string, code: string, at: string) => {
-      if (current && current.status !== 'completed') current = { ...current, status: 'failed', error: code, finishedAt: at };
+      if (current && (current.status === 'queued' || current.status === 'running')) current = { ...current, status: 'failed', error: code, finishedAt: at };
     }),
   };
   const queue: JobQueue = { send: vi.fn(async () => {}) };
@@ -166,5 +168,67 @@ describe('checkpointed worker and bounded retries', () => {
     expect(await inferWithRetry(model, { id: 'abc' } as GrievanceRecord, sleep)).toEqual({ id: 'abc', failure: 'model_request_failed' });
     expect(model.analyze).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledTimes(1);
+  });
+});
+describe('terminal failures, idempotent checkpoints and dead letters', () => {
+  it('marks a job failed if all four model outputs are invalid, retaining exact failure counts', async () => {
+    const f = fixture();
+    await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
+    vi.mocked(f.model.analyze).mockRejectedValue(new InvalidModelOutput('malformed synthetic output'));
+    await f.worker(id);
+    expect(f.current()?.cursor).toBe(3);
+    expect(f.current()?.failureCount).toBe(3);
+    await f.worker(id);
+    expect(f.current()).toMatchObject({ status: 'failed', error: 'all_records_failed', cursor: 4, failureCount: 4 });
+    expect(f.stored.size).toBe(4);
+    expect([...f.stored.values()].every(v => v.failure === 'invalid_model_output')).toBe(true);
+    expect(f.results.writeReport).not.toHaveBeenCalled();
+    expect((await f.api(event('GET', '/api/analyses/' + id + '/results'))).statusCode).toBe(409);
+  });
+  it('retries after conditional DynamoDB checkpoint rejection without duplicating model inference', async () => {
+    const f = fixture();
+    await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
+    vi.mocked(f.jobs.checkpoint).mockResolvedValueOnce(false);
+    await f.worker(id);
+    expect(f.current()?.cursor).toBe(0);
+    expect(f.stored.has(0)).toBe(true);
+    await f.worker(id);
+    expect(f.current()?.cursor).toBe(3);
+    await f.worker(id);
+    expect(f.current()?.status).toBe('completed');
+    expect(f.model.analyze).toHaveBeenCalledTimes(4);
+  });
+  it('uses the immutable S3 outcome after a conditional-write conflict when counting failures', async () => {
+    const f = fixture();
+    await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
+    f.stored.set(0, { id: 'GR-0', failure: 'invalid_model_output' });
+    vi.mocked(f.results.readRecord).mockResolvedValueOnce(null); // checkpoint appears between GET and PUT
+    await f.worker(id);
+    expect(f.current()?.failureCount).toBe(1);
+    expect(f.stored.get(0)?.failure).toBe('invalid_model_output');
+    await f.worker(id);
+    expect(f.current()).toMatchObject({ status: 'completed', cursor: 4, failureCount: 1 });
+  });
+  it('ignores late duplicate FIFO and DLQ messages after terminal completion or failure', async () => {
+    const f = fixture();
+    await f.api(event('POST', '/api/datasets/' + id + '/analyze'));
+    await f.worker(id); await f.worker(id);
+    await f.worker(id); await f.worker(id, true);
+    expect(f.current()?.status).toBe('completed');
+    expect(f.model.analyze).toHaveBeenCalledTimes(4);
+    const failed = fixture();
+    await failed.api(event('POST', '/api/datasets/' + id + '/analyze'));
+    failed.dataset.status = 'failed';
+    await failed.worker(id);
+    await failed.worker(id, true);
+    expect(failed.current()?.error).toBe('dataset_unavailable');
+  });
+  it('DynamoDB fail transition is conditional on active states, protecting terminal jobs from late DLQ writes', async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const fakeClient = { send } as unknown as DynamoDBDocumentClient;
+    await new DynamoJobs(fakeClient, 'jobs').fail(id, 'retries_exhausted', timestamp.toISOString());
+    const command = send.mock.calls[0][0] as UpdateCommand;
+    expect(command.input.ConditionExpression).toBe('attribute_exists(id) AND (#s = :queued OR #s = :running)');
+    expect(command.input.ExpressionAttributeValues).toMatchObject({ ':failed': 'failed', ':queued': 'queued', ':running': 'running' });
   });
 });

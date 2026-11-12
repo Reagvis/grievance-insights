@@ -162,6 +162,11 @@ export function createAnalysisWorker(datasets: DatasetStore, files: PrivateObjec
       if (!outcome) {
         outcome = await inferWithRetry(model, records[next]);
         await results.writeRecord(job.id, next, outcome);
+        // If S3 rejected our write with 412, use the immutable stored result
+        // rather than the losing inference for failure counts and checkpoints.
+        const persisted = await results.readRecord(job.id, next);
+        if (!persisted) throw new Error('Persisted record outcome missing after write');
+        outcome = persisted;
       }
       if (outcome.id !== records[next].id) throw new Error('Stored record ID mismatch');
       if (!await jobs.checkpoint(jobId, next, !!outcome.failure)) return;
@@ -175,6 +180,12 @@ export function createAnalysisWorker(datasets: DatasetStore, files: PrivateObjec
       completed.push(item);
     }
     const report = aggregate(jobId, job.datasetId, records, completed, now().toISOString());
+    // Zero validated analyses are unusable, not a completed AI report.
+    // Per-record failures and the accurate failureCount remain in private storage/job metadata.
+    if (report.stats.analyzed === 0) {
+      await jobs.fail(jobId, 'all_records_failed', now().toISOString());
+      return;
+    }
     const key = await results.writeReport(jobId, report);
     // A deletion between inference and persistence must never expose a completed report.
     const fresh = await datasets.get(job.datasetId);

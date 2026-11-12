@@ -51,9 +51,9 @@ export class DynamoJobs implements JobStore {
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
         UpdateExpression: 'SET #s = :failed, #error = :code, finishedAt = :now',
-        ConditionExpression: 'attribute_exists(id) AND #s <> :completed',
+        ConditionExpression: 'attribute_exists(id) AND (#s = :queued OR #s = :running)',
         ExpressionAttributeNames: { '#s': 'status', '#error': 'error' },
-        ExpressionAttributeValues: { ':failed': 'failed', ':completed': 'completed', ':code': code, ':now': timestamp } }));
+        ExpressionAttributeValues: { ':failed': 'failed', ':queued': 'queued', ':running': 'running', ':code': code, ':now': timestamp } }));
     } catch (error) { if (!conditional(error)) throw error; }
   }
 }
