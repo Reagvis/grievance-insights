@@ -127,10 +127,10 @@ export class QwenBedrock implements Inference {
       output?: { message?: { content?: { text?: string }[] } };
     };
     if (parsed.usage) {
-      console.info('analysis_bedrock_usage', {
-        model: MODEL_ID, inputTokens: parsed.usage.inputTokens ?? 0,
+      console.info(JSON.stringify({
+        event: 'analysis_bedrock_usage', model: MODEL_ID, inputTokens: parsed.usage.inputTokens ?? 0,
         outputTokens: parsed.usage.outputTokens ?? 0, totalTokens: parsed.usage.totalTokens ?? 0,
-      });
+      }));
     }
     if (parsed.stopReason !== 'end_turn') {
       throw new InvalidModelOutput('Model did not finish structured response');
