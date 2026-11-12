@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Clock3, ClipboardCopy, FileDown, Info, LoaderCircle, Printer, RefreshCw, TriangleAlert, FileText } from 'lucide-react';
 import type { RefObject } from 'react';
 import type { ConsolidatedSummary, ProcessingMode, SummaryScope } from '../domain/summary';
@@ -13,6 +14,8 @@ export type SummaryState = {
 };
 
 type Props = {
+  /** When given, replaces the built-in All / Filtered switch (the Summary page's own filter panel decides the scope). */
+  scopeControl?: ReactNode;
   scope: SummaryScope;
   onScopeChange: (scope: SummaryScope) => void;
   allCount: number;
@@ -111,6 +114,7 @@ export function SummaryWorkspace({ reportRef, generateRef, ...p }: Props) {
 
       <div className="summary-controls">
         <div className="controls-left">
+          {p.scopeControl ?? (
           <div className="control-group scope-group">
             <span className="field-label" id="scope-label">
               {t('reportScope')}
@@ -136,6 +140,7 @@ export function SummaryWorkspace({ reportRef, generateRef, ...p }: Props) {
               </span>
             )}
           </div>
+          )}
         </div>
         <button
           type="button"
@@ -164,7 +169,7 @@ export function SummaryWorkspace({ reportRef, generateRef, ...p }: Props) {
         </div>
       )}
 
-      {p.scope === 'filtered' && !p.filtersActive && (
+      {!p.scopeControl && p.scope === 'filtered' && !p.filtersActive && (
         <div className="notice notice--info">
           <Info size={16} aria-hidden />
           <span>No filters are active, so “Filtered records” currently includes every record.</span>

@@ -22,6 +22,7 @@ import type { HealthInfo } from '../services/api/wire';
 import { LookupChatService, type ChatScope, type ChatService } from '../services/chat';
 import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServices';
 import { FileProblems } from '../components/FileProblems';
+import { SummaryFilters } from '../components/SummaryFilters';
 import { UploadPage, type BatchResult } from '../components/UploadPage';
 import { loadAllComplaints, type AllComplaints, type SourceRef } from '../services/allComplaints';
 import { removeDataset } from '../services/datasetApi';
@@ -39,7 +40,8 @@ import {
 } from '../utils/downloads';
 import { formatCount, formatDate } from '../utils/format';
 import type { ImportResult } from '../utils/importer';
-import { DEFAULT_FILTERS, describeFilters, filterRecords, filtersKey, isFiltered, listCategories, type RecordFilters } from '../utils/recordSearch';
+import { DEFAULT_FILTERS, describeFilters, filterRecords, isFiltered, listCategories, type RecordFilters } from '../utils/recordSearch';
+import { applySummaryFilter, describeSummaryFilter, isSummaryFiltered, NO_SUMMARY_FILTER, summaryFilterKey, type SummaryFilter } from '../utils/summaryFilter';
 import { buildSummaryMarkdown, summaryFileName } from '../utils/summaryExport';
 import { useRoute, type Page } from '../utils/route';
 import { useMediaQuery } from '../utils/useMediaQuery';
@@ -234,21 +236,26 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   const recordById = useMemo(() => new Map(dataset.records.map((r) => [r.id, r])), [dataset]);
 
   // ── Summary state ───────────────────────────────────────────────────
-  const [scope, setScope] = useState<SummaryScope>('all');
   const [summaryState, setSummaryState] = useState<SummaryState>({ status: 'idle', summary: null, error: null });
   const [summaryKey, setSummaryKey] = useState<string | null>(null);
   const generation = useRef(0);
   const reportRef = useRef<HTMLElement | null>(null);
   const generateRef = useRef<HTMLButtonElement | null>(null);
 
-  const included = scope === 'all' ? dataset.records : filtered;
+  // The Summary page has its own filter (separate from the All Complaints list filters).
+  const [summaryFilter, setSummaryFilter] = useState<SummaryFilter>(NO_SUMMARY_FILTER);
+  const fileIdOf = useCallback((r: GrievanceRecord) => all?.sourceOf.get(r.id)?.datasetId, [all]);
+  const fileNameOf = useCallback((id: string) => all?.files.find((f) => f.id === id)?.name, [all]);
+  const included = useMemo(() => applySummaryFilter(dataset.records, summaryFilter, AWS_AUTH_ENABLED ? fileIdOf : undefined), [dataset, summaryFilter, fileIdOf]);
+  const scope: SummaryScope = isSummaryFiltered(summaryFilter) ? 'filtered' : 'all';
+  const summaryScopeText = describeSummaryFilter(summaryFilter, fileNameOf);
   const includedStats = useMemo(() => computeStats(included), [included]);
-  const currentKey = `${dataset.id}|${scope}|${scope === 'filtered' ? filtersKey(filters) : '*'}`;
+  const currentKey = `${dataset.id}|${summaryFilterKey(summaryFilter)}`;
   const stale = summaryState.summary !== null && summaryKey !== currentKey;
   const staleReason =
     summaryState.summary && summaryState.summary.scope !== scope
       ? 'The report scope was changed.'
-      : 'The search or filters changed since it was generated.';
+      : 'The summary filters changed since it was generated.';
 
   // ── UI chrome state ─────────────────────────────────────────────────
   const [importOpen, setImportOpen] = useState(false);
@@ -294,7 +301,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     navigate({ ...route, noteId: null }, { replace: true });
     setDashRange({ from: '', to: '' });
     setLastOpenedId(null);
-    setScope('all');
+    setSummaryFilter(NO_SUMMARY_FILTER);
     setSummaryState({ status: 'idle', summary: null, error: null });
     setSummaryKey(null);
   };
@@ -399,7 +406,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     try {
       const summary = await summaryService.generate([...records], {
         scope,
-        scopeDescription: describeFilters(filters),
+        scopeDescription: summaryScopeText,
         reportLanguage: 'en',
         datasetName: dataset.name,
         isSyntheticData: dataset.isSynthetic,
@@ -533,11 +540,9 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   /** Dashboard → Summary with an explicit scope (all records, or the dashboard date range as a filtered scope). */
   const summarizeFromDashboard = (which: 'all' | 'range') => {
     if (which === 'range') {
-      setFilters({ ...DEFAULT_FILTERS, dateFrom: dashRange.from, dateTo: dashRange.to });
-      setPage(0);
-      setScope('filtered');
+      setSummaryFilter({ ...NO_SUMMARY_FILTER, dateFrom: dashRange.from, dateTo: dashRange.to });
     } else {
-      setScope('all');
+      setSummaryFilter(NO_SUMMARY_FILTER);
     }
     goToSummary();
   };
@@ -714,14 +719,25 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
                 <p>One report across your complaints and the responses recorded for them.</p>
               </div>
               {datasetBanners}
+              <SummaryFilters
+                records={dataset.records}
+                filter={summaryFilter}
+                onChange={setSummaryFilter}
+                includedCount={included.length}
+                files={AWS_AUTH_ENABLED ? readyFiles.map((f) => ({ id: f.id, name: f.name, count: f.recordCount })) : undefined}
+                fileIdOf={AWS_AUTH_ENABLED ? fileIdOf : undefined}
+              />
               <div id="deterministic-report">
                 <SummaryWorkspace
                 scope={scope}
-                onScopeChange={setScope}
+                scopeControl={<span />}
+                onScopeChange={(next) => {
+                  if (next === 'all') setSummaryFilter(NO_SUMMARY_FILTER);
+                }}
                 allCount={dataset.records.length}
-                filteredCount={filtered.length}
-                filtersActive={filtersActive}
-                filtersDescription={describeFilters(filters)}
+                filteredCount={included.length}
+                filtersActive={isSummaryFiltered(summaryFilter)}
+                filtersDescription={summaryScopeText}
                 included={{ count: included.length, categories: includedStats.categoryCount, dateSpan: includedSpan }}
                 state={summaryState}
                 stale={stale}
