@@ -2,6 +2,7 @@ import { createHash, createHmac } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, DeleteCommand, GetCommand, PutCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { DatasetStore, Metadata, PrivateObjects, Session, Status } from './core';
+import { signedAwsRequest, objectUrl } from '../analysis/aws-http';
 
 const enc = (value: string) => encodeURIComponent(value).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
 const sha = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');
@@ -59,6 +60,11 @@ export class SignedS3 implements PrivateObjects {
   }
   async size(key: string) { const response = await this.request('HEAD', key); return response ? Number(response.headers.get('content-length')) : null; }
   async read(key: string) { const response = await this.request('GET', key); if (!response) throw new Error('S3 object missing'); return new Uint8Array(await response.arrayBuffer()); }
+  async write(key: string, bytes: Uint8Array): Promise<void> {
+    const response = await signedAwsRequest('s3', this.region, 'PUT', objectUrl(this.bucket, this.region, key), bytes,
+      { 'content-type': 'application/json', 'if-none-match': '*' });
+    if (response.status === 412) throw new Error('Immutable dataset index already exists');
+  }
   async remove(key: string) { await this.request('DELETE', key); }
 }
 export class DynamoDatasets implements DatasetStore {
@@ -87,7 +93,7 @@ export class DynamoDatasets implements DatasetStore {
     const values: Record<string, unknown> = { ':from': from, ':to': to };
     let expression = 'SET #status = :to';
     for (const [key, value] of Object.entries(patch)) {
-      if (!['recordCount', 'error'].includes(key)) throw new Error('Invalid metadata patch');
+      if (!['recordCount', 'indexVersion', 'error'].includes(key)) throw new Error('Invalid metadata patch');
       names['#' + key] = key;
       values[':' + key] = value;
       expression += ', #' + key + ' = :' + key;
