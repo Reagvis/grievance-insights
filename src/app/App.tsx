@@ -12,7 +12,8 @@ import { createExpandedDataset, createSampleDataset } from '../data/demoGrievanc
 import { computeStats, type Dataset, type GrievanceRecord } from '../domain/grievance';
 import type { SummaryScope, SummaryService } from '../domain/summary';
 import { I18nContext, makeI18n, type UiLanguage } from '../i18n/strings';
-import { defaultSummaryService } from '../services/runtimeServices';
+import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServices';
+import { PersistedDatasets } from '../components/PersistedDatasets';
 import {
   buildNoteText,
   buildRecordsZip,
@@ -86,6 +87,7 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
   const [expanded, setExpanded] = useState<Dataset | null>(null);
   const [imported, setImported] = useState<Dataset | null>(null);
   const [choice, setChoice] = useState<DatasetChoice>('sample');
+  const [remoteId, setRemoteId] = useState<string | null>(null);
   const dataset: Dataset = (choice === 'imported' && imported) || (choice === 'expanded' && expanded) || sample;
 
   // ── Exploration state ───────────────────────────────────────────────
@@ -146,8 +148,23 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
   const changeDataset = (next: DatasetChoice) => {
     if (next === choice) return;
     if (next === 'expanded' && !expanded) setExpanded(createExpandedDataset());
+    if (AWS_AUTH_ENABLED) { sessionStorage.removeItem('grievance-insights.remoteDatasetId'); setRemoteId(null); }
     resetForDataset();
     setChoice(next);
+  };
+
+  const useRemoteDataset = (loaded: Dataset) => {
+    resetForDataset();
+    setImported(loaded);
+    setRemoteId(loaded.id);
+    setChoice('imported');
+  };
+
+  const clearRemoteDataset = () => {
+    resetForDataset();
+    setImported(null);
+    setRemoteId(null);
+    setChoice('sample');
   };
 
   const updateFilters = useCallback((patch: Partial<RecordFilters>) => {
@@ -319,7 +336,7 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
           importedLabel={imported ? `Imported · ${imported.sourceFileName} (${formatCount(imported.records.length)})` : null}
           isSynthetic={dataset.isSynthetic}
           onDatasetChange={changeDataset}
-          onImport={() => setImportOpen(true)}
+          onImport={() => AWS_AUTH_ENABLED ? document.getElementById('remote-dataset-file')?.click() : setImportOpen(true)}
           uiLang={uiLang}
           onLangChange={setUiLang}
         />
@@ -360,6 +377,8 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
                   {i18n.t('intro')} Currently loaded: <strong className="intro-dataset">{dataset.name}.</strong>
                 </p>
               </div>
+
+              {AWS_AUTH_ENABLED && <PersistedDatasets onSelect={useRemoteDataset} onClear={clearRemoteDataset} activeId={remoteId} />}
 
               <DatasetOverview stats={stats} />
 
@@ -418,7 +437,7 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
           />
         )}
         {assistantOpen && <AssistantDrawer key={dataset.id} records={dataset.records} onOpenRecord={openRecord} onClose={() => setAssistantOpen(false)} onGoToSummary={goToSummary} />}
-        {importOpen && <ImportDialog onClose={() => setImportOpen(false)} onUse={applyImport} onDownloadTemplate={downloadTemplate} />}
+        {!AWS_AUTH_ENABLED && importOpen && <ImportDialog onClose={() => setImportOpen(false)} onUse={applyImport} onDownloadTemplate={downloadTemplate} />}
         <Toasts toasts={toasts} onDismiss={(id) => setToasts((ts) => ts.filter((t) => t.id !== id))} />
       </div>
     </I18nContext.Provider>
