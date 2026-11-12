@@ -32,9 +32,9 @@ export class DynamoJobs implements JobStore {
   async checkpoint(id: string, expected: number, failed: boolean): Promise<boolean> {
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
-        UpdateExpression: 'SET cursor = :next ADD failureCount :failed',
-        ConditionExpression: '#s = :running AND cursor = :expected',
-        ExpressionAttributeNames: { '#s': 'status' },
+        UpdateExpression: 'SET #cursor = :next ADD failureCount :failed',
+        ConditionExpression: '#s = :running AND #cursor = :expected',
+        ExpressionAttributeNames: { '#s': 'status', '#cursor': 'cursor' },
         ExpressionAttributeValues: { ':next': expected + 1, ':expected': expected, ':failed': failed ? 1 : 0, ':running': 'running' } }));
       return true;
     } catch (error) { if (conditional(error)) return false; throw error; }
@@ -42,8 +42,8 @@ export class DynamoJobs implements JobStore {
   async complete(id: string, key: string, timestamp: string) {
     await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
       UpdateExpression: 'SET #s = :completed, resultsKey = :key, finishedAt = :now',
-      ConditionExpression: '#s = :running AND cursor = total',
-      ExpressionAttributeNames: { '#s': 'status' },
+      ConditionExpression: '#s = :running AND #cursor = #total',
+      ExpressionAttributeNames: { '#s': 'status', '#cursor': 'cursor', '#total': 'total' },
       ExpressionAttributeValues: { ':completed': 'completed', ':running': 'running', ':key': key, ':now': timestamp } }));
   }
   async fail(id: string, code: string, timestamp: string) {
