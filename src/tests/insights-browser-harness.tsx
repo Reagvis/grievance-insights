@@ -10,9 +10,9 @@ import { AnalysisWorkspace } from '../components/AnalysisWorkspace';
 import type { Dataset, GrievanceRecord } from '../domain/grievance';
 import type { AnalysisItem, AnalysisJob, AnalysisReport } from '../services/analysisApi';
 
-const app = document.getElementById('browser-dashboard-root');
-const analysisApp = document.getElementById('browser-analysis-root');
-const statusNode = document.getElementById('dashboard-browser-result');
+const app = document.getElementById('browser-dashboard-root')!;
+const analysisApp = document.getElementById('browser-analysis-root')!;
+const statusNode = document.getElementById('dashboard-browser-result')!;
 if (!app || !analysisApp || !statusNode) throw new Error('Interactive test elements absent');
 const dashboardRoot = createRoot(app);
 const analysisRoot = createRoot(analysisApp);
@@ -193,7 +193,8 @@ async function run() {
   check(notifications.some(n => n.datasetId === 'dataset-b' && n.report?.jobId === jobB.id),
     'Current dataset AI report did not load');
   const beforeOld = notifications.length;
-  resolveOld!(new Response(JSON.stringify({ jobs: [jobA] }), { status: 200,
+  const resolveLate = resolveOld as unknown as (value: Response) => void;
+  resolveLate(new Response(JSON.stringify({ jobs: [jobA] }), { status: 200,
     headers: { 'content-type': 'application/json' } }));
   await settle();
   check(notifications.length === beforeOld, 'Obsolete dataset async result was published');
