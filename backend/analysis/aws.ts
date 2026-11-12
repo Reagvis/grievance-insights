@@ -20,51 +20,57 @@ export class DynamoJobs implements JobStore {
       return true;
     } catch (error) { if (conditional(error)) return false; throw error; }
   }
-  async start(id: string, startedAt: string) {
+  async start(id: string, startedAt: string, attempt = 0) {
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
         UpdateExpression: 'SET #s = :running, startedAt = :started',
-        ConditionExpression: '#s = :queued',
+        ConditionExpression: '#s = :queued AND (attempt = :attempt OR (attribute_not_exists(attempt) AND :attempt = :zero))',
         ExpressionAttributeNames: { '#s': 'status' },
-        ExpressionAttributeValues: { ':running': 'running', ':queued': 'queued', ':started': startedAt } }));
+        ExpressionAttributeValues: { ':running': 'running', ':queued': 'queued', ':started': startedAt, ':attempt': attempt, ':zero': 0 } }));
     } catch (error) { if (!conditional(error)) throw error; }
   }
-  async checkpoint(id: string, expected: number, failed: boolean): Promise<boolean> {
+  async checkpoint(id: string, expected: number, failed: boolean, attempt = 0): Promise<boolean> {
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
         UpdateExpression: 'SET #cursor = :next ADD failureCount :failed',
-        ConditionExpression: '#s = :running AND #cursor = :expected',
+        ConditionExpression: '#s = :running AND #cursor = :expected AND (attempt = :attempt OR (attribute_not_exists(attempt) AND :attempt = :zero))',
         ExpressionAttributeNames: { '#s': 'status', '#cursor': 'cursor' },
-        ExpressionAttributeValues: { ':next': expected + 1, ':expected': expected, ':failed': failed ? 1 : 0, ':running': 'running' } }));
+        ExpressionAttributeValues: { ':next': expected + 1, ':expected': expected, ':failed': failed ? 1 : 0, ':running': 'running', ':attempt': attempt, ':zero': 0 } }));
       return true;
     } catch (error) { if (conditional(error)) return false; throw error; }
   }
-  async complete(id: string, key: string, timestamp: string) {
+  async complete(id: string, key: string, timestamp: string, attempt = 0) {
     await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
       UpdateExpression: 'SET #s = :completed, resultsKey = :key, finishedAt = :now',
-      ConditionExpression: '#s = :running AND #cursor = #total',
+      ConditionExpression: '#s = :running AND #cursor = #total AND (attempt = :attempt OR (attribute_not_exists(attempt) AND :attempt = :zero))',
       ExpressionAttributeNames: { '#s': 'status', '#cursor': 'cursor', '#total': 'total' },
-      ExpressionAttributeValues: { ':completed': 'completed', ':running': 'running', ':key': key, ':now': timestamp } }));
+      ExpressionAttributeValues: { ':completed': 'completed', ':running': 'running', ':key': key, ':now': timestamp, ':attempt': attempt, ':zero': 0 } }));
   }
-  async retry(id: string): Promise<boolean> {
+  async retry(id: string, mode: 'resume' | 'fresh' = 'resume'): Promise<boolean> {
+    const fresh = mode === 'fresh';
+    const reasons = fresh ? '(#error = :exhausted OR #error = :unavailable OR #error = :allfailed)'
+      : '(#error = :exhausted OR #error = :unavailable)';
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
-        UpdateExpression: 'SET #s = :queued, #error = :null, finishedAt = :null, startedAt = :null, attempt = if_not_exists(attempt, :zero) + :one',
-        ConditionExpression: '#s = :failed AND (#error = :exhausted OR #error = :unavailable) AND #cursor <= #total',
+        UpdateExpression: 'SET #s = :queued, #error = :null, finishedAt = :null, startedAt = :null, ' +
+          'attempt = if_not_exists(attempt, :zero) + :one' +
+          (fresh ? ', generation = if_not_exists(generation, :zero) + :one, #cursor = :zero, failureCount = :zero, resultsKey = :null' : ''),
+        ConditionExpression: '#s = :failed AND ' + reasons + ' AND #cursor <= #total',
         ExpressionAttributeNames: { '#s': 'status', '#error': 'error', '#cursor': 'cursor', '#total': 'total' },
         ExpressionAttributeValues: { ':queued': 'queued', ':failed': 'failed', ':exhausted': 'retries_exhausted',
-          ':unavailable': 'queue_unavailable', ':null': null, ':zero': 0, ':one': 1 } }));
+          ':unavailable': 'queue_unavailable', ':allfailed': 'all_records_failed',
+          ':null': null, ':zero': 0, ':one': 1 } }));
       return true;
     } catch (error) { if (conditional(error)) return false; throw error; }
   }
-  async fail(id: string, code: string, timestamp: string) {
+  async fail(id: string, code: string, timestamp: string, attempt = 0) {
     if (!/^[a-z_]{1,60}$/.test(code)) throw new Error('Only safe failure codes may be stored');
     try {
       await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
         UpdateExpression: 'SET #s = :failed, #error = :code, finishedAt = :now',
-        ConditionExpression: 'attribute_exists(id) AND (#s = :queued OR #s = :running)',
+        ConditionExpression: 'attribute_exists(id) AND (#s = :queued OR #s = :running) AND (attempt = :attempt OR (attribute_not_exists(attempt) AND :attempt = :zero))',
         ExpressionAttributeNames: { '#s': 'status', '#error': 'error' },
-        ExpressionAttributeValues: { ':failed': 'failed', ':queued': 'queued', ':running': 'running', ':code': code, ':now': timestamp } }));
+        ExpressionAttributeValues: { ':failed': 'failed', ':queued': 'queued', ':running': 'running', ':code': code, ':now': timestamp, ':attempt': attempt, ':zero': 0 } }));
     } catch (error) { if (!conditional(error)) throw error; }
   }
 }
@@ -113,7 +119,7 @@ export class S3Results implements ResultObjects {
   }
 }
 export class QwenBedrock implements Inference {
-  async analyze(record: GrievanceRecord) {
+  async analyze(record: GrievanceRecord, context?: { jobId: string; attempt: number; generation: number; recordIndex: number }) {
     const payload = textBytes({
       system: [{ text: SYSTEM_PROMPT }],
       messages: [{ role: 'user', content: [{ text: recordPrompt(record) }] }],
@@ -128,7 +134,10 @@ export class QwenBedrock implements Inference {
     };
     if (parsed.usage) {
       console.info(JSON.stringify({
-        event: 'analysis_bedrock_usage', model: MODEL_ID, inputTokens: parsed.usage.inputTokens ?? 0,
+        event: 'analysis_bedrock_usage', model: MODEL_ID,
+        jobId: context?.jobId ?? 'unknown', attempt: context?.attempt ?? 0,
+        generation: context?.generation ?? 0, recordIndex: context?.recordIndex ?? -1,
+        inputTokens: parsed.usage.inputTokens ?? 0,
         outputTokens: parsed.usage.outputTokens ?? 0, totalTokens: parsed.usage.totalTokens ?? 0,
       }));
     }
