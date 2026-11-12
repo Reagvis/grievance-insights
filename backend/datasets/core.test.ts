@@ -108,6 +108,22 @@ describe('authenticated dataset lifecycle', () => {
     expect(response.statusCode).toBe(422);
     expect(data(await f.handler(event('GET', '/api/datasets'))).datasets[0].status).toBe('failed');
   });
+  it('keeps failed partial indexing private and removable after S3 write failure', async () => {
+    const f = fixture();
+    const rows = utf8('id,complaintText\n' +
+      Array.from({ length: 101 }, (_, i) => 'REC-' + i + ',నీరు లేదు').join('\n'));
+    f.setFile(rows);
+    await f.handler(event('POST', '/api/datasets/uploads', true, { name: 'many.csv', bytes: rows.length }));
+    vi.mocked(f.objects.write!).mockRejectedValueOnce(new Error('S3 unavailable'));
+    const response = await f.handler(event('POST', '/api/datasets/' + id + '/finalize'));
+    expect(response.statusCode).toBe(422);
+    expect(data(response).error).toBe('Validation or private indexing failed.');
+    const saved = f.items.get(id);
+    expect(saved).toMatchObject({ status: 'failed', recordCount: 101 });
+    expect(vi.mocked(f.objects.remove).mock.calls.some(([key]) => key.includes('/index-v1/'))).toBe(true);
+    expect((await f.handler(event('DELETE', '/api/datasets/' + id))).statusCode).toBe(204);
+    expect(f.items.has(id)).toBe(false);
+  });
   it('does not delete metadata when object deletion fails', async () => {
     const f = fixture();
     await f.handler(event('POST','/api/datasets/uploads',true,{ name:'pilot.csv', bytes:utf8(csv).length }));
