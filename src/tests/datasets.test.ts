@@ -22,11 +22,25 @@ describe('AWS authenticated dataset frontend client', () => {
   });
   it('lists and loads server-validated records for selection', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse({ datasets: [{ id: 'd1', status: 'ready' }] }))
-      .mockResolvedValueOnce(jsonResponse({ dataset: { id: 'd1' }, records: [{ id: 'one', complaintText: 'విద్యుత్ లేదు' }] }));
+      .mockResolvedValueOnce(jsonResponse({ dataset: { id: 'd1', recordCount: 1 }, records: [{ id: 'one', complaintText: 'విద్యుత్ లేదు' }], nextCursor: null }));
     vi.stubGlobal('fetch', fetcher);
     expect((await listDatasets())[0].id).toBe('d1');
     expect((await openDataset('d1')).records?.[0].complaintText).toBe('విద్యుత్ లేదు');
     expect(fetcher.mock.calls[1][1].credentials).toBe('same-origin');
+    expect(fetcher.mock.calls[1][0]).toBe('/api/datasets/d1?cursor=0');
+  });
+  it('reassembles 2,000 authenticated source records over multiple HTTP pages', async () => {
+    const records = Array.from({ length: 2000 }, (_, i) => ({ id: String(i), complaintText: 'మంచినీరు లేదు' }));
+    const fetcher = vi.fn().mockImplementation(async (path: string) => {
+      const cursor = Number(new URL(path, 'https://example.invalid').searchParams.get('cursor') ?? 0);
+      return jsonResponse({ dataset: { id: 'd1', recordCount: 2000 },
+        records: records.slice(cursor, cursor + 50), nextCursor: cursor + 50 < 2000 ? cursor + 50 : null });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const response = await openDataset('d1');
+    expect(response.records).toHaveLength(2000);
+    expect(response.records?.[1999]).toEqual(records[1999]);
+    expect(fetcher).toHaveBeenCalledTimes(40);
   });
   it('requires confirmation at UI layer, then issues the authenticated DELETE', async () => {
     vi.stubGlobal('window', { location: { origin: 'https://telangana-gov-pilot.reagvis.com' } });
