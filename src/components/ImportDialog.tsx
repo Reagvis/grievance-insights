@@ -1,15 +1,13 @@
-import { CircleAlert, FileJson, FileSpreadsheet, FolderOpen, Info, LoaderCircle, Lock, TriangleAlert, Upload, X } from 'lucide-react';
+import { CircleAlert, FolderOpen, Info, LoaderCircle, TriangleAlert, Upload, X } from 'lucide-react';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useDialog } from '../app/useDialog';
-import { IS_STATIC_BUILD } from '../services/runtimeServices';
 import { formatCount } from '../utils/format';
-import { buildCsvTemplate, buildJsonTemplate, ImportError, readImportFiles, type ImportResult } from '../utils/importer';
+import { ImportError, readImportFiles, type ImportResult } from '../utils/importer';
 import { StatusBadge } from './StatusBadge';
 
 type Props = {
   onClose: () => void;
   onUse: (result: ImportResult) => void;
-  onDownloadTemplate: (content: string, fileName: string, type: string) => void;
 };
 
 const ACCEPT = '.csv,.json,.txt,.pdf,text/csv,application/json,text/plain,application/pdf';
@@ -36,7 +34,7 @@ async function filesFromDrop(e: DragEvent): Promise<File[]> {
   return out;
 }
 
-export function ImportDialog({ onClose, onUse, onDownloadTemplate }: Props) {
+export function ImportDialog({ onClose, onUse }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const filesInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -102,12 +100,6 @@ export function ImportDialog({ onClose, onUse, onDownloadTemplate }: Props) {
               <X size={18} aria-hidden />
             </button>
           </div>
-          <p className="privacy-line">
-            <Lock size={12} aria-hidden />{' '}
-            {IS_STATIC_BUILD
-              ? 'Files are processed entirely in your browser. Records are not uploaded or saved after you close the page.'
-              : 'Files are read in your browser. Generating a summary or asking the assistant sends records to the local API. Records are not saved after you close the page.'}
-          </p>
         </div>
 
         <div className="drawer-body">
@@ -169,27 +161,6 @@ export function ImportDialog({ onClose, onUse, onDownloadTemplate }: Props) {
               aria-label="Choose a folder of notes"
               onChange={(e) => void handleFiles(Array.from(e.target.files ?? []))}
             />
-          </div>
-
-          <div className="templates">
-            <span>CSV / JSON templates:</span>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => onDownloadTemplate(buildCsvTemplate(), 'grievance-import-template.csv', 'text/csv')}
-            >
-              <FileSpreadsheet size={14} aria-hidden /> CSV
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => onDownloadTemplate(buildJsonTemplate(), 'grievance-import-template.json', 'application/json')}
-            >
-              <FileJson size={14} aria-hidden /> JSON
-            </button>
-            <span className="muted">
-              Columns: id, complaintText, responseText, language, category, issueType, department, district, submittedAt, respondedAt, status
-            </span>
           </div>
 
           {error && (

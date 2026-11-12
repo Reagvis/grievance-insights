@@ -17,6 +17,8 @@ type Props = {
   onLangChange: (lang: UiLanguage) => void;
   /** Set in live mode: replaces the demo dataset picker, import and prototype badge. */
   live?: LiveHeaderInfo | null;
+  /** Set in the AWS build: real uploaded files only, so no sample/prototype labels and no sample dataset picker. */
+  realData?: { datasetName: string | null } | null;
 };
 
 export function BrandMark() {
@@ -42,7 +44,7 @@ export type LiveHeaderInfo = {
   mock: boolean;
 };
 
-export function AppHeader({ datasetChoice, importedLabel, isSynthetic, onDatasetChange, onImport, uiLang, onLangChange, live, authUser, onLogout }: Props) {
+export function AppHeader({ onImport, uiLang, onLangChange, live, realData, authUser, onLogout }: Props) {
   const { t } = useI18n();
   const loadedLabel = live?.loadedAt ? formatDateTime(live.loadedAt) : null;
   const langToggle = (
@@ -55,6 +57,39 @@ export function AppHeader({ datasetChoice, importedLabel, isSynthetic, onDataset
       </button>
     </div>
   );
+  if (realData) {
+    return (
+      <header className="app-header">
+        <div className="brand">
+          <BrandMark />
+          <div className="brand-text">
+            <span className="brand-name">{t('appName')}</span>
+            <span className="brand-sub">{t('appSubtitle')}</span>
+          </div>
+        </div>
+        {realData.datasetName && (
+          <span className="dataset-chip" title={realData.datasetName}>
+            {realData.datasetName}
+          </span>
+        )}
+        <div className="header-actions">
+          <button type="button" className="btn btn-secondary btn-header" onClick={onImport}>
+            <Upload size={14} aria-hidden />
+            Upload file
+          </button>
+          {authUser && onLogout && (
+            <div className="auth-header-user">
+              <span title={authUser}>{authUser}</span>
+              <button type="button" className="btn btn-secondary btn-header" onClick={onLogout}>
+                Sign out
+              </button>
+            </div>
+          )}
+          {langToggle}
+        </div>
+      </header>
+    );
+  }
   if (live) {
     return (
       <header className="app-header">
@@ -91,26 +126,7 @@ export function AppHeader({ datasetChoice, importedLabel, isSynthetic, onDataset
           <span className="brand-sub">{t('appSubtitle')}</span>
         </div>
       </div>
-      <span className="proto-badge" title={isSynthetic ? 'All records shown are synthetic demonstration data' : 'Prototype running on locally imported data'}>
-        <FlaskConical size={13} aria-hidden />
-        {isSynthetic ? t('prototypeBadge') : t('prototypeBadgeImported')}
-      </span>
       <div className="header-actions">
-        <div className="dataset-picker">
-          <label htmlFor="dataset-select" className="sr-only">
-            {t('dataset')}
-          </label>
-          <select
-            id="dataset-select"
-            className="select"
-            value={datasetChoice}
-            onChange={(e) => onDatasetChange(e.target.value as DatasetChoice)}
-          >
-            <option value="sample">{t('datasetSample')}</option>
-            <option value="expanded">{t('datasetExpanded')}</option>
-            {importedLabel && <option value="imported">{importedLabel}</option>}
-          </select>
-        </div>
         <button type="button" className="btn btn-secondary btn-header" onClick={onImport}>
           <Upload size={14} aria-hidden />
           {t('importData')}

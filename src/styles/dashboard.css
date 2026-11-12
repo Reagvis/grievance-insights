@@ -1058,3 +1058,18 @@ button.case-chip:hover {
     padding-inline: 16px;
   }
 }
+
+/* AWS build: name of the open real dataset, shown where the demo "prototype" badge would be. */
+.dataset-chip {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  color: var(--ink-700, var(--ink-600));
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}

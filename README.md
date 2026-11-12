@@ -39,6 +39,8 @@ Repository: `Reagvis/grievance-insights`. In Settings → Pages, use **Deploy fr
 
 The separate AWS static build uses `npm run build:aws`. It retains the same browser-only `pages` processing mode but emits root-relative `/assets/...` URLs for CloudFront SPA routes. The guarded GitHub Actions workflow uses this build; it does not change the legacy GitHub Pages command above.
 
+The AWS build contains **no sample data** (it is tree-shaken out of the bundle). After sign-in it shows an empty prompt until a real uploaded CSV/JSON dataset is opened, and the header shows that dataset's name instead of the prototype/sample labels.
+
 > **Prototype · Sample Data.** Every record bundled with this app is synthetic demonstration content written for the prototype. It is not CM Helpline data, and no figure in the app describes real government activity.
 
 ## What it does today
@@ -49,7 +51,6 @@ The separate AWS static build uses `npm run build:aws`. It retains the same brow
 | Search by case ID, Telugu/English text, category, issue type, department, district (Unicode/NFC-safe, AND terms) | Working |
 | Filter by category, status and response presence; reset; accurate counts | Working |
 | Record detail with complaint and response kept separate, prev/next, copy | Working |
-| Record translation bar: Original / English / Original + English | Bundled English translations for all sample templates; exact source-text matching also supports the expanded dataset. Imported text without a bundled translation retains its original with an availability message. Copy follows the selected view; note and ZIP exports keep the original. No translation requests leave the browser. |
 | Download one note (`GRV-000128-note.txt`, UTF-8) | Working |
 | Download all records as ZIP (notes + `manifest.csv` + README) | Working |
 | Export only the filtered records as ZIP (separate, clearly labelled action) | Working |
@@ -127,7 +128,7 @@ POST requests use `Content-Type: application/json`. Invalid requests return JSON
   prefer TXT until a server-side extractor / OCR is connected.
 
 
-UTF-8 CSV (with or without BOM) or JSON. Templates can be downloaded from the Import dialog.
+UTF-8 CSV (with or without BOM) or JSON.
 
 ```csv
 id,complaintText,responseText,language,category,issueType,department,district,submittedAt,respondedAt,status

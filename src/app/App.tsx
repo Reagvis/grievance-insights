@@ -81,6 +81,8 @@ async function copyText(text: string): Promise<void> {
 
 const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
 
+/** The AWS build ships no sample data: nothing is shown until a real uploaded file is opened. */
+const NO_DATASET: Dataset = { id: 'no-dataset', name: 'No dataset open', kind: 'imported', records: [], isSynthetic: false };
 const EMPTY_DATASET: Dataset = { id: 'live-empty', name: 'CM Helpline complaints', kind: 'live', records: [], isSynthetic: false };
 
 type LiveState = {
@@ -105,7 +107,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   }, [uiLang]);
 
   // ── Datasets (in memory only) ───────────────────────────────────────
-  const sample = useMemo(() => createSampleDataset(), []);
+  const sample = useMemo(() => (import.meta.env.MODE === 'aws' ? NO_DATASET : createSampleDataset()), []) // inline MODE check so the AWS bundle drops the sample data entirely;
   const [expanded, setExpanded] = useState<Dataset | null>(null);
   const [imported, setImported] = useState<Dataset | null>(null);
   const [choice, setChoice] = useState<DatasetChoice>('sample');
@@ -126,6 +128,9 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     : (choice === 'imported' && imported) || (choice === 'expanded' && expanded) || sample;
   /** False only while the very first live load is running or has failed. */
   const dataReady = !IS_LIVE || live.dataset !== null;
+  /** AWS build: waiting for the user to open or upload a real file (there is no sample to fall back on). */
+  const awaitingDataset = AWS_AUTH_ENABLED && remoteId === null;
+  const pagesReady = dataReady && !awaitingDataset;
 
   // ── Live data (real backend) ─────────────────────────────────────────
   const [skippedCount, setSkippedCount] = useState(0);
@@ -269,7 +274,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
 
   const changeDataset = (next: DatasetChoice) => {
     if (next === choice) return;
-    if (next === 'expanded' && !expanded) setExpanded(createExpandedDataset());
+    if (next === 'expanded' && !expanded && import.meta.env.MODE !== 'aws') setExpanded(createExpandedDataset());
     if (AWS_AUTH_ENABLED) { sessionStorage.removeItem('grievance-insights.remoteDatasetId'); setRemoteId(null); }
     resetForDataset();
     setChoice(next);
@@ -454,9 +459,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     notify('success', `Using ${formatCount(result.records.length)} imported records from ${result.fileName}`);
   };
 
-  const downloadTemplate = (content: string, name: string, type: string) =>
-    safeDownload(() => triggerDownload(utf8Blob(content, type), name), `Download started: ${name}`);
-
   const goToSummary = () => {
     navigate({ page: 'summary', noteId: null });
     window.setTimeout(() => generateRef.current?.focus(), 80);
@@ -545,6 +547,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           onImport={() => AWS_AUTH_ENABLED ? document.getElementById('remote-dataset-file')?.click() : setImportOpen(true)}
           uiLang={uiLang}
           onLangChange={setUiLang}
+          realData={AWS_AUTH_ENABLED ? { datasetName: remoteId ? (imported?.sourceFileName ?? null) : null } : null}
           live={
             IS_LIVE
               ? {
@@ -556,11 +559,11 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
               : null
           }
         />
-        {dataReady && <AppNav page={route.page} onNavigate={goToPage} complaintCount={dataset.records.length} />}
+        {pagesReady && <AppNav page={route.page} onNavigate={goToPage} complaintCount={dataset.records.length} />}
 
         {AWS_AUTH_ENABLED && (
           // Stays mounted on every page so the saved dataset is restored on load and the header Import button works anywhere.
-          <div className="aws-data" hidden={route.page !== 'dashboard'}>
+          <div className="aws-data" hidden={!awaitingDataset && route.page !== 'dashboard'}>
             <PersistedDatasets onSelect={useRemoteDataset} onClear={clearRemoteDataset} activeId={remoteId} />
           </div>
         )}
@@ -584,7 +587,24 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           </div>
         )}
 
-        {dataReady && route.page === 'dashboard' && (
+        {awaitingDataset && (
+          <main className="main" id="main">
+            <div className="main-inner">
+              <EmptyState
+                icon={<FileSearch size={28} aria-hidden />}
+                action={
+                  <button type="button" className="btn btn-primary" onClick={() => document.getElementById('remote-dataset-file')?.click()}>
+                    Upload a file
+                  </button>
+                }
+              >
+                No dataset is open. Upload a CSV or JSON file of complaints, or open one you saved earlier from the list above.
+              </EmptyState>
+            </div>
+          </main>
+        )}
+
+        {pagesReady && route.page === 'dashboard' && (
           <DashboardPage
             dataset={dataset}
             from={dashRange.from}
@@ -614,7 +634,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           </div>
         )}
 
-        {dataReady && route.page === 'complaints' && (
+        {pagesReady && route.page === 'complaints' && (
           <div className="workspace workspace--complaints">
             <RecordExplorer
               totalCount={dataset.records.length}
@@ -643,7 +663,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           </div>
         )}
 
-        {dataReady && route.page === 'summary' && (
+        {pagesReady && route.page === 'summary' && (
           <main className="main" id="main">
             <div className="main-inner">
               <div className="intro">
@@ -680,9 +700,9 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           </main>
         )}
 
-        {dataReady && !assistantOpen && <AssistantLauncher onOpen={() => setAssistantOpen(true)} />}
+        {pagesReady && !assistantOpen && <AssistantLauncher onOpen={() => setAssistantOpen(true)} />}
 
-        {!inlineDetail && dataReady && detail}
+        {!inlineDetail && pagesReady && detail}
         {assistantOpen && (
           <ChatPanel
             store={chat}
@@ -694,7 +714,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
             onClose={() => setAssistantOpen(false)}
           />
         )}
-        {!AWS_AUTH_ENABLED && importOpen && <ImportDialog onClose={() => setImportOpen(false)} onUse={applyImport} onDownloadTemplate={downloadTemplate} />}
+        {!AWS_AUTH_ENABLED && importOpen && <ImportDialog onClose={() => setImportOpen(false)} onUse={applyImport} />}
         <Toasts toasts={toasts} onDismiss={(id) => setToasts((ts) => ts.filter((t) => t.id !== id))} />
       </div>
     </I18nContext.Provider>
