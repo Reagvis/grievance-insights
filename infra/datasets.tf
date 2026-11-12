@@ -158,6 +158,7 @@ resource "aws_lambda_function" "datasets_api" {
       DATASETS_BUCKET_NAME = aws_s3_bucket.datasets.id
       DATASETS_TABLE_NAME  = aws_dynamodb_table.datasets.name
       SESSIONS_TABLE_NAME  = aws_dynamodb_table.sessions.name
+      EXTRACTION_QUEUE_URL = aws_sqs_queue.extraction.id
     }
   }
   depends_on = [aws_cloudwatch_log_group.datasets_lambda, aws_iam_role_policy.datasets_worker_runtime]

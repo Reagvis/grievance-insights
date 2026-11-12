@@ -85,3 +85,50 @@ describe('seven-format upload client', () => {
     expect(steps.at(-1)).toBe('Extracting text and validating…');
   });
 });
+
+describe('asynchronous PDF extraction in the upload client', () => {
+  const ds = (status: string, extra: object = {}) => ({ id: 'd', name: 'a.pdf', format: 'pdf', status, bytes: 3, recordCount: 0, createdAt: '', error: null, ...extra });
+  const script = (...lists: unknown[][]) => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ dataset: { id: 'd' }, upload: { url: 'https://private-s3.invalid/put', headers: {} } }, 201))
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce(jsonResponse({ dataset: ds('extracting') }, 202));
+    for (const l of lists) f.mockResolvedValueOnce(jsonResponse({ datasets: l }));
+    return f;
+  };
+  it('polls the list until the dataset is ready and reports progress; ready is returned only afterwards', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://x' } });
+    const f = script([ds('extracting')], [ds('extracting')], [ds('ready', { recordCount: 1 })]);
+    vi.stubGlobal('fetch', f);
+    const steps: string[] = [];
+    const done = await uploadDataset(new File(['xyz'], 'a.pdf'), s => steps.push(s), { pollMs: 1 });
+    expect(done.status).toBe('ready');
+    expect(f.mock.calls.filter(c => c[0] === '/api/datasets').length).toBe(3);
+    expect(steps.filter(s => s.startsWith('Extracting text from the PDF')).length).toBe(3);
+  });
+  it('surfaces the server’s reason when extraction fails, and never returns a dataset', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://x' } });
+    vi.stubGlobal('fetch', script([ds('failed', { error: 'The PDF is password-protected. Remove the password and upload it again.' })]));
+    await expect(uploadDataset(new File(['xyz'], 'a.pdf'), () => {}, { pollMs: 1 })).rejects.toThrow('password-protected');
+  });
+  it('stops waiting after the maximum wait and says extraction continues in the background', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://x' } });
+    vi.stubGlobal('fetch', script([ds('extracting')], [ds('extracting')], [ds('extracting')]));
+    await expect(uploadDataset(new File(['xyz'], 'a.pdf'), () => {}, { pollMs: 5, maxWaitMs: 8 })).rejects.toThrow(/continues in the background/);
+  });
+  it('reports a dataset deleted during extraction', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://x' } });
+    vi.stubGlobal('fetch', script([]));
+    await expect(uploadDataset(new File(['xyz'], 'a.pdf'), () => {}, { pollMs: 1 })).rejects.toThrow(/removed during extraction/);
+  });
+  it('non-PDF formats never poll', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://x' } });
+    const f = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ dataset: { id: 'd' }, upload: { url: 'https://private-s3.invalid/put', headers: {} } }, 201))
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce(jsonResponse({ dataset: ds('ready', { format: 'docx' }) }));
+    vi.stubGlobal('fetch', f);
+    expect((await uploadDataset(new File(['xyz'], 'a.docx'), () => {})).status).toBe('ready');
+    expect(f).toHaveBeenCalledTimes(3);
+  });
+});

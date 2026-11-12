@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { zipSync } from 'fflate';
 
@@ -9,12 +10,12 @@ const zipPath = new URL('auth-lambda.zip', outputDirectory);
 
 await mkdir(outputDirectory, { recursive: true });
 await build({
-  entryPoints: [new URL('../backend/auth/handler.ts', import.meta.url).pathname],
+  entryPoints: [fileURLToPath(new URL('../backend/auth/handler.ts', import.meta.url))],
   bundle: true,
   format: 'cjs',
   platform: 'node',
   target: 'node22',
-  outfile: bundlePath.pathname,
+  outfile: fileURLToPath(bundlePath),
   sourcemap: false,
   legalComments: 'none',
   minify: false,
@@ -35,7 +36,7 @@ Object.assign(process.env, {
   SESSIONS_TABLE_NAME: 'packaging-sessions',
   SESSION_TTL_SECONDS: '900',
 });
-const packagedModule = createRequire(import.meta.url)(bundlePath.pathname);
+const packagedModule = createRequire(import.meta.url)(fileURLToPath(bundlePath));
 const health = await packagedModule.handler({
   headers: {},
   requestContext: { http: { method: 'GET', path: '/api/health' } },
@@ -43,17 +44,17 @@ const health = await packagedModule.handler({
 if (health.statusCode !== 200 || health.body !== '{"status":"ok"}') {
   throw new Error('Packaged Lambda health smoke test failed');
 }
-console.log(`Packaged ${zipPath.pathname}`);
+console.log(`Packaged ${fileURLToPath(zipPath)}`);
 
 const datasetBundlePath = new URL('datasets-lambda.cjs', outputDirectory);
 const datasetZipPath = new URL('datasets-lambda.zip', outputDirectory);
 await build({
-  entryPoints: [new URL('../backend/datasets/handler.ts', import.meta.url).pathname],
+  entryPoints: [fileURLToPath(new URL('../backend/datasets/handler.ts', import.meta.url))],
   bundle: true,
   format: 'cjs',
   platform: 'node',
   target: 'node22',
-  outfile: datasetBundlePath.pathname,
+  outfile: fileURLToPath(datasetBundlePath),
   sourcemap: false,
   legalComments: 'none',
   minify: false,
@@ -69,9 +70,9 @@ Object.assign(process.env, {
   DATASETS_TABLE_NAME: 'packaging-dataset-metadata',
   AWS_REGION: 'ap-south-1',
 });
-const datasetModule = createRequire(import.meta.url)(datasetBundlePath.pathname);
+const datasetModule = createRequire(import.meta.url)(fileURLToPath(datasetBundlePath));
 if (typeof datasetModule.handler !== 'function') throw new Error('Dataset Lambda handler is missing');
-console.log(`Packaged ${datasetZipPath.pathname}`);
+console.log(`Packaged ${fileURLToPath(datasetZipPath)}`);
 
 const analysisTargets = [
   ['analysis-api', '../backend/analysis/api-handler.ts'],
@@ -87,12 +88,12 @@ for (const [name, entryPoint] of analysisTargets) {
   const bundlePath = new URL(name + '-lambda.cjs', outputDirectory);
   const zipPath = new URL(name + '-lambda.zip', outputDirectory);
   await build({
-    entryPoints: [new URL(entryPoint, import.meta.url).pathname],
+    entryPoints: [fileURLToPath(new URL(entryPoint, import.meta.url))],
     bundle: true,
     format: 'cjs',
     platform: 'node',
     target: 'node22',
-    outfile: bundlePath.pathname,
+    outfile: fileURLToPath(bundlePath),
     sourcemap: false,
     legalComments: 'none',
     minify: false,
@@ -102,8 +103,8 @@ for (const [name, entryPoint] of analysisTargets) {
     { 'index.js': [bundle, { mtime: new Date(1980, 0, 1, 0, 0, 0) }] },
     { level: 9 },
   ), { mode: 0o600 });
-  const packaged = createRequire(import.meta.url)(bundlePath.pathname);
+  const packaged = createRequire(import.meta.url)(fileURLToPath(bundlePath));
   if (typeof packaged.handler !== 'function') throw new Error(name + ' handler missing from Lambda bundle');
   if (name === 'analysis-worker') await packaged.handler({ Records: [] });
-  console.log('Packaged ' + zipPath.pathname);
+  console.log('Packaged ' + fileURLToPath(zipPath));
 }

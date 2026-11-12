@@ -103,3 +103,13 @@ variable "analysis_worker_concurrency" {
     error_message = "Analysis concurrency must be an integer from 1 through 4."
   }
 }
+
+variable "extraction_worker_concurrency" {
+  description = "Reserved concurrency of the PDF/OCR extraction worker. One keeps cost and memory pressure minimal for the pilot."
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.extraction_worker_concurrency >= 1 && var.extraction_worker_concurrency <= 4 && floor(var.extraction_worker_concurrency) == var.extraction_worker_concurrency
+    error_message = "Extraction concurrency must be an integer from 1 through 4."
+  }
+}

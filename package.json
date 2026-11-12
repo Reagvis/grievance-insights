@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "backend:package": "node scripts/package-auth-lambda.mjs",
+    "backend:package": "node scripts/package-auth-lambda.mjs && node scripts/package-extractor-lambda.mjs",
     "backend:test": "vitest run backend",
     "backend:typecheck": "tsc -p backend/tsconfig.json",
     "dev": "vite",

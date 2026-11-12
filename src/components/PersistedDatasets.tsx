@@ -26,6 +26,13 @@ export function PersistedDatasets({ onSelect, onClear, activeId }: Props) {
     finally { setBusy(false); }
   }
   useEffect(() => {
+    if (!items.some(item => item.status === 'extracting')) return;
+    const timer = window.setInterval(() => { void refresh(); }, 5000);
+    return () => window.clearInterval(timer);
+    // refresh only reads state setters; the interval is keyed to whether anything is extracting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
@@ -69,7 +76,7 @@ export function PersistedDatasets({ onSelect, onClear, activeId }: Props) {
   return <section className="notice notice--info dataset-notice" aria-label="Persisted datasets">
     <div style={{ width: '100%' }}>
       <strong>Private uploaded datasets</strong>
-      <p>.txt, .md, .docx and .pdf (one grievance per file) · .csv, .json and .jsonl (up to 200 grievances) · PDF up to 10 MiB and 50 pages, other types up to 1–5 MiB · stored privately in AWS. Uploads are available after refresh.</p>
+      <p>.txt, .md, .docx and .pdf (one grievance per file) · .csv, .json and .jsonl (up to 2,000 grievances, 20 MiB) · PDF up to 10 MiB and 50 pages (scans are read by OCR), DOCX up to 5 MiB, TXT/MD up to 1 MiB · stored privately in AWS. Uploads are available after refresh.</p>
       <input id="remote-dataset-file" ref={fileRef} type="file" accept={SOURCE_FORMATS.map(f => '.' + f).join(',')} aria-label="Upload private grievance dataset" disabled={busy} onChange={e => void upload(e.target.files?.[0])} />
       {progress && <p role="status">{progress}</p>}
       {error && <p role="alert" className="notice--error">{error}</p>}
