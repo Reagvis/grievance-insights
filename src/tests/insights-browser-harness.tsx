@@ -89,12 +89,18 @@ function render(dataset: Dataset, activeJob: AnalysisJob | null, report: Analysi
   flushSync(() => dashboardRoot.render(<InsightsDashboard dataset={dataset} filteredCount={dataset.records.length}
     job={activeJob} report={report} onOpenRecord={id => opened.push(id)} />));
 }
+function chartPanel(heading: string): HTMLElement {
+  const panel = element<HTMLElement>(heading).closest<HTMLElement>('.insight-chart');
+  check(!!panel, 'Chart panel missing for ' + heading);
+  return panel!;
+}
 function chartButton(container: string, term: string): HTMLButtonElement {
-  const buttons = [...element<HTMLElement>(container).querySelectorAll<HTMLButtonElement>('button')];
+  const panel = chartPanel(container);
+  const buttons = [...panel.querySelectorAll<HTMLButtonElement>('button')];
   const selected = buttons.find(button => button.getAttribute('aria-label')?.includes(term));
   check(!!selected, 'Chart option missing: ' + container + ' ' + term +
     ' | labels=' + buttons.map(button => button.getAttribute('aria-label')).join('; ') +
-    ' | markup=' + element<HTMLElement>(container).outerHTML.slice(0, 1200));
+    ' | markup=' + panel.outerHTML.slice(0, 1200));
   return selected!;
 }
 async function run() {
@@ -140,7 +146,7 @@ async function run() {
   // 5. Changing analysis status must immediately clear the *old* completed AI report.
   render(datasetA, { ...jobA, status: 'running' }, reportA);
   await settle();
-  check(app.querySelector('#ai-cat-chart .insight-bar-button') === null, 'Stale AI chart shown during running state');
+  check(chartPanel('#ai-cat-chart').querySelector('.insight-bar-button') === null, 'Stale AI chart shown during running state');
   check(!app.textContent?.includes('నీటి సమస్యల సమగ్ర వివరణ'), 'Stale category narrative shown during running state');
   check(app.querySelector('.insight-case') === null, 'Stale AI case evidence shown during running state');
 
@@ -152,11 +158,11 @@ async function run() {
   check(app.textContent?.includes('Synthetic B'), 'New dataset scope not shown');
   check(app.textContent?.includes('Explore cases behind the figures'), 'Old selection retained after dataset switch');
   check(app.querySelector('.insight-match-button') === null, 'Old case selection retained after dataset switch');
-  check(app.querySelector('#ai-cat-chart .insight-bar-button') === null, 'Old report leaked into new dataset');
+  check(chartPanel('#ai-cat-chart').querySelector('.insight-bar-button') === null, 'Old report leaked into new dataset');
   check(!app.textContent?.includes('నీటి సమస్యల సమగ్ర వివరణ'), 'Old AI narrative leaked into new dataset');
   render(datasetB, jobB, reportB);
   await settle();
-  check(!!app.querySelector('#ai-cat-chart .insight-bar-button'), 'New dataset report did not display');
+  check(!!chartPanel('#ai-cat-chart').querySelector('.insight-bar-button'), 'New dataset report did not display');
   check(!app.textContent?.includes('నీటి సమస్యల సమగ్ర వివరణ'), 'A report remained after B completed');
 
   // 7. Late async response for unmounted dataset cannot be published into new dataset.
