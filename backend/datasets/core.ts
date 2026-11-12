@@ -50,7 +50,8 @@ function body(event: APIGatewayProxyEventV2): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(400, 'Expected JSON object.');
   return value as Record<string, unknown>;
 }
-export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uint8Array): GrievanceRecord[] {
+export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uint8Array,
+  enforceAiBounds = true): GrievanceRecord[] {
   if (!bytes.length || bytes.length > MAX_DATASET_BYTES) throw new ApiError(422, 'File must be between 1 byte and 20 MiB.');
   let parsed;
   try {
@@ -61,7 +62,7 @@ export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uin
   }
   if (parsed.totalRows > MAX_DATASET_RECORDS || parsed.records.length > MAX_DATASET_RECORDS) throw new ApiError(422, 'Dataset exceeds the 2,000-record limit.');
   if (parsed.rejectedRows.length || parsed.duplicates.length || parsed.emptyRows || !parsed.records.length) throw new ApiError(422, 'Every row requires a unique ID and complaintText; empty, missing, or duplicate rows are not accepted.');
-  for (let i = 0; i < parsed.records.length; i++) {
+  for (let i = 0; enforceAiBounds && i < parsed.records.length; i++) {
     try { validateRecordBounds(parsed.records[i]); }
     catch (error) { throw new ApiError(422, 'Record ' + (i + 1) + ': ' + (error instanceof Error ? error.message : 'Input size exceeds safety limit.')); }
   }
@@ -136,7 +137,7 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
         const end = Math.min(item.recordCount, cursor + INDEX_CHUNK_RECORDS);
         const records = item.indexVersion === 1
           ? await readIndexedRange(item, objects, cursor, end)
-          : validateDataset(item.name, item.format, await objects.read(item.key)).slice(cursor, end);
+          : validateDataset(item.name, item.format, await objects.read(item.key), false).slice(cursor, end);
         return result(200, { dataset: publicMetadata(item), records,
           nextCursor: end < item.recordCount ? end : null });
       }
