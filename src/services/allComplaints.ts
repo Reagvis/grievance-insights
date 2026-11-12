@@ -5,7 +5,7 @@ import { listDatasets, openDataset, type RemoteDataset } from './datasetApi';
  * The signed-in app shows ONE list: every complaint from every uploaded file, newest file first.
  * Uploads are still stored as separate private files (one per upload); this module merges them for display.
  */
-export type SourceRef = { datasetId: string; fileName: string; fileRecordCount: number };
+export type SourceRef = { datasetId: string; fileName: string; fileRecordCount: number; /** When the file was uploaded (ISO). */ addedAt: string };
 export type AllComplaints = {
   /** Merged list; IDs are unique across files. */
   records: GrievanceRecord[];
@@ -35,7 +35,7 @@ export function mergeComplaints(loaded: Array<{ dataset: RemoteDataset; records:
       }
       seen.add(id);
       records.push(id === record.id ? record : { ...record, id });
-      sourceOf.set(id, { datasetId: dataset.id, fileName: dataset.name, fileRecordCount: list.length });
+      sourceOf.set(id, { datasetId: dataset.id, fileName: dataset.name, fileRecordCount: list.length, addedAt: dataset.createdAt });
     }
   }
   return { records, sourceOf, recordsByDataset };

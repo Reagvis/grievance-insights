@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { CASE_STATUSES, type CaseStatus, type GrievanceRecord } from '../domain/grievance';
 import { useI18n } from '../i18n/strings';
 import { formatCount } from '../utils/format';
+import { timeAgo } from '../utils/timeAgo';
 import { isFiltered, type RecordFilters, type ResponseFilter } from '../utils/recordSearch';
 import { DateRangeFilter } from './DateRangeFilter';
 import { EmptyState } from './EmptyState';
@@ -24,6 +25,8 @@ type Props = {
   onDownloadAll: () => void;
   onExportFiltered: () => void;
   zipBusy: 'all' | 'filtered' | null;
+  /** Record ID → when its file was uploaded (ISO). Shows "Added 5 minutes ago" on each row. */
+  addedAt?: ReadonlyMap<string, string>;
 };
 
 export function RecordExplorer({
@@ -40,9 +43,17 @@ export function RecordExplorer({
   onDownloadAll,
   onExportFiltered,
   zipBusy,
+  addedAt,
 }: Props) {
   const { t, categoryLabel, statusLabel } = useI18n();
   const active = isFiltered(filters);
+  // "Added … ago" labels stay current while the page is open.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (!addedAt) return;
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [addedAt]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
   const start = safePage * PAGE_SIZE;
@@ -192,7 +203,7 @@ export function RecordExplorer({
         ) : (
           <ul className="record-list" aria-label={t('records')} onKeyDown={onListKey}>
             {pageItems.map((r) => (
-              <RecordListItem key={r.id} record={r} selected={r.id === selectedId} onOpen={onOpen} />
+              <RecordListItem key={r.id} record={r} selected={r.id === selectedId} onOpen={onOpen} addedLabel={timeAgo(addedAt?.get(r.id), clock)} />
             ))}
           </ul>
         )}

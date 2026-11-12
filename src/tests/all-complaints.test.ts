@@ -15,8 +15,8 @@ describe('merging every uploaded file into one complaints list', () => {
     const a = file('a', 'new.csv', '2026-02-01'), b = file('b', 'old.csv', '2026-01-01');
     const m = mergeComplaints([{ dataset: a, records: [rec('N-1'), rec('N-2')] }, { dataset: b, records: [rec('O-1')] }]);
     expect(m.records.map((r) => r.id)).toEqual(['N-1', 'N-2', 'O-1']);
-    expect(m.sourceOf.get('N-2')).toEqual({ datasetId: 'a', fileName: 'new.csv', fileRecordCount: 2 });
-    expect(m.sourceOf.get('O-1')).toEqual({ datasetId: 'b', fileName: 'old.csv', fileRecordCount: 1 });
+    expect(m.sourceOf.get('N-2')).toEqual({ datasetId: 'a', fileName: 'new.csv', fileRecordCount: 2, addedAt: '2026-02-01' });
+    expect(m.sourceOf.get('O-1')).toEqual({ datasetId: 'b', fileName: 'old.csv', fileRecordCount: 1, addedAt: '2026-01-01' });
     expect(m.recordsByDataset.get('a')!.map((r) => r.id)).toEqual(['N-1', 'N-2']);
   });
   it('never drops or overwrites a repeated ID: the later file’s copy is renamed with its file name', () => {

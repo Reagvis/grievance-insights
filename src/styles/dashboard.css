@@ -1371,3 +1371,51 @@ button.case-chip:hover {
     grid-column: 2;
   }
 }
+
+/* ───── Compact failed-uploads notice and "Added … ago" on list rows ───── */
+.file-problems {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 14px;
+}
+.file-problems-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.file-problems-head .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.file-problems-clear {
+  margin-left: auto;
+  color: #991b1b;
+}
+.file-problems-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.file-problems-list li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+}
+.row-added {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-500, #64748b);
+  font-size: 12px;
+}

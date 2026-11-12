@@ -9,9 +9,11 @@ type Props = {
   record: GrievanceRecord;
   selected: boolean;
   onOpen: (id: string) => void;
+  /** e.g. "Added 5 minutes ago" (signed-in build). */
+  addedLabel?: string | null;
 };
 
-export const RecordListItem = memo(function RecordListItem({ record, selected, onOpen }: Props) {
+export const RecordListItem = memo(function RecordListItem({ record, selected, onOpen, addedLabel }: Props) {
   const { categoryLabel, t } = useI18n();
   const date = formatDate(record.submittedAt);
   const responded = hasResponse(record);
@@ -46,6 +48,7 @@ export const RecordListItem = memo(function RecordListItem({ record, selected, o
           </span>
           {!responded && <span className="no-response-pill">{t('responseMissing')}</span>}
         </span>
+        {addedLabel && <span className="row-added">Added {addedLabel}</span>}
       </button>
     </li>
   );
