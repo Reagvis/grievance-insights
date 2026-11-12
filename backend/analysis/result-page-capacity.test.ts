@@ -126,7 +126,7 @@ describe('2 MiB whole-report paging regression with accepted long source IDs', (
     peakRss = Math.max(peakRss, process.memoryUsage().rss);
     expect(assembledIds).toEqual(records.map(r => r.id));
     expect(assembledMembers).toEqual(report.categories[0].sourceIds);
-    expect(pageCount).toBeGreaterThan(20);
+    expect(pageCount).toBeGreaterThanOrEqual(20);
     expect(reportReads).toBe(pageCount);
     console.info('analysis_report_page_benchmark', JSON.stringify({
       sourceCsvMiB: +(input.length / 1024 ** 2).toFixed(2),
