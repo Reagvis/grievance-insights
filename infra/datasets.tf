@@ -113,14 +113,14 @@ data "aws_iam_policy_document" "datasets_runtime" {
 # approved api-execution role, but not creation of an arbitrary managed policy.
 resource "aws_iam_role_policy" "datasets_runtime" {
   name   = "${local.name_prefix}-datasets-runtime"
-  role   = aws_iam_role.api_execution.id
+  role   = aws_iam_role.worker_execution.id
   policy = data.aws_iam_policy_document.datasets_runtime.json
 }
 
 resource "aws_lambda_function" "datasets_api" {
   function_name                  = "${local.name_prefix}-datasets-api"
   description                    = "Authenticated private dataset ingestion and retrieval API"
-  role                           = aws_iam_role.api_execution.arn
+  role                           = aws_iam_role.worker_execution.arn
   runtime                        = "nodejs22.x"
   handler                        = "index.handler"
   filename                       = abspath("${path.module}/../artifacts/datasets-lambda.zip")

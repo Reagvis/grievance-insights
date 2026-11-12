@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/task-15-persistent-datasets]
   push:
     branches: [main]
 
@@ -49,7 +49,7 @@ jobs:
       - name: Type-check backend
         run: npm run backend:typecheck
 
-      - name: Package authentication and dataset Lambdas
+      - name: Package authentication, dataset and analysis Lambdas
         run: npm run backend:package
 
       - name: Build
