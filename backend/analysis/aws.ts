@@ -58,7 +58,7 @@ export class DynamoJobs implements JobStore {
         ConditionExpression: '#s = :failed AND ' + reasons + ' AND #cursor <= #total',
         ExpressionAttributeNames: { '#s': 'status', '#error': 'error', '#cursor': 'cursor', '#total': 'total' },
         ExpressionAttributeValues: { ':queued': 'queued', ':failed': 'failed', ':exhausted': 'retries_exhausted',
-          ':unavailable': 'queue_unavailable', ':allfailed': 'all_records_failed',
+          ':unavailable': 'queue_unavailable', ...(fresh ? { ':allfailed': 'all_records_failed' } : {}),
           ':null': null, ':zero': 0, ':one': 1 } }));
       return true;
     } catch (error) { if (conditional(error)) return false; throw error; }
