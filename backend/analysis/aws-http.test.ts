@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GrievanceRecord } from '../../src/domain/grievance';
 import { QwenBedrock, S3Results, SqsJobQueue } from './aws';
-import { AwsServiceError, signedAwsRequest } from './aws-http';
+import { AwsServiceError, canonicalAwsPath, signedAwsRequest } from './aws-http';
 import { inferWithRetry } from './core';
 
 const json = (status: number, value: unknown) => new Response(JSON.stringify(value), {
@@ -18,6 +18,11 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('AWS service-specific HTTP failures (all requests mocked)', () => {
+  it('uses Bedrock SigV4 double encoding while preserving S3 object paths', () => {
+    expect(canonicalAwsPath('/model/qwen.qwen3-32b-v1%3A0/converse', 'bedrock'))
+      .toBe('/model/qwen.qwen3-32b-v1%253A0/converse');
+    expect(canonicalAwsPath('/raw/example%20file.json', 's3')).toBe('/raw/example%20file.json');
+  });
   it.each([
     [404, 'AWS.SimpleQueueService.NonExistentQueue'],
     [403, 'AccessDeniedException'],

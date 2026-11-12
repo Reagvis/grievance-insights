@@ -2,6 +2,12 @@ import { createHash, createHmac } from 'node:crypto';
 
 function sha(input: string | Uint8Array): string { return createHash('sha256').update(input).digest('hex'); }
 function hmac(key: Buffer | string, input: string): Buffer { return createHmac('sha256', key).update(input).digest(); }
+const uriEncode = (value: string) => encodeURIComponent(value).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+export function canonicalAwsPath(path: string, service: 's3' | 'sqs' | 'bedrock'): string {
+  // SigV4 double-encodes already escaped path labels for Bedrock/SQS. S3 is
+  // the documented exception and signs its encoded object path as received.
+  return service === 's3' ? path : path.split('/').map(uriEncode).join('/');
+}
 export class AwsServiceError extends Error {
   constructor(readonly status: number, name: string) { super('AWS service request failed'); this.name = name.replace(/^.*[#/]/, '') || 'ServiceError'; }
 }
@@ -25,7 +31,7 @@ export async function signedAwsRequest(service: 's3' | 'sqs' | 'bedrock', region
   const canonicalHeaders = keys.map(key => key + ':' + headers[key].trim().replace(/\s+/g, ' ') + '\n').join('');
   const query = Array.from(target.searchParams.entries()).sort(([a],[b]) => a.localeCompare(b))
     .map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(value)).join('&');
-  const canonical = [method, target.pathname, query, canonicalHeaders, signed, hash].join('\n');
+  const canonical = [method, canonicalAwsPath(target.pathname, service), query, canonicalHeaders, signed, hash].join('\n');
   const scope = day + '/' + region + '/' + service + '/aws4_request';
   const toSign = ['AWS4-HMAC-SHA256', timestamp, scope, sha(canonical)].join('\n');
   const key = hmac(hmac(hmac(hmac('AWS4' + secret, day), region), service), 'aws4_request');
