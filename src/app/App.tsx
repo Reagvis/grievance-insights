@@ -396,13 +396,13 @@ export default function App({ summaryService = defaultSummaryService, authUser, 
               {AWS_AUTH_ENABLED && <PersistedDatasets onSelect={useRemoteDataset} onClear={clearRemoteDataset} activeId={remoteId} />}
 
 
+              {AWS_AUTH_ENABLED && remoteId && <AnalysisWorkspace key={remoteId} datasetId={remoteId}
+                records={dataset.records} onStateChange={onAnalysisStateChange} />}
+
               <InsightsDashboard key={dataset.id} dataset={dataset} filteredCount={filtered.length}
                 job={currentAnalysis?.job ?? null} report={currentAnalysis?.report ?? null}
                 analysisLoading={Boolean(remoteId) && (!currentAnalysis || currentAnalysis.loading)}
                 analysisError={currentAnalysis?.error ?? null} onOpenRecord={openRecord} />
-
-              {AWS_AUTH_ENABLED && remoteId && <AnalysisWorkspace key={remoteId} datasetId={remoteId}
-                records={dataset.records} onStateChange={onAnalysisStateChange} />}
 
               {dataset.kind === 'synthetic-expansion' && (
                 <div className="notice notice--warn dataset-notice">
