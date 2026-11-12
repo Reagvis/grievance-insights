@@ -21,6 +21,7 @@ import { api, IS_LIVE } from '../services/api/config';
 import type { HealthInfo } from '../services/api/wire';
 import { LookupChatService, type ChatScope, type ChatService } from '../services/chat';
 import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServices';
+import { FileProblems } from '../components/FileProblems';
 import { UploadPage, type BatchResult } from '../components/UploadPage';
 import { loadAllComplaints, type AllComplaints, type SourceRef } from '../services/allComplaints';
 import { removeDataset } from '../services/datasetApi';
@@ -135,6 +136,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     return () => window.clearInterval(timer);
   }, [all, reloadAll]);
   const awsDataset = useMemo<Dataset>(() => ({ id: 'all-complaints', name: 'All complaints', kind: 'imported', records: all?.records ?? [], isSynthetic: false }), [all]);
+  const addedAtById = useMemo(() => (all ? new Map([...all.sourceOf].map(([recordId, src]) => [recordId, src.addedAt])) : undefined), [all]);
   const readyFiles = useMemo(() => all?.files.filter((f) => f.status === 'ready') ?? [], [all]);
   const activeAnalysisId = readyFiles.find((f) => f.id === analysisDatasetId)?.id ?? readyFiles[0]?.id ?? null;
   const [analysisSnapshot, setAnalysisSnapshot] = useState<{
@@ -486,6 +488,17 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     if (failed === 0 && files > 0) navigate({ page: 'complaints', noteId: null });
   };
 
+  /** Files that never became complaints (failed / unfinished uploads) hold no data, so they are removed without a prompt. */
+  const removeProblemFiles = async (ids: string[]) => {
+    try {
+      await Promise.all(ids.map((id) => removeDataset(id)));
+      await reloadAll();
+      notify('success', ids.length === 1 ? 'Removed' : `Removed ${ids.length} files`);
+    } catch (e) {
+      notify('error', e instanceof Error ? e.message : 'Could not remove the files.');
+    }
+  };
+
   /** Uploads are stored as files, so "delete" removes the file a complaint came from (all of its complaints). */
   const deleteSourceFile = async (source: { datasetId: string; fileName: string; fileRecordCount: number }) => {
     const many = source.fileRecordCount > 1;
@@ -637,17 +650,14 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
 
         {AWS_AUTH_ENABLED && pagesReady && route.page === 'complaints' && all && (
           <div className="file-banners">
-            {all.files.filter((f) => f.status !== 'ready').map((f) => (
-              <div key={f.id} className={'file-banner file-banner--' + (f.status === 'failed' ? 'failed' : 'working')} role={f.status === 'failed' ? 'alert' : 'status'}>
+            <FileProblems files={all.files.filter((f) => f.status === 'failed' || f.status === 'pending_upload')} onRemove={(ids) => void removeProblemFiles(ids)} />
+            {all.files.some((f) => f.status === 'extracting' || f.status === 'validating') && (
+              <div className="file-banner file-banner--working" role="status">
                 <span>
-                  <strong>{f.name}</strong>{' '}
-                  {f.status === 'failed' ? 'could not be added: ' + (f.error ?? 'extraction failed.') : f.status === 'pending_upload' ? 'was not finished uploading.' : 'is still being read. It will appear here when it is ready.'}
+                  {all.files.filter((f) => f.status === 'extracting' || f.status === 'validating').length} file(s) still being read. They appear here when ready.
                 </span>
-                {f.status !== 'extracting' && f.status !== 'validating' && (
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => void deleteSourceFile({ datasetId: f.id, fileName: f.name, fileRecordCount: 1 })}>Remove</button>
-                )}
               </div>
-            ))}
+            )}
             {all.unreadable.length > 0 && (
               <div className="file-banner file-banner--failed" role="alert">
                 <span>Some files could not be opened just now: {all.unreadable.join(', ')}. <button type="button" className="link-button" onClick={() => void reloadAll()}>Try again</button></span>
@@ -682,6 +692,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
               onDownloadAll={() => void downloadZip('all')}
               onExportFiltered={() => void downloadZip('filtered')}
               zipBusy={zipBusy}
+              addedAt={AWS_AUTH_ENABLED ? addedAtById : undefined}
             />
             {inlineDetail && (
               <main className="detail-pane" id="main" aria-label="Selected complaint">
