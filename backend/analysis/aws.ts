@@ -2,7 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { DynamoDatasets, SignedS3 } from '../datasets/aws';
 import type { Job, JobQueue, JobStore, ResultObjects, Inference } from './core';
-import { MODEL_ID, MODEL_REGION, SYSTEM_PROMPT, parseConverseOutput, recordPrompt, type Report, type RecordOutcome } from './schema';
+import { InvalidModelOutput, MODEL_ID, MODEL_REGION, SYSTEM_PROMPT, parseConverseOutput, recordPrompt, type Report, type RecordOutcome } from './schema';
 import type { GrievanceRecord } from '../../src/domain/grievance';
 import { objectUrl, signedAwsRequest } from './aws-http';
 
@@ -64,8 +64,13 @@ export class SqsJobQueue implements JobQueue {
       QueueUrl: this.queueUrl, MessageBody: JSON.stringify({ jobId: id }),
       MessageGroupId: 'pilot-analyses', MessageDeduplicationId: id + '-' + cursor,
     });
-    await signedAwsRequest('sqs', MODEL_REGION, 'POST', 'https://sqs.' + MODEL_REGION + '.amazonaws.com/', body,
+    const response = await signedAwsRequest('sqs', MODEL_REGION, 'POST', 'https://sqs.' + MODEL_REGION + '.amazonaws.com/', body,
       { 'content-type': 'application/x-amz-json-1.0', 'x-amz-target': 'AmazonSQS.SendMessage' });
+    // A successful HTTP status without a SendMessage acknowledgement is not delivery.
+    const acknowledgement = await response.json() as { MessageId?: unknown };
+    if (typeof acknowledgement.MessageId !== 'string' || !acknowledgement.MessageId) {
+      throw new Error('SQS did not acknowledge message delivery');
+    }
   }
 }
 export class S3Results implements ResultObjects {
@@ -110,9 +115,7 @@ export class QwenBedrock implements Inference {
       output?: { message?: { content?: { text?: string }[] } };
     };
     if (parsed.stopReason !== 'end_turn') {
-      const error = new Error('Model did not finish structured response');
-      error.name = 'InvalidModelOutput';
-      throw error;
+      throw new InvalidModelOutput('Model did not finish structured response');
     }
     const text = parsed.output?.message?.content?.map(c => c.text ?? '').join('') ?? '';
     return parseConverseOutput(text, record);
