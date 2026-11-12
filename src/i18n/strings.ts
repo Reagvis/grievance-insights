@@ -72,6 +72,9 @@ const en = {
   applyFiltersHint: 'Apply filters to enable',
   reportLangEnglish: 'English (Telugu planned)',
   inThisReport: 'In this report',
+  navDashboard: 'Dashboard',
+  navComplaints: 'All Complaints',
+  navSummary: 'Consolidated Summary',
 } as const;
 
 export type StringKey = keyof typeof en;
@@ -140,6 +143,9 @@ const te: Partial<Record<StringKey, string>> = {
   applyFiltersHint: 'ఉపయోగించడానికి ఫిల్టర్ వర్తింపజేయండి',
   reportLangEnglish: 'English (తెలుగు ప్రణాళికలో ఉంది)',
   inThisReport: 'ఈ నివేదికలో',
+  navDashboard: 'డాష్‌బోర్డ్',
+  navComplaints: 'అన్ని ఫిర్యాదులు',
+  navSummary: 'సమగ్ర సారాంశం',
 };
 
 export type UiLanguage = 'en' | 'te';

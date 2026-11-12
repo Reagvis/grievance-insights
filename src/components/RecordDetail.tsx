@@ -5,7 +5,7 @@ import { categoryOf, hasResponse, UNCATEGORIZED, type GrievanceRecord } from '..
 import { useI18n } from '../i18n/strings';
 import { formatCount, formatDate } from '../utils/format';
 import { StatusBadge } from './StatusBadge';
-import { displayedText, type TextView } from '../data/englishTranslations';
+import { displayedText, englishTranslation, type TextView } from '../data/englishTranslations';
 import { TranslatedText } from './TranslatedText';
 
 type Props = {
@@ -16,6 +16,8 @@ type Props = {
   onClose: () => void;
   onDownload: (record: GrievanceRecord) => void;
   onCopy: (text: string, what: string) => void;
+  /** Render as a static panel beside the list (no overlay, no focus trap). */
+  inline?: boolean;
 };
 
 const LANGUAGE_LABEL: Record<GrievanceRecord['language'], string> = {
@@ -25,16 +27,18 @@ const LANGUAGE_LABEL: Record<GrievanceRecord['language'], string> = {
   unknown: 'Not recorded',
 };
 
-export function RecordDetail({ record, position, onPrev, onNext, onClose, onDownload, onCopy }: Props) {
+export function RecordDetail({ record, position, onPrev, onNext, onClose, onDownload, onCopy, inline = false }: Props) {
   const { t, categoryLabel } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [textView, setTextView] = useState<TextView>('original');
-  useDialog(true, onClose, ref);
+  useDialog(!inline, onClose, ref);
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: 0 });
   }, [record.id]);
   const responded = hasResponse(record);
+  // Bundled translations only exist for the demo texts; for real data the bar would offer nothing, so it is hidden.
+  const canTranslate = englishTranslation(record.complaintText) !== null || (responded && englishTranslation(record.responseText as string) !== null);
 
   const value = (v: string | null | undefined) =>
     v && v.trim() ? <dd>{v}</dd> : <dd className="not-recorded">{t('notRecorded')}</dd>;
@@ -43,13 +47,19 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
 
   return (
     <>
-      <div className="backdrop" onClick={onClose} aria-hidden />
-      <div className="drawer" role="dialog" aria-modal="true" aria-labelledby="detail-title" ref={ref}>
+      {!inline && <div className="backdrop" onClick={onClose} aria-hidden />}
+      <div
+        className={inline ? 'drawer drawer--inline' : 'drawer'}
+        role={inline ? 'region' : 'dialog'}
+        aria-modal={inline ? undefined : true}
+        aria-labelledby="detail-title"
+        ref={ref}
+      >
         <div className="drawer-head">
           <div className="drawer-title-row">
             <h2 id="detail-title">{record.id}</h2>
             <StatusBadge status={record.status} />
-            <button type="button" className="icon-btn" aria-label={t('close')} onClick={onClose} data-autofocus>
+            <button type="button" className="icon-btn" aria-label={t('close')} onClick={onClose} data-autofocus={inline ? undefined : true}>
               <X size={18} aria-hidden />
             </button>
           </div>
@@ -57,7 +67,7 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
             <span className="pos num">
               {position
                 ? `${formatCount(position.index + 1)} ${t('of')} ${formatCount(position.total)} in current list`
-                : 'Opened from the report — not in the current filtered list'}
+                : 'Not in the current filtered list'}
             </span>
             <button type="button" className="btn btn-ghost btn-sm" onClick={onPrev} disabled={!position || position.index === 0}>
               <ChevronLeft size={15} aria-hidden />
@@ -125,6 +135,7 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
             </div>
           </dl>
 
+          {canTranslate && (
           <div className="translation-bar">
             <div className="translation-bar-label"><Languages size={18} aria-hidden /><div><label htmlFor="text-language">Read in</label><span>Source: {LANGUAGE_LABEL[record.language]}</span></div></div>
             <select id="text-language" className="select" value={textView} onChange={(event) => setTextView(event.target.value as TextView)}>
@@ -134,6 +145,7 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
             </select>
             <p>English translations are available for sample records. Downloads keep the original text.</p>
           </div>
+          )}
 
           <section className="text-block text-block--complaint" aria-labelledby="complaint-h">
             <div className="text-block-head">
@@ -146,7 +158,7 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
                 {t('copy')}
               </button>
             </div>
-            <TranslatedText text={record.complaintText} view={textView} />
+            <TranslatedText text={record.complaintText} view={canTranslate ? textView : 'original'} />
           </section>
 
           <section className="text-block text-block--response" aria-labelledby="response-h">
@@ -163,7 +175,7 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
               )}
             </div>
             {responded ? (
-              <TranslatedText text={record.responseText as string} view={textView} />
+              <TranslatedText text={record.responseText as string} view={canTranslate ? textView : 'original'} />
             ) : (
               <div className="text-body text-body--empty">{t('noResponse')}</div>
             )}
@@ -184,6 +196,9 @@ export function RecordDetail({ record, position, onPrev, onNext, onClose, onDown
           <button type="button" className="btn btn-primary" onClick={() => onDownload(record)}>
             <Download size={15} aria-hidden />
             {t('downloadNote')}
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            {inline ? 'Close note' : 'Back'}
           </button>
         </div>
       </div>

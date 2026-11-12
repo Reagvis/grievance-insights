@@ -10,48 +10,48 @@
 
 :root {
   /* Ink */
-  --ink-900: #1b2336;
-  --ink-700: #364055;
-  --ink-500: #5a6477;
-  --ink-400: #7f8898;
+  --ink-900: #0f172a;
+  --ink-700: #334155;
+  --ink-500: #64748b;
+  --ink-400: #94a3b8;
 
   /* Surfaces */
-  --bg: #f1f3f7;
+  --bg: #f8fafc;
   --desk: #e3e7f0;
   --desk-border: #d4dce8;
   --sheet-border: #d5dce8;
   --preview-bg: #f0f4f9;
   --preview-border: #dce3ef;
   --surface: #ffffff;
-  --surface-sunk: #f7f8fb;
-  --line: #e0e4ec;
-  --line-strong: #c9d0dc;
+  --surface-sunk: #f1f5f9;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
 
   /* Brand */
-  --primary: #233b73;
-  --primary-hover: #1b2e5b;
-  --primary-soft: #eef1f8;
-  --primary-tint: #dbe2f1;
-  --primary-bar: #3a548f;
+  --primary: #1e3a8a;
+  --primary-hover: #172554;
+  --primary-soft: #eff6ff;
+  --primary-tint: #dbeafe;
+  --primary-bar: #1e3a8a;
   --primary-badge-bg: #dce3f2;
   --link: #3b5ba9;
   --chip-bg: #eef1f6;
-  --teal: #0f6b66;
-  --teal-soft: #e6f3f1;
+  --teal: #0f766e;
+  --teal-soft: #f0fdfa;
 
   /* Status (reserved: never reused as series colours) */
-  --resolved: #2e7d4f;
-  --resolved-ink: #166534;
-  --resolved-soft: #dcfce7;
-  --progress: #3b5ba9;
-  --progress-ink: #254689;
-  --progress-soft: #dbe6fd;
-  --pending: #c2790c;
-  --pending-ink: #78490a;
-  --pending-soft: #faeccd;
+  --resolved: #16a34a;
+  --resolved-ink: #14532d;
+  --resolved-soft: #f0fdf4;
+  --progress: #2563eb;
+  --progress-ink: #1e40af;
+  --progress-soft: #eff6ff;
+  --pending: #d97706;
+  --pending-ink: #78350f;
+  --pending-soft: #fffbeb;
   --unknown: #94a3b8;
   --unknown-ink: #334155;
-  --unknown-hatch: repeating-linear-gradient(-45deg, #f1f5f9 0 3px, #dfe5ee 3px 5px);
+  --unknown-hatch: repeating-linear-gradient(-45deg, #f8fafc, #f8fafc 3px, #cbd5e1 3px, #cbd5e1 5px);
   --unknown-soft: #f0f2f5;
   --danger: #b42318;
   --danger-soft: #fdecea;
@@ -89,7 +89,30 @@
   --dur: 180ms;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 
-  --header-h: 60px;
+  --ink-600: #475569;
+  --surface-hover: #f8fafc;
+  --teal-border: #ccfbf1;
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius-sm: 6px;
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  /* Spec names for status colours (aliases of the existing tokens). */
+  --status-resolved: var(--resolved);
+  --status-resolved-soft: var(--resolved-soft);
+  --status-resolved-ink: var(--resolved-ink);
+  --status-progress: var(--progress);
+  --status-progress-soft: var(--progress-soft);
+  --status-progress-ink: var(--progress-ink);
+  --status-pending: var(--pending);
+  --status-pending-soft: var(--pending-soft);
+  --status-pending-ink: var(--pending-ink);
+  --status-unknown: var(--unknown);
+  --status-unknown-ink: var(--unknown-ink);
+  --status-unknown-hatch: var(--unknown-hatch);
+
+  --header-h: 52px;
   --rail-w: 332px;
   --main-max: 1120px;
 }

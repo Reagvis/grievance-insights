@@ -1,17 +1,24 @@
-import { FlaskConical, TriangleAlert } from 'lucide-react';
+import { FileSearch, FlaskConical, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppHeader, type DatasetChoice } from '../components/AppHeader';
-import { AssistantDrawer, AssistantLauncher } from '../components/AssistantDrawer';
-import { DatasetOverview } from '../components/DatasetOverview';
+import { AppNav } from '../components/AppNav';
+import { AssistantLauncher, ChatPanel, useChatStore, type ScopeOption } from '../components/ChatPanel';
+import { DashboardPage, type BrowseTarget } from '../components/DashboardPage';
+import { LoadingScreen } from '../components/LoadingScreen';
 import { ImportDialog } from '../components/ImportDialog';
 import { PAGE_SIZE, RecordExplorer } from '../components/RecordExplorer';
 import { RecordDetail } from '../components/RecordDetail';
 import { SummaryWorkspace, type SummaryState } from '../components/SummaryWorkspace';
 import { Toasts, type Toast } from '../components/Toasts';
+import { EmptyState } from '../components/EmptyState';
 import { createExpandedDataset, createSampleDataset } from '../data/demoGrievances';
 import { computeStats, type Dataset, type GrievanceRecord } from '../domain/grievance';
 import type { SummaryScope, SummaryService } from '../domain/summary';
 import { I18nContext, makeI18n, type UiLanguage } from '../i18n/strings';
+import { fetchAllComplaints, fetchHealth, HttpChatService, HttpSummaryService, type LoadProgress } from '../services/api/backend';
+import { api, IS_LIVE } from '../services/api/config';
+import type { HealthInfo } from '../services/api/wire';
+import { LookupChatService, type ChatScope, type ChatService } from '../services/chat';
 import { defaultSummaryService } from '../services/runtimeServices';
 import {
   buildNoteText,
@@ -27,6 +34,8 @@ import { formatCount, formatDate } from '../utils/format';
 import type { ImportResult } from '../utils/importer';
 import { DEFAULT_FILTERS, describeFilters, filterRecords, filtersKey, isFiltered, listCategories, type RecordFilters } from '../utils/recordSearch';
 import { buildSummaryMarkdown, summaryFileName } from '../utils/summaryExport';
+import { useRoute, type Page } from '../utils/route';
+import { useMediaQuery } from '../utils/useMediaQuery';
 
 /** Brief, honest feedback for local work — enough to register, not a fake "AI is thinking" delay. */
 const MIN_FEEDBACK_MS = 350;
@@ -68,7 +77,17 @@ async function copyText(text: string): Promise<void> {
 
 const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
 
-export default function App({ summaryService = defaultSummaryService }: { summaryService?: SummaryService }) {
+const EMPTY_DATASET: Dataset = { id: 'live-empty', name: 'CM Helpline complaints', kind: 'live', records: [], isSynthetic: false };
+
+type LiveState = {
+  status: 'loading' | 'ready' | 'error';
+  dataset: Dataset | null;
+  error: string | null;
+  progress: LoadProgress | null;
+  refreshing: boolean;
+};
+
+export default function App({ summaryService: summaryOverride }: { summaryService?: SummaryService }) {
   // ── Interface language ───────────────────────────────────────────────
   const [uiLang, setUiLang] = useState<UiLanguage>(readStoredLang);
   const i18n = useMemo(() => makeI18n(uiLang), [uiLang]);
@@ -86,19 +105,84 @@ export default function App({ summaryService = defaultSummaryService }: { summar
   const [expanded, setExpanded] = useState<Dataset | null>(null);
   const [imported, setImported] = useState<Dataset | null>(null);
   const [choice, setChoice] = useState<DatasetChoice>('sample');
-  const dataset: Dataset = (choice === 'imported' && imported) || (choice === 'expanded' && expanded) || sample;
+  const [live, setLive] = useState<LiveState>({ status: 'loading', dataset: null, error: null, progress: null, refreshing: false });
+  const [health, setHealth] = useState<HealthInfo | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
+  const dataset: Dataset = IS_LIVE
+    ? (live.dataset ?? EMPTY_DATASET)
+    : (choice === 'imported' && imported) || (choice === 'expanded' && expanded) || sample;
+  /** False only while the very first live load is running or has failed. */
+  const dataReady = !IS_LIVE || live.dataset !== null;
+
+  // ── Live data (real backend) ─────────────────────────────────────────
+  const [skippedCount, setSkippedCount] = useState(0);
+  const liveLoad = useRef(0);
+  const loadLive = useCallback((mode: 'initial' | 'refresh') => {
+    const run = ++liveLoad.current;
+    setLive((s) => ({ ...s, status: s.dataset ? 'ready' : 'loading', error: null, progress: null, refreshing: mode === 'refresh' }));
+    const ac = new AbortController();
+    fetchAllComplaints(api, {
+      signal: ac.signal,
+      onProgress: (progress) => run === liveLoad.current && setLive((s) => ({ ...s, progress })),
+      datasetName: 'CM Helpline complaints',
+    })
+      .then(({ dataset: ds, skipped }) => {
+        if (run !== liveLoad.current) return;
+        setLive({ status: 'ready', dataset: ds, error: null, progress: null, refreshing: false });
+        if (skipped.length > 0) {
+          console.warn(`${skipped.length} records from the server were skipped`, skipped.slice(0, 20));
+          setSkippedCount(skipped.length);
+        } else setSkippedCount(0);
+      })
+      .catch((e: unknown) => {
+        if (run !== liveLoad.current) return;
+        const message = e instanceof Error ? e.message : 'The complaints could not be loaded.';
+        setLive((s) => ({ ...s, status: s.dataset ? 'ready' : 'error', error: message, progress: null, refreshing: false }));
+      });
+    return () => ac.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!IS_LIVE) return;
+    const cancel = loadLive('initial');
+    const ac = new AbortController();
+    fetchHealth(api, ac.signal)
+      .then((h) => {
+        setHealth(h);
+        setHealthError(null);
+      })
+      .catch((e: unknown) => {
+        if (ac.signal.aborted) return; // unmounted / superseded, not a real failure
+        setHealthError(e instanceof Error ? e.message : 'The service status could not be checked.');
+      });
+    return () => {
+      cancel();
+      ac.abort();
+    };
+  }, [loadLive]);
+
+  const summaryService: SummaryService = useMemo(() => {
+    if (summaryOverride) return summaryOverride;
+    if (IS_LIVE) return new HttpSummaryService(api, health?.capabilities.summary === 'deterministic' ? 'deterministic' : 'ai');
+    return defaultSummaryService;
+  }, [summaryOverride, health]);
+  const summaryUnavailable = IS_LIVE && health?.capabilities.summary === 'unavailable' ? 'The summary service is not available right now.' : null;
 
   // ── Exploration state ───────────────────────────────────────────────
   const [filters, setFilters] = useState<RecordFilters>(DEFAULT_FILTERS);
   const [page, setPage] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [route, navigate] = useRoute();
+  const selectedId = route.noteId;
+  /** Dashboard date range (applies only to dashboard analytics). */
+  const [dashRange, setDashRange] = useState({ from: '', to: '' });
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  // With the assistant docked on the right, a note opens as an overlay instead of inline so nothing is hidden behind the panel.
+  const inlineDetail = useMediaQuery('(min-width: 1024px)') && route.page === 'complaints' && !assistantOpen;
   /** Last record opened — stays highlighted in the list after the detail panel closes. */
   const [lastOpenedId, setLastOpenedId] = useState<string | null>(null);
-  const [mobileView, setMobileView] = useState<'records' | 'summary'>('summary');
 
   const filtered = useMemo(() => filterRecords(dataset.records, filters), [dataset, filters]);
   const filtersActive = isFiltered(filters);
-  const stats = useMemo(() => computeStats(dataset.records), [dataset]);
   const categories = useMemo(() => listCategories(dataset.records), [dataset]);
   const recordById = useMemo(() => new Map(dataset.records.map((r) => [r.id, r])), [dataset]);
 
@@ -121,7 +205,6 @@ export default function App({ summaryService = defaultSummaryService }: { summar
 
   // ── UI chrome state ─────────────────────────────────────────────────
   const [importOpen, setImportOpen] = useState(false);
-  const [assistantOpen, setAssistantOpen] = useState(false);
   const [zipBusy, setZipBusy] = useState<'all' | 'filtered' | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
@@ -132,11 +215,37 @@ export default function App({ summaryService = defaultSummaryService }: { summar
     window.setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), kind === 'error' ? 7000 : 4500);
   }, []);
 
+  // ── Assistant ────────────────────────────────────────────────────────
+  const chat = useChatStore();
+  const chatService: ChatService = useMemo(
+    () => (IS_LIVE ? new HttpChatService(api) : new LookupChatService(() => dataset.records)),
+    [dataset],
+  );
+  const chatUnavailable = !IS_LIVE
+    ? null
+    : healthError
+      ? `The assistant could not be reached. ${healthError}`
+      : health && !health.capabilities.chat
+        ? 'The assistant is not switched on for this server yet.'
+        : null;
+  const chatScopes: ScopeOption[] = useMemo(() => {
+    const list: ScopeOption[] = [];
+    const note = selectedId ? recordById.get(selectedId) : undefined;
+    if (note) list.push({ key: 'note', label: `This complaint (${note.id})`, scope: { kind: 'records', recordIds: [note.id] } as ChatScope });
+    list.push({ key: 'all', label: `All complaints (${formatCount(dataset.records.length)})`, scope: { kind: 'all' } });
+    if (filtersActive && filtered.length > 0 && filtered.length < dataset.records.length) {
+      list.push({ key: 'filtered', label: `Current list (${formatCount(filtered.length)})`, scope: { kind: 'records', recordIds: filtered.map((r) => r.id) } });
+    }
+    return list;
+  }, [selectedId, recordById, dataset.records.length, filtersActive, filtered]);
+
   const resetForDataset = () => {
+    chat.reset();
     generation.current += 1; // discard any in-flight generation
     setFilters(DEFAULT_FILTERS);
     setPage(0);
-    setSelectedId(null);
+    navigate({ ...route, noteId: null }, { replace: true });
+    setDashRange({ from: '', to: '' });
     setLastOpenedId(null);
     setScope('all');
     setSummaryState({ status: 'idle', summary: null, error: null });
@@ -165,16 +274,31 @@ export default function App({ summaryService = defaultSummaryService }: { summar
         notify('error', `Case ${id} is not in the loaded dataset.`);
         return;
       }
-      setSelectedId(id);
+      navigate({ page: route.page, noteId: id });
       setLastOpenedId(id);
     },
-    [recordById, notify],
+    [recordById, notify, navigate, route.page],
   );
+
+  const closeRecord = () => navigate({ page: route.page, noteId: null });
+
+  // A stable link (#/complaints?id=…) to a record that is not in the loaded dataset: say so, then drop the id.
+  useEffect(() => {
+    if (dataReady && route.noteId && !recordById.has(route.noteId)) {
+      notify('error', `Case ${route.noteId} is not in the loaded dataset.`);
+      navigate({ page: route.page, noteId: null }, { replace: true });
+    }
+  }, [dataReady, route.noteId, route.page, recordById, notify, navigate]);
+
+  // A failed refresh keeps the data already on screen; tell the user instead of replacing it with an error page.
+  useEffect(() => {
+    if (live.error && live.dataset) notify('error', `Could not refresh the data: ${live.error}`);
+  }, [live.error, live.dataset, notify]);
 
   const step = (delta: number) => {
     const next = filtered[selectedIndex + delta];
     if (!next) return;
-    setSelectedId(next.id);
+    navigate({ page: route.page, noteId: next.id }, { replace: true });
     setLastOpenedId(next.id);
     setPage(Math.floor((selectedIndex + delta) / PAGE_SIZE));
   };
@@ -234,7 +358,8 @@ export default function App({ summaryService = defaultSummaryService }: { summar
         isSyntheticData: dataset.isSynthetic,
         datasetNotes: datasetNotes(dataset),
       });
-      const wait = MIN_FEEDBACK_MS - (performance.now() - started);
+      // Local demo work is instant, so hold the busy state just long enough to register. A real service needs no padding.
+      const wait = (IS_LIVE ? 0 : MIN_FEEDBACK_MS) - (performance.now() - started);
       if (wait > 0) await sleep(wait);
       if (run !== generation.current) return;
       setSummaryState({ status: 'ready', summary, error: null });
@@ -299,19 +424,83 @@ export default function App({ summaryService = defaultSummaryService }: { summar
     safeDownload(() => triggerDownload(utf8Blob(content, type), name), `Download started: ${name}`);
 
   const goToSummary = () => {
-    setAssistantOpen(false);
-    setMobileView('summary');
-    window.setTimeout(() => generateRef.current?.focus(), 60);
+    navigate({ page: 'summary', noteId: null });
+    window.setTimeout(() => generateRef.current?.focus(), 80);
   };
+
+  const goToPage = (page: Page) => navigate({ page, noteId: null });
+
+  /** Dashboard → Complaints: reset the explorer, then apply exactly what was clicked plus the dashboard date range. */
+  const browse = (target: BrowseTarget) => {
+    setFilters({
+      ...DEFAULT_FILTERS,
+      category: target.category ?? 'all',
+      response: target.response ?? 'all',
+      dateFrom: dashRange.from,
+      dateTo: dashRange.to,
+    });
+    setPage(0);
+    navigate({ page: 'complaints', noteId: null });
+  };
+
+  /** Dashboard → Summary with an explicit scope (all records, or the dashboard date range as a filtered scope). */
+  const summarizeFromDashboard = (which: 'all' | 'range') => {
+    if (which === 'range') {
+      setFilters({ ...DEFAULT_FILTERS, dateFrom: dashRange.from, dateTo: dashRange.to });
+      setPage(0);
+      setScope('filtered');
+    } else {
+      setScope('all');
+    }
+    goToSummary();
+  };
+
+  useEffect(() => {
+    const label = { dashboard: 'Dashboard', complaints: 'All Complaints', summary: 'Consolidated Summary' }[route.page];
+    document.title = `${label} · Grievance Insights`;
+  }, [route.page]);
 
   const includedSpan =
     includedStats.dateSpan && formatDate(includedStats.dateSpan.from) && formatDate(includedStats.dateSpan.to)
       ? `between ${formatDate(includedStats.dateSpan.from)} and ${formatDate(includedStats.dateSpan.to)}`
       : null;
 
+  const detail = selected ? (
+    <RecordDetail
+      record={selected}
+      inline={inlineDetail}
+      position={selectedIndex >= 0 ? { index: selectedIndex, total: filtered.length } : null}
+      onPrev={() => step(-1)}
+      onNext={() => step(1)}
+      onClose={closeRecord}
+      onDownload={downloadNote}
+      onCopy={(text, what) => void copyRecordText(text, what)}
+    />
+  ) : null;
+
+  const datasetBanners = (
+    <>
+      {dataset.kind === 'synthetic-expansion' && (
+        <div className="notice notice--warn dataset-notice">
+          <TriangleAlert size={16} aria-hidden />
+          <span>
+            Performance-test dataset: 2,000 records generated from the 30 curated templates. Texts repeat and statuses are random, so use the
+            sample dataset for presentations.
+          </span>
+        </div>
+      )}
+      {dataset.kind === 'imported' && dataset.isSynthetic && (
+        <div className="notice notice--info dataset-notice">
+          <FlaskConical size={16} aria-hidden />
+          <span>Every imported record is flagged as synthetic demo data in the source file.</span>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <I18nContext.Provider value={i18n}>
-      <div className="app" data-view={mobileView}>
+      <div className="app" data-page={route.page} data-assistant={assistantOpen ? 'open' : undefined}>
         <AppHeader
           datasetChoice={choice}
           importedLabel={imported ? `Imported · ${imported.sourceFileName} (${formatCount(imported.records.length)})` : null}
@@ -320,63 +509,88 @@ export default function App({ summaryService = defaultSummaryService }: { summar
           onImport={() => setImportOpen(true)}
           uiLang={uiLang}
           onLangChange={setUiLang}
+          live={
+            IS_LIVE
+              ? {
+                  loadedAt: live.dataset?.loadedAt ?? null,
+                  refreshing: live.refreshing || (live.status === 'loading' && !live.dataset),
+                  onRefresh: () => loadLive('refresh'),
+                  mock: health?.mode === 'mock',
+                }
+              : null
+          }
         />
+        {dataReady && <AppNav page={route.page} onNavigate={goToPage} complaintCount={dataset.records.length} />}
 
-        <nav className="mobile-tabs" aria-label="Views">
-          <div className="segmented" role="group">
-            <button type="button" aria-pressed={mobileView === 'records'} onClick={() => setMobileView('records')}>
-              {i18n.t('records')} <span className="count">{formatCount(filtered.length)}</span>
-            </button>
-            <button type="button" aria-pressed={mobileView === 'summary'} onClick={() => setMobileView('summary')}>
-              {i18n.t('summaryTab')}
-            </button>
-          </div>
-        </nav>
-
-        <div className="workspace">
-          <RecordExplorer
-            totalCount={dataset.records.length}
-            filtered={filtered}
-            filters={filters}
-            onFiltersChange={updateFilters}
-            onReset={() => updateFilters(DEFAULT_FILTERS)}
-            categories={categories}
-            selectedId={selectedId ?? lastOpenedId}
-            onOpen={openRecord}
-            page={page}
-            onPageChange={setPage}
-            onDownloadAll={() => void downloadZip('all')}
-            onExportFiltered={() => void downloadZip('filtered')}
-            zipBusy={zipBusy}
+        {!dataReady && (
+          <LoadingScreen
+            status={live.status === 'error' ? 'error' : 'loading'}
+            progress={live.progress}
+            error={live.error}
+            onRetry={() => loadLive('initial')}
           />
+        )}
 
+        {dataReady && skippedCount > 0 && (
+          <div className="notice notice--warn skipped-notice" role="status">
+            <TriangleAlert size={16} aria-hidden />
+            <span>
+              {formatCount(skippedCount)} {skippedCount === 1 ? 'record was' : 'records were'} left out because the server sent them incomplete (no ID or no complaint text). Counts
+              below cover the records that loaded.
+            </span>
+          </div>
+        )}
+
+        {dataReady && route.page === 'dashboard' && (
+          <DashboardPage
+            dataset={dataset}
+            from={dashRange.from}
+            to={dashRange.to}
+            onRangeChange={(from, to) => setDashRange({ from, to })}
+            onBrowse={browse}
+            onOpenRecord={openRecord}
+            onSummarize={summarizeFromDashboard}
+            aiSummary={summaryService.mode === 'server-ai'}
+          />
+        )}
+
+        {dataReady && route.page === 'complaints' && (
+          <div className="workspace workspace--complaints">
+            <RecordExplorer
+              totalCount={dataset.records.length}
+              filtered={filtered}
+              filters={filters}
+              onFiltersChange={updateFilters}
+              onReset={() => updateFilters(DEFAULT_FILTERS)}
+              categories={categories}
+              selectedId={selectedId ?? lastOpenedId}
+              onOpen={openRecord}
+              page={page}
+              onPageChange={setPage}
+              onDownloadAll={() => void downloadZip('all')}
+              onExportFiltered={() => void downloadZip('filtered')}
+              zipBusy={zipBusy}
+            />
+            {inlineDetail && (
+              <main className="detail-pane" id="main" aria-label="Selected complaint">
+                {detail ?? (
+                  <EmptyState icon={<FileSearch size={28} aria-hidden />}>
+                    Select a complaint to read the citizen’s complaint and the department’s response, and to download that note.
+                  </EmptyState>
+                )}
+              </main>
+            )}
+          </div>
+        )}
+
+        {dataReady && route.page === 'summary' && (
           <main className="main" id="main">
             <div className="main-inner">
               <div className="intro">
-                <h1>Turn citizen complaints into a clearer picture of public service issues.</h1>
-                <p>
-                  {i18n.t('intro')} Currently loaded: <strong className="intro-dataset">{dataset.name}.</strong>
-                </p>
+                <h1>Consolidated summary</h1>
+                <p>One report across your complaints and the responses recorded for them.</p>
               </div>
-
-              <DatasetOverview stats={stats} />
-
-              {dataset.kind === 'synthetic-expansion' && (
-                <div className="notice notice--warn dataset-notice">
-                  <TriangleAlert size={16} aria-hidden />
-                  <span>
-                    Performance-test dataset: 2,000 records generated from the 30 curated templates. Texts repeat and statuses are random, so
-                    use the sample dataset for presentations.
-                  </span>
-                </div>
-              )}
-              {dataset.kind === 'imported' && dataset.isSynthetic && (
-                <div className="notice notice--info dataset-notice">
-                  <FlaskConical size={16} aria-hidden />
-                  <span>Every imported record is flagged as synthetic demo data in the source file.</span>
-                </div>
-              )}
-
+              {datasetBanners}
               <SummaryWorkspace
                 scope={scope}
                 onScopeChange={setScope}
@@ -389,6 +603,8 @@ export default function App({ summaryService = defaultSummaryService }: { summar
                 stale={stale}
                 staleReason={staleReason}
                 isSynthetic={dataset.isSynthetic}
+                processing={summaryService.mode}
+                unavailableReason={summaryUnavailable}
                 onGenerate={() => void generate()}
                 onCopy={() => void copySummary()}
                 onDownloadMarkdown={downloadMarkdown}
@@ -400,22 +616,22 @@ export default function App({ summaryService = defaultSummaryService }: { summar
               {!summary && <div className="print-only print-empty">Generate a consolidated summary before printing.</div>}
             </div>
           </main>
-        </div>
+        )}
 
-        <AssistantLauncher onOpen={() => setAssistantOpen(true)} />
+        {dataReady && !assistantOpen && <AssistantLauncher onOpen={() => setAssistantOpen(true)} />}
 
-        {selected && (
-          <RecordDetail
-            record={selected}
-            position={selectedIndex >= 0 ? { index: selectedIndex, total: filtered.length } : null}
-            onPrev={() => step(-1)}
-            onNext={() => step(1)}
-            onClose={() => setSelectedId(null)}
-            onDownload={downloadNote}
-            onCopy={(text, what) => void copyRecordText(text, what)}
+        {!inlineDetail && dataReady && detail}
+        {assistantOpen && (
+          <ChatPanel
+            store={chat}
+            service={chatService}
+            scopes={chatScopes}
+            knownIds={new Set(recordById.keys())}
+            unavailableReason={chatUnavailable}
+            onOpenRecord={openRecord}
+            onClose={() => setAssistantOpen(false)}
           />
         )}
-        {assistantOpen && <AssistantDrawer key={dataset.id} records={dataset.records} onOpenRecord={openRecord} onClose={() => setAssistantOpen(false)} onGoToSummary={goToSummary} />}
         {importOpen && <ImportDialog onClose={() => setImportOpen(false)} onUse={applyImport} onDownloadTemplate={downloadTemplate} />}
         <Toasts toasts={toasts} onDismiss={(id) => setToasts((ts) => ts.filter((t) => t.id !== id))} />
       </div>

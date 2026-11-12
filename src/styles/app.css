@@ -2094,10 +2094,6 @@ button:disabled {
   .record-scroll {
     overflow: visible;
   }
-  .app[data-view='summary'] .rail,
-  .app[data-view='records'] .main {
-    display: none;
-  }
   .main {
     padding: var(--s-4) var(--s-4) 96px;
   }

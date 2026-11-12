@@ -1,4 +1,5 @@
-import { categoryOf, hasResponse, type CaseStatus, type GrievanceRecord } from '../domain/grievance';
+import { categoryOf, hasResponse, isValidDate, type CaseStatus, type GrievanceRecord } from '../domain/grievance';
+import { localDateStamp } from './format';
 
 export type ResponseFilter = 'all' | 'provided' | 'missing';
 
@@ -8,9 +9,43 @@ export type RecordFilters = {
   category: string;
   status: CaseStatus | 'all';
   response: ResponseFilter;
+  /** Inclusive submission-date range as YYYY-MM-DD; '' = open-ended. Records with no valid date never match an active range. */
+  dateFrom: string;
+  dateTo: string;
 };
 
-export const DEFAULT_FILTERS: RecordFilters = { query: '', category: 'all', status: 'all', response: 'all' };
+export const DEFAULT_FILTERS: RecordFilters = { query: '', category: 'all', status: 'all', response: 'all', dateFrom: '', dateTo: '' };
+
+const ISO_DAY = /^(\d{4}-\d{2}-\d{2})/;
+
+/** Calendar day (YYYY-MM-DD) a record was submitted, or null when missing/invalid. */
+export function submittedDay(record: Pick<GrievanceRecord, 'submittedAt'>): string | null {
+  const v = record.submittedAt;
+  if (!isValidDate(v)) return null;
+  const m = ISO_DAY.exec(v);
+  if (m) return m[1];
+  return localDateStamp(new Date(v));
+}
+
+export function inDateRange(record: Pick<GrievanceRecord, 'submittedAt'>, from: string, to: string): boolean {
+  if (!from && !to) return true;
+  const day = submittedDay(record);
+  if (!day) return false;
+  if (from && day < from) return false;
+  if (to && day > to) return false;
+  return true;
+}
+
+export function hasDateRange(f: Pick<RecordFilters, 'dateFrom' | 'dateTo'>): boolean {
+  return f.dateFrom !== '' || f.dateTo !== '';
+}
+
+export function describeDateRange(from: string, to: string): string {
+  if (from && to) return `submitted ${from} to ${to}`;
+  if (from) return `submitted on or after ${from}`;
+  if (to) return `submitted on or before ${to}`;
+  return '';
+}
 
 /** Unicode-safe normalisation: NFC (so composed/decomposed Telugu match) + case folding for Latin. */
 export function normalizeForSearch(text: string): string {
@@ -53,6 +88,7 @@ export function filterRecords(records: readonly GrievanceRecord[], filters: Reco
     if (filters.status !== 'all' && r.status !== filters.status) return false;
     if (filters.response === 'provided' && !hasResponse(r)) return false;
     if (filters.response === 'missing' && hasResponse(r)) return false;
+    if (!inDateRange(r, filters.dateFrom, filters.dateTo)) return false;
     if (q && !matchesQuery(r, q)) return false;
     return true;
   });
@@ -63,13 +99,14 @@ export function isFiltered(filters: RecordFilters): boolean {
     normalizeForSearch(filters.query) !== '' ||
     filters.category !== 'all' ||
     filters.status !== 'all' ||
-    filters.response !== 'all'
+    filters.response !== 'all' ||
+    hasDateRange(filters)
   );
 }
 
 /** Stable key used to detect when a filtered-scope summary has gone stale. */
 export function filtersKey(filters: RecordFilters): string {
-  return JSON.stringify([normalizeForSearch(filters.query), filters.category, filters.status, filters.response]);
+  return JSON.stringify([normalizeForSearch(filters.query), filters.category, filters.status, filters.response, filters.dateFrom, filters.dateTo]);
 }
 
 const STATUS_TEXT: Record<CaseStatus, string> = {
@@ -88,6 +125,7 @@ export function describeFilters(filters: RecordFilters): string {
   if (filters.status !== 'all') parts.push(`status: ${STATUS_TEXT[filters.status]}`);
   if (filters.response === 'provided') parts.push('response recorded');
   if (filters.response === 'missing') parts.push('no response recorded');
+  if (hasDateRange(filters)) parts.push(describeDateRange(filters.dateFrom, filters.dateTo));
   return parts.length ? parts.join('; ') : 'no filters';
 }
 

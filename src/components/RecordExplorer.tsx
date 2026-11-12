@@ -1,9 +1,10 @@
-import { ChevronLeft, ChevronRight, FileArchive, LoaderCircle, RotateCcw, Search, SearchX, X, Inbox } from 'lucide-react';
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, FileArchive, LoaderCircle, RotateCcw, Search, SearchX, X, Inbox } from 'lucide-react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { CASE_STATUSES, type CaseStatus, type GrievanceRecord } from '../domain/grievance';
 import { useI18n } from '../i18n/strings';
 import { formatCount } from '../utils/format';
 import { isFiltered, type RecordFilters, type ResponseFilter } from '../utils/recordSearch';
+import { DateRangeFilter } from './DateRangeFilter';
 import { EmptyState } from './EmptyState';
 import { RecordListItem } from './RecordListItem';
 
@@ -47,6 +48,8 @@ export function RecordExplorer({
   const start = safePage * PAGE_SIZE;
   const pageItems = filtered.slice(start, start + PAGE_SIZE);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const extraActive = (filters.status !== 'all' ? 1 : 0) + (filters.dateFrom || filters.dateTo ? 1 : 0);
+  const [moreOpen, setMoreOpen] = useState(extraActive > 0);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
@@ -98,12 +101,7 @@ export function RecordExplorer({
             <label className="field-label" htmlFor="filter-category">
               {t('category')}
             </label>
-            <select
-              id="filter-category"
-              className="select"
-              value={filters.category}
-              onChange={(e) => onFiltersChange({ category: e.target.value })}
-            >
+            <select id="filter-category" className="select" value={filters.category} onChange={(e) => onFiltersChange({ category: e.target.value })}>
               <option value="all">{t('allCategories')}</option>
               {categories.map((c) => (
                 <option key={c.name} value={c.name}>
@@ -113,38 +111,57 @@ export function RecordExplorer({
             </select>
           </div>
           <div>
-            <label className="field-label" htmlFor="filter-status">
-              {t('status')}
-            </label>
-            <select
-              id="filter-status"
-              className="select"
-              value={filters.status}
-              onChange={(e) => onFiltersChange({ status: e.target.value as CaseStatus | 'all' })}
-            >
-              <option value="all">{t('allStatuses')}</option>
-              {CASE_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {statusLabel(s)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="full">
             <label className="field-label" htmlFor="filter-response">
               {t('response')}
             </label>
-            <select
-              id="filter-response"
-              className="select"
-              value={filters.response}
-              onChange={(e) => onFiltersChange({ response: e.target.value as ResponseFilter })}
-            >
+            <select id="filter-response" className="select" value={filters.response} onChange={(e) => onFiltersChange({ response: e.target.value as ResponseFilter })}>
               <option value="all">{t('anyResponse')}</option>
               <option value="provided">{t('responseProvided')}</option>
               <option value="missing">{t('responseMissing')}</option>
             </select>
           </div>
+          <div className="full">
+            <button
+              type="button"
+              className="more-filters-toggle"
+              aria-expanded={moreOpen}
+              aria-controls="more-filters"
+              onClick={() => setMoreOpen((o) => !o)}
+            >
+              <ChevronDown size={14} className={moreOpen ? 'chev chev--open' : 'chev'} aria-hidden />
+              More filters
+              {extraActive > 0 && <span className="more-filters-count">{extraActive}</span>}
+            </button>
+          </div>
+          {moreOpen && (
+            <div className="full more-filters" id="more-filters">
+              <div>
+                <label className="field-label" htmlFor="filter-status">
+                  {t('status')}
+                </label>
+                <select
+                  id="filter-status"
+                  className="select"
+                  value={filters.status}
+                  onChange={(e) => onFiltersChange({ status: e.target.value as CaseStatus | 'all' })}
+                >
+                  <option value="all">{t('allStatuses')}</option>
+                  {CASE_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {statusLabel(s)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <DateRangeFilter
+                compact
+                label="Submission date"
+                from={filters.dateFrom}
+                to={filters.dateTo}
+                onChange={(dateFrom, dateTo) => onFiltersChange({ dateFrom, dateTo })}
+              />
+            </div>
+          )}
         </div>
         <div className="result-line" aria-live="polite">
           <span>
