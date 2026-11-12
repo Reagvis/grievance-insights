@@ -73,12 +73,12 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
       setError(reason instanceof Error ? reason.message : 'Could not start AI analysis.');
     } finally { setBusy(false); }
   }
-  async function retry() {
+  async function retry(mode: 'resume' | 'fresh') {
     if (!job || job.status !== 'failed') return;
     setBusy(true);
     setError('');
     try {
-      const response = await retryAnalysis(job.id);
+      const response = await retryAnalysis(job.id, mode);
       setReport(null);
       setJob(response.job);
     } catch (reason) {
@@ -116,7 +116,13 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
         {job.error && <> Failure code: {job.error}.</>}
       </p>}
       {job.status === 'failed' && (job.error === 'queue_unavailable' || job.error === 'retries_exhausted') &&
-        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void retry()}>{busy ? 'Retrying…' : 'Retry interrupted job'}</button>}
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void retry('resume')}>{busy ? 'Retrying…' : 'Retry interrupted job'}</button>}
+      {job.status === 'failed' && ['all_records_failed', 'retries_exhausted', 'queue_unavailable'].includes(job.error ?? '') &&
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void retry('fresh')}>
+          {busy ? 'Submitting…' : 'Start fresh AI analysis attempt'}
+        </button>}
+      {job.status === 'failed' && ['all_records_failed', 'retries_exhausted', 'queue_unavailable'].includes(job.error ?? '') &&
+        <p>Fresh analysis creates a new immutable result generation. Earlier attempts remain private and unchanged.</p>}
     </div>}
     {error && <p role="alert" className="analysis-error">{error}</p>}
   </section>;
