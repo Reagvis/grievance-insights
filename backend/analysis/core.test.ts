@@ -50,6 +50,7 @@ function fixture() {
       if (!current || current.cursor !== current.total) throw new Error('Incorrect finalization');
       current = { ...current, status: 'completed', resultsKey: key, finishedAt: at };
     }),
+    retry: vi.fn(async () => { if (!current || current.status !== 'failed' || !['queue_unavailable','retries_exhausted'].includes(current.error ?? '')) return false; current = { ...current, status: 'queued', attempt: (current.attempt ?? 0) + 1, error: null, finishedAt: null, startedAt: null }; return true; }),
     fail: vi.fn(async (_id: string, code: string, at: string) => {
       if (current && (current.status === 'queued' || current.status === 'running')) current = { ...current, status: 'failed', error: code, finishedAt: at };
     }),
