@@ -177,7 +177,7 @@ describe('authenticated asynchronous job API', () => {
     const jobs = new DynamoJobs({ send } as unknown as DynamoDBDocumentClient, 'jobs');
     await jobs.retry(id, 'fresh');
     const command = send.mock.calls[0][0] as UpdateCommand;
-    expect(command.input.UpdateExpression).toContain('generation = if_not_exists(generation, :zero) + :one');
+    expect(command.input.UpdateExpression).toContain('#generation = if_not_exists(#generation, :zero) + :one');
     expect(command.input.UpdateExpression).toContain('failureCount = :zero');
     expect(command.input.ConditionExpression).toContain('#s = :failed');
     await jobs.checkpoint(id, 0, false, 3);
