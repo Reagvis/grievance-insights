@@ -266,7 +266,7 @@ data "aws_iam_policy_document" "terraform" {
 
   statement {
     sid       = "CloudFrontManagedPolicyLookup"
-    actions = [
+    actions   = [
       "cloudfront:GetCachePolicy",
       "cloudfront:ListCachePolicies",
       "cloudfront:ListOriginRequestPolicies",
