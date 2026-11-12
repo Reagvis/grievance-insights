@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 import type { DatasetStore, Metadata, PrivateObjects } from '../datasets/core';
-import { validateDataset } from '../datasets/core';
+import { ApiError, validateDataset } from '../datasets/core';
 import { readIndexedRange } from '../datasets/index';
 import type { GrievanceRecord } from '../../src/domain/grievance';
 import { aggregate, MAX_ANALYSIS_RECORDS, MODEL_ID, MODEL_REGION, PROMPT_VERSION, RECORDS_PER_INVOCATION, type RecordOutcome, type Report, type RecordAnalysis, InvalidModelOutput } from './schema';
@@ -72,7 +72,9 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
       if (!dataset || dataset.ownerId !== session.userId) throw new HttpError(404, 'Analysis not found.');
       if (datasetRoute?.[2] === 'analyze' && method === 'POST') {
         if (dataset.status !== 'ready') throw new HttpError(409, 'Dataset must be ready.');
-        const total = dataset.indexVersion === 1 ? dataset.recordCount : (await readDataset(dataset, files)).length;
+        let total: number;
+        try { total = dataset.indexVersion === 1 ? dataset.recordCount : (await readDataset(dataset, files)).length; }
+        catch (error) { if (error instanceof ApiError) throw new HttpError(422, error.message); throw error; }
         if (!total || total > MAX_ANALYSIS_RECORDS) throw new HttpError(422, 'AI analysis supports 1–2,000 records per dataset.');
         const job: Job = {
           id: dataset.id, datasetId: dataset.id, ownerId: session.userId, status: 'queued',
