@@ -1,9 +1,10 @@
+import { signalAuthExpired } from './authApi';
 import type { GrievanceRecord } from '../domain/grievance';
 
 export type RemoteDataset = { id: string; name: string; format: 'csv' | 'json'; status: 'pending_upload' | 'validating' | 'ready' | 'failed'; bytes: number; recordCount: number; createdAt: string; error: string | null };
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, { ...options, credentials: 'same-origin', cache: 'no-store', headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers } });
-  if (response.status === 401) { window.dispatchEvent(new Event('grievance-auth-expired')); throw new Error('Your session has expired. Sign in again.'); }
+  if (response.status === 401) { signalAuthExpired(); throw new Error('Your session has expired. Sign in again.'); }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(payload.error ?? 'Dataset request failed.');

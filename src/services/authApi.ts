@@ -6,6 +6,7 @@ export class AuthApiError extends Error {
 }
 type Session = { authenticated: true; user: AuthUser };
 const listeners = new Set<() => void>();
+export function signalAuthExpired() { listeners.forEach(listener => listener()); }
 export function onAuthExpired(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; }
 function validSession(value: unknown): value is Session {
   if (!value || typeof value !== 'object') return false;
