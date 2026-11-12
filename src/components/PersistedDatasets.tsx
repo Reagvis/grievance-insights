@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dataset } from '../domain/grievance';
+import { SOURCE_FORMATS } from '../domain/sourceFormats';
 import { listDatasets, openDataset, removeDataset, uploadDataset, type RemoteDataset } from '../services/datasetApi';
 
 const SELECTION = 'grievance-insights.remoteDatasetId';
@@ -68,8 +69,8 @@ export function PersistedDatasets({ onSelect, onClear, activeId }: Props) {
   return <section className="notice notice--info dataset-notice" aria-label="Persisted datasets">
     <div style={{ width: '100%' }}>
       <strong>Private uploaded datasets</strong>
-      <p>CSV/JSON · maximum 1 MiB and 200 records · stored privately in AWS. Uploads are available after refresh.</p>
-      <input id="remote-dataset-file" ref={fileRef} type="file" accept=".csv,.json" aria-label="Upload private grievance dataset" disabled={busy} onChange={e => void upload(e.target.files?.[0])} />
+      <p>.txt, .md, .docx and .pdf (one grievance per file) · .csv, .json and .jsonl (up to 200 grievances) · PDF up to 10 MiB and 50 pages, other types up to 1–5 MiB · stored privately in AWS. Uploads are available after refresh.</p>
+      <input id="remote-dataset-file" ref={fileRef} type="file" accept={SOURCE_FORMATS.map(f => '.' + f).join(',')} aria-label="Upload private grievance dataset" disabled={busy} onChange={e => void upload(e.target.files?.[0])} />
       {progress && <p role="status">{progress}</p>}
       {error && <p role="alert" className="notice--error">{error}</p>}
       <ul className="details-list" aria-label="Saved datasets">

@@ -33,8 +33,9 @@ function fixture() {
     create: vi.fn(), list: vi.fn(async () => []), transition: vi.fn(async () => true), delete: vi.fn(),
   };
   const files: PrivateObjects = {
-    read: vi.fn(async () => bytes), size: vi.fn(async () => bytes.length),
-    presign: vi.fn(async () => ({ url: '', headers: {} })), remove: vi.fn(),
+    // Only the original CSV exists (a dataset stored before canonical extraction): exercises the legacy fallback.
+    read: vi.fn(async () => bytes), size: vi.fn(async (key: string) => key.endsWith('/records.json') ? null : bytes.length),
+    presign: vi.fn(async () => ({ url: '', headers: {} })), remove: vi.fn(), write: vi.fn(),
   };
   let current: Job | undefined;
   const jobs: JobStore = {

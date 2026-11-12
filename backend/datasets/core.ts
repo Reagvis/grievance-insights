@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 import type { GrievanceRecord } from '../../src/domain/grievance';
 import { decodeUtf8, parseCsvImport, parseJsonImport } from '../../src/utils/importer';
+import { formatFromName, ingestDocument, IngestError, LIMITS as INGEST_LIMITS, SOURCE_FORMATS, type CanonicalDataset, type SourceFormat } from '../ingest';
 
 export const MAX_DATASET_BYTES = 1024 * 1024;
 export const MAX_DATASET_RECORDS = 200;
@@ -11,7 +12,7 @@ const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type Status = 'pending_upload' | 'validating' | 'ready' | 'failed';
-export type Metadata = { id: string; key: string; name: string; format: 'csv' | 'json'; status: Status; createdAt: string; bytes: number; recordCount: number; error?: string; ownerId: string; uploadExpiresAt: number };
+export type Metadata = { id: string; key: string; name: string; format: SourceFormat; status: Status; createdAt: string; bytes: number; recordCount: number; error?: string; ownerId: string; uploadExpiresAt: number };
 export type Session = { userId: string; expiresAt: number };
 export interface DatasetStore {
   session(hash: string): Promise<Session | undefined>;
@@ -22,9 +23,11 @@ export interface DatasetStore {
   delete(id: string): Promise<void>;
 }
 export interface PrivateObjects {
-  presign(key: string, format: 'csv' | 'json', expires: number): Promise<{ url: string; headers: Record<string, string> }>;
+  presign(key: string, format: SourceFormat, expires: number): Promise<{ url: string; headers: Record<string, string> }>;
   size(key: string): Promise<number | null>;
   read(key: string): Promise<Uint8Array>;
+  /** Server-side write of derived data (the canonical extraction). Never used for the original upload. */
+  write(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
   remove(key: string): Promise<void>;
 }
 export class ApiError extends Error {
@@ -47,6 +50,7 @@ function body(event: APIGatewayProxyEventV2): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(400, 'Expected JSON object.');
   return value as Record<string, unknown>;
 }
+/** Legacy CSV/JSON validator: still used to read datasets stored before canonical extraction existed. */
 export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uint8Array): GrievanceRecord[] {
   if (!bytes.length || bytes.length > MAX_DATASET_BYTES) throw new ApiError(422, 'File must be between 1 byte and 1 MiB.');
   let parsed;
@@ -60,6 +64,26 @@ export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uin
   if (parsed.rejectedRows.length || parsed.duplicates.length || parsed.emptyRows || !parsed.records.length) throw new ApiError(422, 'Every row requires a unique ID and complaintText; empty, missing, or duplicate rows are not accepted.');
   return parsed.records;
 }
+export const canonicalKey = (id: string) => 'raw/' + id + '/records.json';
+
+/** Structural check of a stored canonical extraction; the object is written by this service but read defensively. */
+function parseCanonical(bytes: Uint8Array): CanonicalDataset {
+  const value = JSON.parse(new TextDecoder().decode(bytes)) as Partial<CanonicalDataset>;
+  if (value?.schemaVersion !== 1 || !Array.isArray(value.records) || !value.records.length || !Array.isArray(value.provenance)) throw new Error('Stored dataset is invalid.');
+  if (new Set(value.records.map(r => r.id)).size !== value.records.length) throw new Error('Stored dataset is invalid.');
+  return value as CanonicalDataset;
+}
+
+/**
+ * The records of a ready dataset. New uploads (every format) read the canonical extraction written at finalize;
+ * datasets stored before that existed are re-parsed from the original CSV/JSON as before.
+ */
+export async function loadRecords(item: Metadata, objects: PrivateObjects): Promise<GrievanceRecord[]> {
+  if (await objects.size(canonicalKey(item.id)) !== null) return parseCanonical(await objects.read(canonicalKey(item.id))).records;
+  if (item.format !== 'csv' && item.format !== 'json') throw new Error('Canonical extraction is missing.');
+  return validateDataset(item.name, item.format, await objects.read(item.key));
+}
+
 export function createDatasetHandler(store: DatasetStore, objects: PrivateObjects, allowedOrigin: string, now = () => Date.now(), uuid = randomUUID) {
   return async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> => {
     const method = event.requestContext.http.method;
@@ -74,12 +98,12 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
       if (method === 'POST' && path === '/api/datasets/uploads') {
         const request = body(event);
         const name = request.name;
-        if (typeof name !== 'string' || !/^.{1,120}\.(csv|json)$/i.test(name) || (/[\\/]/.test(name) || [...name].some(c => c.charCodeAt(0) < 32))) throw new ApiError(400, 'Provide a CSV or JSON filename (maximum 120 characters).');
-        const format = name.toLowerCase().endsWith('.csv') ? 'csv' : 'json';
+        const format = typeof name === 'string' && name.length <= 120 ? formatFromName(name) : null;
+        if (typeof name !== 'string' || !format || /[\\/]/.test(name) || [...name].some(c => c.charCodeAt(0) < 32)) throw new ApiError(400, 'Provide a ' + SOURCE_FORMATS.map(f => '.' + f).join(', ') + ' filename (maximum 120 characters).');
         const size = request.bytes;
-        if (typeof size !== 'number' || !Number.isInteger(size) || size < 1 || size > MAX_DATASET_BYTES) throw new ApiError(413, 'File exceeds the 1 MiB limit or is empty.');
+        if (typeof size !== 'number' || !Number.isInteger(size) || size < 1 || size > INGEST_LIMITS.bytes[format]) throw new ApiError(413, 'File exceeds the ' + Math.round(INGEST_LIMITS.bytes[format] / 1048576) + ' MiB limit for .' + format + ' files, or is empty.');
         const id = uuid();
-        const key = 'raw/' + id + '/source.' + format;
+        const key = 'raw/' + id + '/source.' + format; // the original: written once by the browser, never modified
         const item: Metadata = { id, key, name, format, status: 'pending_upload', createdAt: new Date(now()).toISOString(), bytes: size, recordCount: 0, ownerId: session.userId, uploadExpiresAt: Math.floor(now() / 1000) + UPLOAD_TTL_SECONDS };
         await store.create(item);
         const upload = await objects.presign(key, format, UPLOAD_TTL_SECONDS);
@@ -101,23 +125,31 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
         try {
           const bytes = await objects.size(item.key);
           if (bytes === null) throw new ApiError(422, 'Upload is incomplete or missing.');
-          if (bytes !== item.bytes || bytes > MAX_DATASET_BYTES) throw new ApiError(422, 'Uploaded size differs from the requested size.');
-          const records = validateDataset(item.name, item.format, await objects.read(item.key));
-          await store.transition(id, 'validating', 'ready', { recordCount: records.length });
-          return result(200, { dataset: publicMetadata({ ...item, status: 'ready', recordCount: records.length }) });
+          if (bytes !== item.bytes || bytes > INGEST_LIMITS.bytes[item.format]) throw new ApiError(422, 'Uploaded size differs from the requested size.');
+          const outcome = await ingestDocument({ name: item.name, bytes: await objects.read(item.key) });
+          if (outcome.kind === 'needs_ocr') {
+            // OCR is a separate, explicitly enabled stage. Without it a scan or damaged text layer is never imported as if it were text.
+            throw new ApiError(422, 'This PDF has ' + outcome.ocrPages.length + ' scanned or unreadable-text page(s) and OCR is not enabled in this environment. Upload a searchable PDF, or a TXT/DOCX version.');
+          }
+          const canonical: CanonicalDataset = { ...outcome.canonical, extractedAt: new Date(now()).toISOString() };
+          await objects.write(canonicalKey(id), new TextEncoder().encode(JSON.stringify(canonical)), 'application/json');
+          await store.transition(id, 'validating', 'ready', { recordCount: canonical.records.length });
+          return result(200, { dataset: publicMetadata({ ...item, status: 'ready', recordCount: canonical.records.length }) });
         } catch (error) {
-          const message = error instanceof ApiError && error.status === 422 ? error.message : 'Validation or storage failed.';
+          const safe = error instanceof ApiError && error.status === 422 ? error.message : error instanceof IngestError ? error.message : null;
+          const message = safe ?? 'Validation or storage failed.';
           await store.transition(id, 'validating', 'failed', { error: message });
           return result(422, { error: message });
         }
       }
       if (method === 'GET' && !match[2]) {
         if (item.status !== 'ready') return result(200, { dataset: publicMetadata(item), records: null });
-        const records = validateDataset(item.name, item.format, await objects.read(item.key));
+        const records = await loadRecords(item, objects);
         return result(200, { dataset: publicMetadata(item), records });
       }
       if (method === 'DELETE' && !match[2]) {
         // Delete raw object first: metadata remains retriable if S3 deletion fails.
+        await objects.remove(canonicalKey(id));
         await objects.remove(item.key);
         await store.delete(id);
         return { statusCode: 204, headers: { 'cache-control': 'no-store' } };

@@ -16,7 +16,7 @@ function event(method: string, path: string, authenticated = true, data?: object
 function fixture() {
   const items = new Map<string, Metadata>();
   const file = utf8(csv);
-  let stored: Uint8Array | null = file;
+  const objectsByKey = new Map<string, Uint8Array>([['raw/' + id + '/source.csv', file]]);
   const store: DatasetStore = {
     session: vi.fn(async (value) => value === hash ? { userId: 'admin-1', expiresAt: now / 1000 + 100 } : undefined),
     create: vi.fn(async (item) => { items.set(item.id, item); }),
@@ -32,12 +32,13 @@ function fixture() {
   };
   const objects: PrivateObjects = {
     presign: vi.fn(async () => ({ url: 'https://s3.example.invalid/presigned', headers: { 'if-none-match': '*' } })),
-    size: vi.fn(async () => stored?.byteLength ?? null),
-    read: vi.fn(async () => { if (!stored) throw new Error('missing'); return stored; }),
-    remove: vi.fn(async () => { stored = null; }),
+    size: vi.fn(async (key: string) => objectsByKey.get(key)?.byteLength ?? null),
+    read: vi.fn(async (key: string) => { const v = objectsByKey.get(key); if (!v) throw new Error('missing'); return v; }),
+    remove: vi.fn(async (key: string) => { objectsByKey.delete(key); }),
+    write: vi.fn(async (key: string, bytes: Uint8Array) => { objectsByKey.set(key, bytes); }),
   };
   const handler = createDatasetHandler(store, objects, origin, () => now, () => id);
-  return { items, store, objects, handler, setFile: (next: Uint8Array | null) => { stored = next; } };
+  return { items, store, objects, handler, setFile: (next: Uint8Array | null) => { if (next) objectsByKey.set('raw/' + id + '/source.csv', next); else objectsByKey.delete('raw/' + id + '/source.csv'); }, objectsByKey };
 }
 const data = (res: { body?: string }) => JSON.parse(res.body ?? '{}') as Record<string, any>;
 describe('private dataset validation', () => {

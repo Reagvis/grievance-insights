@@ -1,6 +1,7 @@
 import { createHash, createHmac } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, DeleteCommand, GetCommand, PutCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { CONTENT_TYPE, type SourceFormat } from '../ingest/limits';
 import type { DatasetStore, Metadata, PrivateObjects, Session, Status } from './core';
 
 const enc = (value: string) => encodeURIComponent(value).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
@@ -13,7 +14,7 @@ function awsCredentials() {
 }
 export class SignedS3 implements PrivateObjects {
   constructor(private readonly bucket: string, private readonly region: string) {}
-  private sign(method: string, key: string, expiry?: number, format?: 'csv' | 'json') {
+  private sign(method: string, key: string, expiry?: number, format?: SourceFormat, body?: { bytes: Uint8Array; contentType: string }) {
     const credentials = awsCredentials();
     const date = new Date();
     const timestamp = date.toISOString().replace(/[:-]|\.\d{3}/g, '');
@@ -23,12 +24,13 @@ export class SignedS3 implements PrivateObjects {
     const scope = day + '/' + this.region + '/s3/aws4_request';
     const headers: Record<string, string> = { host };
     if (expiry) {
-      headers['content-type'] = format === 'csv' ? 'text/csv' : 'application/json';
+      headers['content-type'] = CONTENT_TYPE[format ?? 'json'];
       headers['if-none-match'] = '*';
     } else {
       headers['x-amz-date'] = timestamp;
       headers['x-amz-security-token'] = credentials.token;
-      headers['x-amz-content-sha256'] = sha('');
+      headers['x-amz-content-sha256'] = sha(body?.bytes ?? '');
+      if (body) headers['content-type'] = body.contentType;
     }
     const names = Object.keys(headers).sort();
     const signedHeaders = names.join(';');
@@ -39,7 +41,7 @@ export class SignedS3 implements PrivateObjects {
       ['X-Amz-Security-Token', credentials.token], ['X-Amz-SignedHeaders', signedHeaders],
     ] : [];
     const query = queryEntries.map(([k,v]) => [enc(k), enc(v)]).sort((a,b) => a[0].localeCompare(b[0])).map(([k,v]) => k + '=' + v).join('&');
-    const payloadHash = expiry ? 'UNSIGNED-PAYLOAD' : sha('');
+    const payloadHash = expiry ? 'UNSIGNED-PAYLOAD' : sha(body?.bytes ?? '');
     const canonical = [method, path, query, canonicalHeaders, signedHeaders, payloadHash].join('\n');
     const stringToSign = ['AWS4-HMAC-SHA256', timestamp, scope, sha(canonical)].join('\n');
     const signingKey = hmac(hmac(hmac(hmac('AWS4' + credentials.secret, day), this.region), 's3'), 'aws4_request');
@@ -49,7 +51,7 @@ export class SignedS3 implements PrivateObjects {
     delete headers.host;
     return { url, headers };
   }
-  async presign(key: string, format: 'csv' | 'json', expires: number) { return this.sign('PUT', key, expires, format); }
+  async presign(key: string, format: SourceFormat, expires: number) { return this.sign('PUT', key, expires, format); }
   private async request(method: string, key: string) {
     const signed = this.sign(method, key);
     const response = await fetch(signed.url, { method, headers: signed.headers });
@@ -60,6 +62,11 @@ export class SignedS3 implements PrivateObjects {
   async size(key: string) { const response = await this.request('HEAD', key); return response ? Number(response.headers.get('content-length')) : null; }
   async read(key: string) { const response = await this.request('GET', key); if (!response) throw new Error('S3 object missing'); return new Uint8Array(await response.arrayBuffer()); }
   async remove(key: string) { await this.request('DELETE', key); }
+  async write(key: string, bytes: Uint8Array, contentType: string) {
+    const signed = this.sign('PUT', key, undefined, undefined, { bytes, contentType });
+    const response = await fetch(signed.url, { method: 'PUT', headers: signed.headers, body: new Blob([Uint8Array.from(bytes)]) });
+    if (!response.ok) throw new Error('S3 PUT failed with ' + response.status);
+  }
 }
 export class DynamoDatasets implements DatasetStore {
   constructor(private readonly client: DynamoDBDocumentClient, private readonly table: string, private readonly sessions: string) {}

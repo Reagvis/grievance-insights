@@ -40,3 +40,34 @@ describe('AWS authenticated dataset frontend client', () => {
     await expect(listDatasets()).rejects.toThrow('session has expired');
   });
 });
+describe('seven-format upload client', () => {
+  const origin = { location: { origin: 'https://telangana-gov-pilot.reagvis.com' } };
+  const ok = () => vi.fn()
+    .mockResolvedValueOnce(jsonResponse({ dataset: { id: 'd' }, upload: { url: 'https://private-s3.invalid/put', headers: { 'if-none-match': '*' } } }, 201))
+    .mockResolvedValueOnce({ ok: true, status: 200 })
+    .mockResolvedValueOnce(jsonResponse({ dataset: { id: 'd', status: 'ready' } }));
+  it.each(['a.txt', 'a.md', 'a.docx', 'a.csv', 'a.json', 'a.jsonl', 'a.pdf', 'UPPER.PDF'])('accepts %s and sends its real byte size', async (name) => {
+    vi.stubGlobal('window', origin);
+    const fetcher = ok();
+    vi.stubGlobal('fetch', fetcher);
+    await uploadDataset(new File(['xyz'], name), () => {});
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ name, bytes: 3 });
+  });
+  it('rejects unsupported types, empty files and per-format oversize before any network call', async () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
+    await expect(uploadDataset(new File(['x'], 'a.xlsx'), () => {})).rejects.toThrow(/Unsupported file type/);
+    await expect(uploadDataset(new File([], 'a.txt'), () => {})).rejects.toThrow(/empty/);
+    await expect(uploadDataset(new File([new Uint8Array(1024 * 1024 + 1)], 'a.txt'), () => {})).rejects.toThrow(/at most 1 MiB/);
+    await expect(uploadDataset(new File([new Uint8Array(6 * 1024 * 1024)], 'a.docx'), () => {})).rejects.toThrow(/at most 5 MiB/);
+    await expect(uploadDataset(new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'a.pdf'), () => {})).rejects.toThrow(/at most 10 MiB/);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it('announces extraction for documents that need it', async () => {
+    vi.stubGlobal('window', origin);
+    vi.stubGlobal('fetch', ok());
+    const steps: string[] = [];
+    await uploadDataset(new File(['x'], 'a.pdf'), (s) => steps.push(s));
+    expect(steps.at(-1)).toBe('Extracting text and validating…');
+  });
+});

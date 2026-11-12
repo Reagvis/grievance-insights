@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 import type { DatasetStore, Metadata, PrivateObjects } from '../datasets/core';
-import { validateDataset } from '../datasets/core';
+import { loadRecords } from '../datasets/core';
 import type { GrievanceRecord } from '../../src/domain/grievance';
 import { aggregate, MAX_ANALYSIS_RECORDS, MODEL_ID, MODEL_REGION, PROMPT_VERSION, RECORDS_PER_INVOCATION, type RecordOutcome, type Report, type RecordAnalysis, InvalidModelOutput } from './schema';
 
@@ -111,7 +111,7 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
   };
 }
 async function readDataset(dataset: Metadata, files: PrivateObjects): Promise<GrievanceRecord[]> {
-  return validateDataset(dataset.name, dataset.format, await files.read(dataset.key));
+  return loadRecords(dataset, files);
 }
 const transient = new Set(['ThrottlingException', 'TooManyRequestsException', 'ServiceUnavailableException', 'ModelNotReadyException', 'InternalServerException', 'TimeoutError', 'AbortError']);
 function failureCode(error: unknown): string {
