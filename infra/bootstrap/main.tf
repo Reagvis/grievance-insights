@@ -156,10 +156,9 @@ data "aws_iam_policy_document" "terraform" {
     actions = [
       "s3:CreateBucket",
       "s3:DeleteBucket",
-      "s3:GetBucket*",
-      "s3:GetAccelerateConfiguration",
-      "s3:GetEncryptionConfiguration",
-      "s3:GetLifecycleConfiguration",
+      # Covers provider bucket refresh reads, including replication and acceleration.
+      # The bucket-only ARN cannot authorize reading state or frontend S3 objects.
+      "s3:Get*",
       "s3:ListBucket",
       "s3:PutBucket*",
       "s3:PutEncryptionConfiguration",
@@ -268,6 +267,7 @@ data "aws_iam_policy_document" "terraform" {
     sid = "CloudFrontManagedPolicyLookup"
     actions = [
       "cloudfront:GetCachePolicy",
+      "cloudfront:GetOriginRequestPolicy",
       "cloudfront:ListCachePolicies",
       "cloudfront:ListOriginRequestPolicies",
     ]
