@@ -75,7 +75,7 @@ jobs:
       - name: Test authentication backend
         run: npm run backend:test
 
-      - name: Package authentication Lambda
+      - name: Package authentication and dataset Lambdas
         run: npm run backend:package
 
       - name: Configure AWS credentials
