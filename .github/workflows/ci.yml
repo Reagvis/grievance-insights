@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, feature/task-15-persistent-datasets]
+    branches: [main, feature/task-15-persistent-datasets, feature/task-16-bedrock-processing]
   push:
-    branches: [main, feature/task-16-bedrock-processing]
+    branches: [main, feature/task-16-bedrock-processing, feature/task-18-insights-dashboard]
 
 permissions:
   contents: read
@@ -45,6 +45,9 @@ jobs:
 
       - name: Test frontend and backend
         run: npm test
+
+      - name: Exercise dashboard DOM interactions in headless Chrome
+        run: npm run test:dashboard:browser
 
       - name: Type-check backend
         run: npm run backend:typecheck
