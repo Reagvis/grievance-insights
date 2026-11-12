@@ -208,9 +208,6 @@ data "aws_iam_policy_document" "backend_compute" {
     actions = [
       "lambda:DeleteEventSourceMapping",
       "lambda:GetEventSourceMapping",
-      "lambda:ListTags",
-      "lambda:TagResource",
-      "lambda:UntagResource",
       "lambda:UpdateEventSourceMapping",
     ]
     resources = [local.lambda_mapping_arn]
@@ -219,6 +216,25 @@ data "aws_iam_policy_document" "backend_compute" {
       test     = "ArnLike"
       variable = "lambda:FunctionArn"
       values   = [local.lambda_function_arn]
+    }
+  }
+
+  # Tag reads do not include lambda:FunctionArn in the authorization context.
+  statement {
+    sid       = "ReadLambdaEventSourceMappingTags"
+    actions   = ["lambda:ListTags"]
+    resources = [local.lambda_mapping_arn]
+  }
+
+  statement {
+    sid       = "ManageLambdaEventSourceMappingTags"
+    actions   = ["lambda:TagResource", "lambda:UntagResource"]
+    resources = [local.lambda_mapping_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Repository"
+      values   = [var.github_repository]
     }
   }
 
