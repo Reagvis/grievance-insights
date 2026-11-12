@@ -98,6 +98,7 @@ data "aws_iam_policy_document" "bootstrap_permissions" {
       "s3:DeleteBucket",
       "s3:DeleteBucket*",
       "s3:GetBucket*",
+      "s3:GetAccelerateConfiguration",
       "s3:GetEncryptionConfiguration",
       "s3:GetLifecycleConfiguration",
       "s3:PutBucket*",
