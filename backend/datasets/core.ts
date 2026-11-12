@@ -3,8 +3,8 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from '
 import type { GrievanceRecord } from '../../src/domain/grievance';
 import { decodeUtf8, parseCsvImport, parseJsonImport } from '../../src/utils/importer';
 
-export const MAX_DATASET_BYTES = 1024 * 1024;
-export const MAX_DATASET_RECORDS = 200;
+export const MAX_DATASET_BYTES = 20 * 1024 * 1024;
+export const MAX_DATASET_RECORDS = 2000;
 export const UPLOAD_TTL_SECONDS = 300;
 const COOKIE = '__Host-grievance_session';
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
@@ -48,7 +48,7 @@ function body(event: APIGatewayProxyEventV2): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uint8Array): GrievanceRecord[] {
-  if (!bytes.length || bytes.length > MAX_DATASET_BYTES) throw new ApiError(422, 'File must be between 1 byte and 1 MiB.');
+  if (!bytes.length || bytes.length > MAX_DATASET_BYTES) throw new ApiError(422, 'File must be between 1 byte and 20 MiB.');
   let parsed;
   try {
     const text = decodeUtf8(Uint8Array.from(bytes).buffer);
@@ -56,7 +56,7 @@ export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uin
   } catch (error) {
     throw new ApiError(422, error instanceof Error ? error.message : 'Invalid dataset.');
   }
-  if (parsed.totalRows > MAX_DATASET_RECORDS || parsed.records.length > MAX_DATASET_RECORDS) throw new ApiError(422, 'Dataset exceeds the 200-record limit.');
+  if (parsed.totalRows > MAX_DATASET_RECORDS || parsed.records.length > MAX_DATASET_RECORDS) throw new ApiError(422, 'Dataset exceeds the 2,000-record limit.');
   if (parsed.rejectedRows.length || parsed.duplicates.length || parsed.emptyRows || !parsed.records.length) throw new ApiError(422, 'Every row requires a unique ID and complaintText; empty, missing, or duplicate rows are not accepted.');
   return parsed.records;
 }
@@ -77,7 +77,7 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
         if (typeof name !== 'string' || !/^.{1,120}\.(csv|json)$/i.test(name) || (/[\\/]/.test(name) || [...name].some(c => c.charCodeAt(0) < 32))) throw new ApiError(400, 'Provide a CSV or JSON filename (maximum 120 characters).');
         const format = name.toLowerCase().endsWith('.csv') ? 'csv' : 'json';
         const size = request.bytes;
-        if (typeof size !== 'number' || !Number.isInteger(size) || size < 1 || size > MAX_DATASET_BYTES) throw new ApiError(413, 'File exceeds the 1 MiB limit or is empty.');
+        if (typeof size !== 'number' || !Number.isInteger(size) || size < 1 || size > MAX_DATASET_BYTES) throw new ApiError(413, 'File exceeds the 20 MiB limit or is empty.');
         const id = uuid();
         const key = 'raw/' + id + '/source.' + format;
         const item: Metadata = { id, key, name, format, status: 'pending_upload', createdAt: new Date(now()).toISOString(), bytes: size, recordCount: 0, ownerId: session.userId, uploadExpiresAt: Math.floor(now() / 1000) + UPLOAD_TTL_SECONDS };
