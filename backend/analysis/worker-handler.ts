@@ -12,6 +12,12 @@ export async function handler(event: SQSEvent): Promise<void> {
     // Messages already in the pilot queue before the upgrade have no attempt field.
     const attempt = value.attempt === undefined ? 0 : value.attempt;
     if (typeof attempt !== 'number' || !Number.isSafeInteger(attempt) || attempt < 0) throw new Error('Invalid SQS attempt');
-    await processJob(value.jobId, isDeadLetter, attempt);
+    try {
+      await processJob(value.jobId, isDeadLetter, attempt);
+    } catch (error) {
+      console.error(JSON.stringify({ event: 'analysis_batch_error', jobId: value.jobId, attempt,
+        errorType: error instanceof Error ? error.name : 'Unknown' }));
+      throw error;
+    }
   }
 }
