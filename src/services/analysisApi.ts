@@ -47,5 +47,26 @@ export async function readAnalysis(jobId: string) {
   return (await request<{ job: AnalysisJob }>('/api/analyses/' + encodeURIComponent(jobId))).job;
 }
 export async function readAnalysisResults(jobId: string) {
-  return request<{ job: AnalysisJob; report: AnalysisReport }>('/api/analyses/' + encodeURIComponent(jobId) + '/results');
+  const path = '/api/analyses/' + encodeURIComponent(jobId) + '/results';
+  let cursor: number | null = 0;
+  let result: { job: AnalysisJob; report: AnalysisReport } | null = null;
+  const outcomes: AnalysisReport['outcomes'] = [];
+  while (cursor !== null) {
+    const page: { job: AnalysisJob; report: AnalysisReport; nextCursor: number | null } =
+      await request(path + '?cursor=' + cursor);
+    if (page.job.id !== jobId || page.report.jobId !== jobId || page.report.datasetId !== page.job.datasetId ||
+        page.job.status !== 'completed') throw new Error('AI result page does not match the requested job.');
+    if (result && (result.report.generatedAt !== page.report.generatedAt || result.report.stats.grievances !== page.report.stats.grievances)) {
+      throw new Error('AI report changed while downloading.');
+    }
+    if (page.report.outcomes.length > 100 || page.nextCursor !== null &&
+        (page.nextCursor !== cursor + page.report.outcomes.length || page.nextCursor > 2000)) {
+      throw new Error('Invalid AI result pagination.');
+    }
+    outcomes.push(...page.report.outcomes);
+    result = { job: page.job, report: page.report };
+    cursor = page.nextCursor;
+  }
+  if (!result || outcomes.length !== result.report.stats.grievances) throw new Error('Incomplete AI report retrieval.');
+  return { ...result, report: { ...result.report, outcomes } };
 }
