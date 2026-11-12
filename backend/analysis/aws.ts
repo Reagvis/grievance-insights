@@ -46,6 +46,17 @@ export class DynamoJobs implements JobStore {
       ExpressionAttributeNames: { '#s': 'status', '#cursor': 'cursor', '#total': 'total' },
       ExpressionAttributeValues: { ':completed': 'completed', ':running': 'running', ':key': key, ':now': timestamp } }));
   }
+  async retry(id: string): Promise<boolean> {
+    try {
+      await this.client.send(new UpdateCommand({ TableName: this.table, Key: { id },
+        UpdateExpression: 'SET #s = :queued, #error = :null, finishedAt = :null, attempt = if_not_exists(attempt, :zero) + :one',
+        ConditionExpression: '#s = :failed AND (#error = :exhausted OR #error = :unavailable) AND #cursor < #total',
+        ExpressionAttributeNames: { '#s': 'status', '#error': 'error', '#cursor': 'cursor', '#total': 'total' },
+        ExpressionAttributeValues: { ':queued': 'queued', ':failed': 'failed', ':exhausted': 'retries_exhausted',
+          ':unavailable': 'queue_unavailable', ':null': null, ':zero': 0, ':one': 1 } }));
+      return true;
+    } catch (error) { if (conditional(error)) return false; throw error; }
+  }
   async fail(id: string, code: string, timestamp: string) {
     if (!/^[a-z_]{1,60}$/.test(code)) throw new Error('Only safe failure codes may be stored');
     try {
@@ -59,10 +70,10 @@ export class DynamoJobs implements JobStore {
 }
 export class SqsJobQueue implements JobQueue {
   constructor(private readonly queueUrl: string) {}
-  async send(id: string, cursor: number) {
+  async send(id: string, cursor: number, attempt = 0) {
     const body = textBytes({
-      QueueUrl: this.queueUrl, MessageBody: JSON.stringify({ jobId: id }),
-      MessageGroupId: id, MessageDeduplicationId: id + '-' + cursor,
+      QueueUrl: this.queueUrl, MessageBody: JSON.stringify({ jobId: id, attempt }),
+      MessageGroupId: id, MessageDeduplicationId: id + '-' + attempt + '-' + cursor,
     });
     const response = await signedAwsRequest('sqs', MODEL_REGION, 'POST', 'https://sqs.' + MODEL_REGION + '.amazonaws.com/', body,
       { 'content-type': 'application/x-amz-json-1.0', 'x-amz-target': 'AmazonSQS.SendMessage' });
