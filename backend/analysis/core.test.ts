@@ -291,7 +291,7 @@ describe('terminal failures, idempotent checkpoints and dead letters', () => {
     const outcomes = Array.from({ length: 100 }, (_, i) => ({
       id: 'GR-' + i,
       analysis: {
-        id: 'GR-' + i, category: 'water', complaintSummary: 'అ'.repeat(1500),
+        id: 'GR-' + i, category: 'water' as const, complaintSummary: 'అ'.repeat(1500),
         issueClassification: 'అ'.repeat(1500), requestedAction: 'అ'.repeat(1500),
         potentiallyUrgent: true, urgencyReason: 'అ'.repeat(1500),
         complaintEvidence: 'నీరు రావడం లేదు', responseSummary: 'అ'.repeat(1500),
