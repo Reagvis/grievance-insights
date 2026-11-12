@@ -55,7 +55,7 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
   }, [datasetId]);
 
   async function start() {
-    if (records.length === 0 || records.length > 30) return;
+    if (records.length === 0 || records.length > 2000) return;
     setBusy(true);
     setError('');
     try {
@@ -82,15 +82,15 @@ export function AnalysisWorkspace({ datasetId, records, onStateChange }: Props) 
   return <section className="analysis-control" aria-label="AI analysis job and export">
     <header>
       <div><h2>AI analysis</h2>
-        <p>Available only for persisted AWS datasets of 1–30 records. Completed AI interpretations appear in the dashboard; deterministic reporting stays separate.</p>
+        <p>Available only for persisted AWS datasets of 1–2,000 records. Completed AI interpretations appear in the dashboard; deterministic reporting stays separate.</p>
       </div>
       {job?.status === 'completed' && report && <button className="btn btn-secondary btn-sm" type="button" onClick={download}>Export validated AI JSON</button>}
     </header>
     {loading && <p role="status">Checking for a saved AI analysis…</p>}
     {!loading && !job && <div className="analysis-action-row">
-      <button type="button" className="btn btn-primary" disabled={busy || records.length === 0 || records.length > 30}
+      <button type="button" className="btn btn-primary" disabled={busy || records.length === 0 || records.length > 2000}
         onClick={() => void start()}>{busy ? 'Submitting…' : 'Analyze with AI'}</button>
-      {records.length > 30 ? <p>This dataset exceeds the 30-record AI pilot limit. Source analytics remain available above.</p> :
+      {records.length > 2000 ? <p>This dataset exceeds the 2,000-record AI limit. Source analytics remain available above.</p> :
         records.length === 0 ? <p>Select a nonempty dataset first.</p> : <p>No AI job has been requested for this dataset.</p>}
     </div>}
     {job && <div className="analysis-progress" role="status">
