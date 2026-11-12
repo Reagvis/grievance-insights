@@ -10,7 +10,7 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed';
 export type Job = {
-  id: string; datasetId: string; ownerId: string; status: JobStatus;
+  id: string; datasetId: string; ownerId: string; status: JobStatus; expiresAt: number;
   createdAt: string; startedAt: string | null; finishedAt: string | null;
   cursor: number; total: number; failureCount: number; resultsKey: string | null;
   modelId: typeof MODEL_ID; region: typeof MODEL_REGION; promptVersion: typeof PROMPT_VERSION;
@@ -75,6 +75,7 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
         const job: Job = {
           id: dataset.id, datasetId: dataset.id, ownerId: session.userId, status: 'queued',
           createdAt: now().toISOString(), startedAt: null, finishedAt: null, cursor: 0, total: records.length,
+          expiresAt: Math.floor(now().getTime() / 1000) + 89 * 86400,
           failureCount: 0, resultsKey: null, modelId: MODEL_ID, region: MODEL_REGION,
           promptVersion: PROMPT_VERSION, error: null,
         };

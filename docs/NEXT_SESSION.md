@@ -48,3 +48,8 @@ Authentication API code, durable hashed sessions, Terraform, tests, and Lambda p
 ## Task 15 branch / PR handoff
 
 PR #16 (`feature/task-15-persistent-datasets`) implements private persistent AWS datasets without deployment. It adds the authenticated datasets Lambda, five HTTP API routes, DynamoDB dataset metadata, private datasets S3, browser presigned upload, strict CSV/JSON validation, AWS-mode dataset UI, and CI packaging/tests. Limits: 1 MiB, 200 rows, 5-minute upload authorization. Test CI before merging and review any runtime IAM boundary gaps only from actual deployment plans; do not edit bootstrap/access-seed or deploy as part of this PR. The current deployment permissions repair is independent. Bedrock work remains subsequent.
+
+
+## Task 16 stacked analysis PR
+
+PR #18, branch `feature/task-16-bedrock-processing`, is stacked against PR #16 `feature/task-15-persistent-datasets` at `2a27287fe4de8fa8b427046b9ee816670daca16c`. It implements an authenticated job API, FIFO SQS + DLQ, DynamoDB jobs, a bounded-role Qwen3 Converse worker with record checkpoints, strict evidence verification, private S3 report persistence, and AWS-mode frontend results/exports. Only synthetic test records; no Bedrock calls, deployment or Terraform apply. After PR #16 merges, retarget PR #18 to main and recheck its diff/CI before merge. Review the role-policy transition and scoped worker permissions in a separate, approved infrastructure plan; never edit bootstrap or access-seed during this feature.

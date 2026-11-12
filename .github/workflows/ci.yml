@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, feature/task-15-persistent-datasets]
   push:
-    branches: [main]
+    branches: [main, feature/task-16-bedrock-processing]
 
 permissions:
   contents: read

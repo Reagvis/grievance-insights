@@ -147,7 +147,7 @@ describe('checkpointed worker and bounded retries', () => {
   it('retries throttling twice and then lets SQS redrive without checkpointing', async () => {
     const f = fixture();
     await f.api(event('POST','/api/datasets/' + id + '/analyze'));
-    vi.mocked(f.model.analyze).mockRejectedValue(new Object.assign(new Error('throttled'), { name: 'ThrottlingException' }));
+    vi.mocked(f.model.analyze).mockRejectedValue(Object.assign(new Error('throttled'), { name: 'ThrottlingException' }));
     await expect(f.worker(id)).rejects.toThrow('throttled');
     expect(f.current()?.cursor).toBe(0);
     expect(f.model.analyze).toHaveBeenCalledTimes(2);
