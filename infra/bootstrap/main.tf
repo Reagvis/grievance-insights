@@ -2,6 +2,7 @@ data "aws_caller_identity" "current" {}
 
 locals {
   project_name                  = "grievance-insights"
+  github_oidc_subject_prefix    = "repo:Reagvis@212125805/grievance-insights@1446187135"
   environment                   = "pilot"
   hostname                      = "telangana-gov-pilot.reagvis.com"
   frontend_bucket_name          = "${local.project_name}-${local.environment}-${data.aws_caller_identity.current.account_id}-frontend"
@@ -113,7 +114,7 @@ data "aws_iam_policy_document" "terraform_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${var.infrastructure_github_environment}"]
+      values   = ["${local.github_oidc_subject_prefix}:environment:${var.infrastructure_github_environment}"]
     }
   }
 }
@@ -419,7 +420,7 @@ data "aws_iam_policy_document" "frontend_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${var.frontend_github_environment}"]
+      values   = ["${local.github_oidc_subject_prefix}:environment:${var.frontend_github_environment}"]
     }
   }
 }
