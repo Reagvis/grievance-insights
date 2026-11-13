@@ -14,6 +14,8 @@ type Props = {
   onOpenRecord: (id: string) => void;
   /** File to show first (the file of the complaint that is open). */
   preferredFileId?: string;
+  /** ID (in the combined list) of the complaint that is open, if any. */
+  selectedId?: string;
 };
 
 const label = (category: string) => category.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -102,9 +104,43 @@ export function AnalysisResults({ datasetId, job, report, mergedIdOf, onOpenReco
   );
 }
 
+const RELEVANCE: Record<string, string> = { relevant: 'Relevant', insufficient: 'Insufficient', inconclusive: 'Inconclusive', not_applicable: 'No response to assess' };
+
+/** The AI's reading of the one complaint that is open (taken from its file's finished analysis). */
+function ThisComplaint({ displayId, originalId, job, report }: { displayId: string; originalId: string | undefined; job: AnalysisJob | null; report: AnalysisReport | null }) {
+  const done = report && job?.status === 'completed';
+  const outcome = done && originalId ? report.outcomes.find((o) => o.id === originalId) : undefined;
+  const a = outcome?.analysis;
+  return (
+    <section className="ai-this" aria-label="AI reading of the open complaint">
+      <h4>This complaint · {displayId}</h4>
+      {a ? (
+        <>
+          <p className="ai-this-line"><strong>{label(a.category)}</strong>{a.potentiallyUrgent ? <span className="ai-flag"> · Potentially urgent</span> : null}</p>
+          <p lang="te">{a.complaintSummary}</p>
+          {a.potentiallyUrgent && a.urgencyReason && <p lang="te" className="ai-this-urgent">{a.urgencyReason}</p>}
+          <p className="ai-this-line">Response: {RELEVANCE[a.responseRelevance] ?? a.responseRelevance}{a.responseAssessment ? ` — ${a.responseAssessment}` : ''}</p>
+        </>
+      ) : outcome?.failure ? (
+        <p className="ai-empty">The AI could not analyse this complaint.</p>
+      ) : done ? (
+        <p className="ai-empty">This complaint is not in the finished analysis of this file.</p>
+      ) : (
+        <p className="ai-empty">Not analysed yet. Run the analysis on this file below and this complaint's result will appear here.</p>
+      )}
+    </section>
+  );
+}
+
 /** The Assistant's "AI analysis" mode: choose an uploaded file, start the analysis, watch progress, read and export the result. */
-export function AiAnalysisPane({ files, recordsByDataset, mergedIdOf, onOpenRecord, preferredFileId }: Props) {
+export function AiAnalysisPane({ files, recordsByDataset, mergedIdOf, onOpenRecord, preferredFileId, selectedId }: Props) {
   const [chosen, setChosen] = useState<string | null>(null);
+  // Opening a different complaint puts the tab back on that complaint's file.
+  const [seenSelected, setSeenSelected] = useState(selectedId);
+  if (seenSelected !== selectedId) {
+    setSeenSelected(selectedId);
+    setChosen(null);
+  }
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const activeId = files.find((f) => f.id === chosen)?.id ?? files.find((f) => f.id === preferredFileId)?.id ?? files[0]?.id ?? null;
   const onState = useCallback((datasetId: string, job: AnalysisJob | null, report: AnalysisReport | null, loading: boolean, error: string) => {
@@ -119,6 +155,7 @@ export function AiAnalysisPane({ files, recordsByDataset, mergedIdOf, onOpenReco
     );
   }
   const current = snapshot && snapshot.datasetId === activeId ? snapshot : null;
+  const originalId = selectedId ? (recordsByDataset.get(activeId) ?? []).find((r) => mergedIdOf(activeId, r.id) === selectedId)?.id : undefined;
   return (
     <div className="ai-pane">
       <p className="ai-intro">
@@ -133,6 +170,7 @@ export function AiAnalysisPane({ files, recordsByDataset, mergedIdOf, onOpenReco
           ))}
         </select>
       </label>
+      {selectedId && originalId && <ThisComplaint displayId={selectedId} originalId={originalId} job={current?.job ?? null} report={current?.report ?? null} />}
       <AnalysisWorkspace key={activeId} datasetId={activeId} records={recordsByDataset.get(activeId) ?? []} onStateChange={onState} />
       <AnalysisResults datasetId={activeId} job={current?.job ?? null} report={current?.report ?? null} mergedIdOf={mergedIdOf} onOpenRecord={onOpenRecord} />
     </div>
