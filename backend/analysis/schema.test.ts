@@ -37,6 +37,14 @@ describe('grounded Telugu Bedrock model parsing', () => {
     expect(() => validateModelOutput({ ...output(), responseEvidence: complaint }, record())).toThrow(InvalidModelOutput);
     expect(() => validateModelOutput({ ...output(), verifiedOutcome: true }, record())).toThrow(InvalidModelOutput);
   });
+  it('accepts a quote that differs from the source only by line breaks and hidden joiners, and stores the source text', () => {
+    const wrapped: GrievanceRecord = { ...record(), complaintText: 'మా గ్రామంలో రేషన్\u200c దుకాణంలో స్టాక్\u200c\nలేదని చెబుతున్నారు.', responseText: 'తనిఖీ చేశాము. వచ్చే వారంలో పంపిణీ\nచేస్తాము.' };
+    const result = validateModelOutput({ ...output(), complaintEvidence: 'దుకాణంలో స్టాక్ లేదని చెబుతున్నారు', responseEvidence: 'పంపిణీ చేస్తాము' }, wrapped);
+    expect(wrapped.complaintText).toContain(result.complaintEvidence);
+    expect(result.complaintEvidence).toBe('దుకాణంలో స్టాక్\u200c\nలేదని చెబుతున్నారు');
+    expect(result.responseEvidence).toBe('పంపిణీ\nచేస్తాము');
+    expect(() => validateModelOutput({ ...output(), complaintEvidence: 'దుకాణంలో స్టాక్ ఉందని చెబుతున్నారు' }, wrapped)).toThrow(InvalidModelOutput);
+  });
   it('rejects unsupported categories, missing fields and malformed JSON', () => {
     expect(() => validateModelOutput({ ...output(), category: 'unapproved' }, record())).toThrow();
     expect(() => validateModelOutput({ ...output(), complaintSummary: null }, record())).toThrow();
