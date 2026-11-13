@@ -61,15 +61,42 @@ function optionalText(value: unknown, field: string): string | null {
   if (value === null) return null;
   return nonemptyText(value, field);
 }
+/** Zero-width joiners and non-joiners, which scanned and re-typed Telugu text often differs on. */
+const INVISIBLE = /[\u200b-\u200d\u2060\ufeff]/;
+/** Text with hidden joiners dropped and every run of whitespace (including line breaks) made one space, plus where each kept character came from. */
+function squash(text: string): { text: string; from: number[] } {
+  let out = '';
+  const from: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (INVISIBLE.test(ch)) continue;
+    if (/\s/.test(ch)) {
+      if (out.length > 0 && !out.endsWith(' ')) { out += ' '; from.push(i); }
+      continue;
+    }
+    out += ch; from.push(i);
+  }
+  return { text: out, from };
+}
+/**
+ * The quote must be a real passage of the source. Line breaks and hidden joiners may differ (PDF text wraps lines, and the model
+ * writes a plain space), so the match ignores them, but what is stored is always the source's own text for that passage.
+ */
 function exactQuote(value: unknown, source: string | null, field: string): string | null {
   if (source === null) {
     if (value !== null) throw new InvalidModelOutput(field + ' must be null');
     return null;
   }
-  if (typeof value !== 'string' || !value.trim() || value.length > 400 || !source.includes(value)) {
-    throw new InvalidModelOutput(field + ' does not exactly match source');
-  }
-  return value;
+  if (typeof value !== 'string' || !value.trim() || value.length > 400) throw new InvalidModelOutput(field + ' does not exactly match source');
+  if (source.includes(value)) return value;
+  const quote = squash(value).text.trim();
+  const hay = squash(source);
+  const at = quote ? hay.text.indexOf(quote) : -1;
+  if (at < 0) throw new InvalidModelOutput(field + ' does not exactly match source');
+  const last = at + quote.length - 1;
+  let end = hay.from[last] + 1;
+  while (end < source.length && INVISIBLE.test(source[end])) end++;
+  return source.slice(hay.from[at], end).trim();
 }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InvalidModelOutput('Expected JSON object');
