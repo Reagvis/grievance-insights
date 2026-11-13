@@ -212,7 +212,11 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   const [dashRange, setDashRange] = useState({ from: '', to: '' });
   const [assistantOpen, setAssistantOpen] = useState(false);
   // With the assistant docked on the right, a note opens as an overlay instead of inline so nothing is hidden behind the panel.
-  const inlineDetail = useMediaQuery('(min-width: 1024px)') && route.page === 'complaints' && !assistantOpen;
+  // Wide screens keep the complaint beside the list even with the assistant open; narrower ones use an overlay.
+  const roomForInline = useMediaQuery(assistantOpen ? '(min-width: 1280px)' : '(min-width: 1024px)');
+  const inlineDetail = roomForInline && route.page === 'complaints';
+  // Opening the assistant must not pop the complaint open over it: the overlay waits until a complaint is clicked.
+  const [overlayHeld, setOverlayHeld] = useState(false);
   /** Last record opened — stays highlighted in the list after the detail panel closes. */
   const [lastOpenedId, setLastOpenedId] = useState<string | null>(null);
 
@@ -316,6 +320,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
       }
       navigate({ page: route.page, noteId: id });
       setLastOpenedId(id);
+      setOverlayHeld(false);
     },
     [recordById, notify, navigate, route.page],
   );
@@ -745,9 +750,15 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           </main>
         )}
 
-        {pagesReady && !assistantOpen && <AssistantLauncher onOpen={() => setAssistantOpen(true)} />}
+        {pagesReady && !assistantOpen && <AssistantLauncher
+            onOpen={() => {
+              // If the complaint is already open as an overlay it stays; if it was beside the list it must not turn into an overlay.
+              setOverlayHeld(!(selectedId && !inlineDetail));
+              setAssistantOpen(true);
+            }}
+          />}
 
-        {!inlineDetail && pagesReady && detail}
+        {!inlineDetail && pagesReady && !(assistantOpen && overlayHeld) && detail}
         {assistantOpen && (
           <ChatPanel
             store={chat}
@@ -765,6 +776,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
                   mergedIdOf={(datasetId, originalId) => mergedIdOf(all, datasetId, originalId)}
                   onOpenRecord={openRecord}
                   preferredFileId={selectedId ? all.sourceOf.get(selectedId)?.datasetId : undefined}
+                  selectedId={selectedId ?? undefined}
                 />
               ) : undefined
             }

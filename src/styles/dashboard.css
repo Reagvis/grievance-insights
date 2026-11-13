@@ -763,7 +763,7 @@
 /* ───────────── Assistant (docked, non-modal chat) ───────────── */
 .chat-panel {
   position: fixed;
-  z-index: 45;
+  z-index: 55; /* over the complaint window */
   top: var(--header-h);
   right: 0;
   bottom: 0;
@@ -1021,6 +1021,9 @@ button.case-chip:hover {
 
 /* Make room for the docked assistant on wide screens so it never hides content */
 @media (min-width: 1100px) {
+  .app[data-assistant='open'] .drawer:not(.drawer--inline) {
+    right: 420px;
+  }
   .app[data-assistant='open'] .main,
   .app[data-assistant='open'] .workspace--complaints {
     margin-right: 420px;
@@ -1720,4 +1723,27 @@ button.case-chip:hover {
 .ai-more {
   font-size: 12px;
   color: var(--ink-500, #64748b);
+}
+
+.ai-this {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line, #e2e8f0);
+  border-left: 4px solid #3b5bdb;
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  font-size: 13.5px;
+}
+.ai-this h4 {
+  margin: 0;
+  font-size: 13.5px;
+}
+.ai-this p {
+  margin: 0;
+  line-height: 1.6;
+}
+.ai-flag,
+.ai-this-urgent {
+  color: #b91c1c;
 }
