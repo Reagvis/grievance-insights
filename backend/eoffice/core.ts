@@ -206,7 +206,11 @@ export function createEofficeApi(deps: {
       // truly unavailable mandatory values remain 422 rather than a fabricated value.
       const extracted = task === 'extract' ? validateExtraction(schema!, output.extracted_data) : undefined;
       if (extracted) verifyExtractedFacts(extracted, output.quotes);
-      else verifyNarrativeNumbers(output.text ?? '', output.quotes, input.user_input ?? '');
+      else verifyNarrativeNumbers(
+        output.text ?? '', output.quotes, input.user_input ?? '',
+        task === 'draft-reply' || (task === 'summarize' && documents.length === 0)
+          ? 'supplied-source-or-draft-instructions' : 'untrusted-question',
+      );
       const responseContent = extracted ? JSON.stringify(extracted) : output.text ?? '';
       verifyNoProtectedLinks(responseContent, supplied, input.user_input ?? '');
       if (task === 'extract') return encode(200, {
