@@ -2,7 +2,8 @@ import type { GrievanceRecord } from '../domain/grievance';
 import { answerQuestion } from './recordAssistant';
 
 /** What the assistant may look at. The server (not the browser) resolves this against the real data. */
-export type ChatScope = { kind: 'all' } | { kind: 'records'; recordIds: string[] };
+export type ChatScope = { kind: 'all' } | { kind: 'records'; recordIds: string[] } |
+  { kind: 'document'; datasetId: string; recordId?: string; recordIndex?: number };
 
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 export type Citation = { caseId: string; quote?: string };
