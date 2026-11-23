@@ -19,6 +19,7 @@ import { fetchAllComplaints, fetchHealth, HttpChatService, HttpSummaryService, t
 import { api, IS_LIVE } from '../services/api/config';
 import type { HealthInfo } from '../services/api/wire';
 import { LookupChatService, type ChatScope, type ChatService } from '../services/chat';
+import { DocumentChatService } from '../services/documentChat';
 import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServices';
 import { FileProblems } from '../components/FileProblems';
 import { SummaryFilters } from '../components/SummaryFilters';
@@ -261,19 +262,56 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
 
   // ── Assistant ────────────────────────────────────────────────────────
   const chat = useChatStore();
+  // AWS chat is scoped to one uploaded file (or its selected complaint). No browser-supplied source text.
+  const chatFile = AWS_AUTH_ENABLED && all
+    ? (selectedId && all.sourceOf.get(selectedId)
+      ? readyFiles.find(f => f.id === all.sourceOf.get(selectedId)!.datasetId)
+      : undefined) ?? readyFiles.find(f => all.recordsByDataset.has(f.id))
+    : undefined;
+  const chatFileRecords = chatFile && all?.recordsByDataset.get(chatFile.id);
+  const selectedOriginalIndex = chatFileRecords && selectedId && all
+    ? chatFileRecords.findIndex(r => mergedIdOf(all, chatFile.id, r.id) === selectedId)
+    : -1;
+  const chatSourceKey = AWS_AUTH_ENABLED ? (chatFile?.id ?? 'none') + ':' + (selectedId ?? '') : '';
+  const lastChatSourceKey = useRef(chatSourceKey);
+  useEffect(() => {
+    if (AWS_AUTH_ENABLED && lastChatSourceKey.current !== chatSourceKey) {
+      chat.reset();
+      lastChatSourceKey.current = chatSourceKey;
+    }
+  }, [chatSourceKey, chat.reset]);
   const chatService: ChatService = useMemo(
-    () => (IS_LIVE ? new HttpChatService(api) : new LookupChatService(() => dataset.records)),
-    [dataset],
+    () => AWS_AUTH_ENABLED
+      ? new DocumentChatService((fileId, originalId) => all ? mergedIdOf(all, fileId, originalId) : undefined)
+      : IS_LIVE ? new HttpChatService(api) : new LookupChatService(() => dataset.records),
+    [dataset, all],
   );
-  const chatUnavailable = !IS_LIVE
-    ? null
-    : healthError
-      ? `The assistant could not be reached. ${healthError}`
-      : health && !health.capabilities.chat
-        ? 'The assistant is not switched on for this server yet.'
-        : null;
+  const chatUnavailable = AWS_AUTH_ENABLED
+    ? (!chatFile ? 'Upload and open a document to ask Qwen.' : null)
+    : !IS_LIVE
+      ? null
+      : healthError
+        ? `The assistant could not be reached. ${healthError}`
+        : health && !health.capabilities.chat
+          ? 'The assistant is not switched on for this server yet.'
+          : null;
   const chatScopes: ScopeOption[] = useMemo(() => {
     const list: ScopeOption[] = [];
+    if (AWS_AUTH_ENABLED) {
+      if (chatFile && chatFileRecords) {
+        if (selectedOriginalIndex >= 0) {
+          const original = chatFileRecords[selectedOriginalIndex];
+          list.push({ key: 'note', label: 'This complaint (' + original.id + ')',
+            scope: { kind: 'document', datasetId: chatFile.id, recordId: original.id, recordIndex: selectedOriginalIndex } });
+        }
+        list.push({ key: 'file', label: 'This file (' + chatFile.name + ')',
+          scope: { kind: 'document', datasetId: chatFile.id } });
+      } else {
+        // Chat is explicitly disabled until a readable file is available.
+        list.push({ key: 'file', label: 'No document selected', scope: { kind: 'document', datasetId: '' } });
+      }
+      return list;
+    }
     const note = selectedId ? recordById.get(selectedId) : undefined;
     if (note) list.push({ key: 'note', label: `This complaint (${note.id})`, scope: { kind: 'records', recordIds: [note.id] } as ChatScope });
     list.push({ key: 'all', label: `All complaints (${formatCount(dataset.records.length)})`, scope: { kind: 'all' } });
@@ -281,7 +319,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
       list.push({ key: 'filtered', label: `Current list (${formatCount(filtered.length)})`, scope: { kind: 'records', recordIds: filtered.map((r) => r.id) } });
     }
     return list;
-  }, [selectedId, recordById, dataset.records.length, filtersActive, filtered]);
+  }, [selectedId, recordById, dataset.records.length, filtersActive, filtered, chatFile, chatFileRecords, selectedOriginalIndex]);
 
   const resetForDataset = () => {
     chat.reset();
@@ -761,13 +799,14 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
         {!inlineDetail && pagesReady && !(assistantOpen && overlayHeld) && detail}
         {assistantOpen && (
           <ChatPanel
+            key={chatSourceKey}
             store={chat}
             service={chatService}
             scopes={chatScopes}
             knownIds={new Set(recordById.keys())}
             unavailableReason={chatUnavailable}
             onOpenRecord={openRecord}
-            onClose={() => setAssistantOpen(false)}
+            onClose={() => { chat.reset(); setAssistantOpen(false); }}
             analysisPane={
               AWS_AUTH_ENABLED && all ? (
                 <AiAnalysisPane
