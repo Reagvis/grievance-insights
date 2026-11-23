@@ -354,6 +354,78 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
     expect(response.statusCode).toBe(502);
   });
 
+  it('keeps representative 2–4-document evidence envelopes below current requested token counts', async () => {
+    // Byte count is a deliberately conservative proxy for these ASCII-only
+    // fixtures, NOT a Qwen tokenizer measurement or production latency claim.
+    // The maximum permitted 16 × 512-byte quotes cannot be assumed to fit.
+    for (const count of [2, 3, 4]) {
+      const attached = Array.from({ length: count }, (_, index) => ({
+        document_id: 'routing_' + String.fromCharCode(65 + index),
+        download_url: 'https://docs.example.gov/temp/routing-' + String.fromCharCode(65 + index),
+      }));
+      const materialsById: Record<string, Material> = {};
+      const fields: Record<string, { type: 'string' }> = {};
+      const values: Record<string, string> = {};
+      const excerpts = attached.map((ref, index) => {
+        const letter = String.fromCharCode(65 + index);
+        const value = 'Authorized section ' + letter + ' review';
+        const quoteText = 'Office routing policy ' + letter + ' requires ' + value +
+          ' before correspondence is dispatched by the responsible officer.';
+        materialsById[ref.document_id] = {
+          document_id: ref.document_id,
+          title: 'Routing ' + letter + ' procedure',
+          text: quoteText,
+        };
+        fields['rule_' + letter] = { type: 'string' };
+        values['rule_' + letter] = value;
+        return quote(ref.document_id, quoteText);
+      });
+      const source: DocumentSource = { fetch: async ref => {
+        const material = materialsById[ref.document_id];
+        if (!material) throw new Error('Unknown mock source');
+        return material;
+      } };
+      const ids = attached.map(ref => ref.document_id);
+      const narrative = JSON.stringify({
+        text: 'The supplied office policies require review by the responsible section ' +
+          'before correspondence is sent. Officers should consult the individual ' +
+          'procedures for the applicable responsibilities.',
+        used_document_ids: ids, evidence: excerpts,
+      });
+      const extraction = JSON.stringify({
+        extracted_data: values, used_document_ids: ids, evidence: excerpts,
+      });
+      // These concise, real-shaped examples fit even under a pessimistic
+      // one-ASCII-byte-per-token comparison, not guaranteed for longer answers.
+      expect(Buffer.byteLength(narrative, 'utf8')).toBeLessThan(1600);
+      expect(Buffer.byteLength(extraction, 'utf8')).toBeLessThan(1400);
+
+      const chatModel: Model = vi.fn(async (_system, _prompt, maxTokens) => {
+        expect(maxTokens).toBe(1600);
+        return narrative;
+      });
+      const extractModel: Model = vi.fn(async (_system, _prompt, maxTokens) => {
+        expect(maxTokens).toBe(1400);
+        return extraction;
+      });
+      const deps = { authorize: async () => officer, documents: source };
+      const chatResponse = await createEofficeApi({ ...deps, model: chatModel })(event('chat', {
+        session_id: 'budget-test', user_input: 'Describe the office routing procedures.',
+        context: { documents: attached },
+      }));
+      expect(chatResponse.statusCode).toBe(200);
+      expect(result(chatResponse).references).toHaveLength(count);
+
+      const extractionResponse = await createEofficeApi({ ...deps, model: extractModel })(event('extract', {
+        context: { documents: attached },
+        extraction_schema: { type: 'object', properties: fields, required: Object.keys(fields) },
+      }));
+      expect(extractionResponse.statusCode).toBe(200);
+      expect(result(extractionResponse).extracted_data).toEqual(values);
+    }
+    expect(16 * 512).toBeGreaterThan(1600);
+  });
+
   it('retains explicit source-size, invalid-PDF, and OCR-required failures without truncating text', async () => {
     const tooLong = new TextEncoder().encode('This is a valid source paragraph.\n'.repeat(1000));
     await expect(extractDocument(docA, tooLong, 'text/plain')).rejects.toMatchObject({ status: 422 });
