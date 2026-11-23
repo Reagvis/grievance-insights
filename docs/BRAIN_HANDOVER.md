@@ -12,6 +12,20 @@ You are taking over the independent technical lead / reviewer role for the Griev
 
 **Current top priority:** Make the existing Grievance Insights AWS pilot provide the government eOffice Phase 1 v2.0 synchronous AI API. The seven-format / capacity pilot release is a parallel priority. This is one adapted existing product, not a replacement eOffice app or separate unrelated architecture.
 
+## Non-negotiable release invariant — existing pilot must continue unchanged
+
+**Confirmed directly by project owner on 2026-11-23:** *Whatever we do, the existing pilot should continue to work as is.* This is a **release-blocking acceptance criterion**, not merely a preferred design principle.
+
+- Any eOffice code must be strictly additive and isolated. The currently deployed Grievance Insights dashboard, its existing API paths, dataset imports, Cognito/admin authentication, Bedrock grievance analysis, S3 data, DynamoDB/SQS processing, downloads, live URL and existing user workflows must retain their current behavior and availability.
+- **No breaking changes** to existing API routes, response shapes, permission models, environment settings or IAM policy. Do not repurpose, remove or overwrite existing AWS resources. Keep the eOffice provider authentication separately fail-closed until the actual government protocol is obtained.
+- **Merging feature code is not authorization to deploy.** Preserve the current deployed application and infrastructure. Review the exact diff for shared-module changes (notably `backend/analysis/aws-http.ts`), check existing automated regression tests locally, and verify all dashboard flows against the current pilot before any change to its deployment.
+- If AWS integration is later authorized, require a reviewed Terraform plan with **zero unintended deletes/replacements**, independent eOffice isolation/authorizers/IAM, rollback path, and a pre-/post-deployment smoke test checklist on the **existing production pilot**. A deployment must be postponed if preserving existing functionality cannot be demonstrated.
+- Do not use new eOffice functionality to interfere with currently deployed capacity, OCR, dashboard, analysis or authentication. Do not enable paid Bedrock calls for testing without explicit authorization.
+- When PR #37's merge conflict or GitHub `mergeable:false` is addressed, review the exact resolution and the impact on all existing behaviors. No force pushes or speculative shortcuts.
+- Continue to honor the developer's restriction: **no GitHub Actions runs**; the developer reports CI disabled. Use local test and build output instead.
+
+This criterion overrides any prior assistant suggestion to merge or deploy simply because eOffice contract unit tests pass. Maintain it in all future plans, code reviews, handovers and release decisions.
+
 ## Current checkpoint — user-reported local verification (2026-11-23)
 
 - Developer confirms: **"all tests ran successfully"** after running the verification steps supplied for eOffice PR #37 at head `7e738913d1f07601a795463b65bb32e26d3cfaac`. Treat this as a **user-reported local WSL pass**, not an independently observed terminal transcript; exact per-command counts/logs were not pasted. Previous failure at `0d93255...` was corrected and now reported resolved in the local run.
