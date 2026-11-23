@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { createEofficeApi, type Event, type Model, type Principal } from './core';
-import { declaredFilename, extractDocument, type DocumentSource, type Material } from './documents';
+import { HttpsDocuments, declaredFilename, extractDocument, type DocumentSource, type Material } from './documents';
 
 const request_id = '7f9bc8c2-71a4-42fa-a32c-fac64fb0842e';
 const officer: Principal = {
@@ -77,6 +77,23 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
     }
     expect(declaredFilename("attachment; filename*=UTF-8''%E0%B0%AA%E0%B0%A4%E0%B1%8D%E0%B0%B0%E0%B0%82.pdf"))
       .toBe('పత్రం.pdf');
+  });
+
+  it('propagates only safe file labels from a mocked protected HTTPS response, not the URL', async () => {
+    const download = vi.fn(async () => ({
+      bytes: new TextEncoder().encode('This department document records the procurement budget decision.'),
+      contentType: 'text/plain; charset=utf-8',
+      contentDisposition: 'attachment; filename="Procurement Record 2026.txt"',
+    }));
+    const source = new HttpsDocuments(
+      async () => ({ allowedHosts: new Set(['docs.example.gov']), headers: { Authorization: 'private' } }),
+      async () => [{ address: '8.8.8.8', family: 4 }],
+      download,
+    );
+    const material = await source.fetch(docA, officer, Date.now() + 5000);
+    expect(material.title).toBe('Procurement Record 2026.txt');
+    expect(material.title).not.toContain('secret-A');
+    expect(download).toHaveBeenCalledTimes(1);
   });
 
   it('derives a PDF page from verified source text, rather than accepting the model assertion', async () => {
@@ -177,6 +194,7 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
       'Download at ' + docA.download_url,
       'Download at ' + encodeURIComponent(docA.download_url),
       'See https://docs.example.gov/another-private-resource',
+      'The bearer ticket is secret-A.',
     ]) {
       const response = await make({ ...good, text }).api(chat());
       expect(response.statusCode).toBe(502);
