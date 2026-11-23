@@ -14,7 +14,7 @@ export type DocumentAccess = {
   allowedHosts: ReadonlySet<string>;
   headers: Readonly<Record<string, string>>;
 };
-type Address = { address: string; family: 4 | 6 };
+type Address = { address: string; family: number };
 type Resolver = (hostname: string) => Promise<readonly Address[]>;
 type Transport = (url: URL, ip: Address, headers: Readonly<Record<string, string>>, timeoutMs: number) =>
   Promise<{ bytes: Uint8Array; contentType: string }>;
@@ -86,6 +86,9 @@ const pinnedHttpsGet: Transport = (url, ip, headers, timeoutMs) => new Promise((
     res.on('close', () => { if (!ended) fail(); });
     res.on('error', fail);
   });
+  // Socket inactivity timeout alone is insufficient: a slow streaming peer could keep it alive.
+  const absoluteTimer = setTimeout(() => req.destroy(), timeoutMs);
+  req.on('close', () => clearTimeout(absoluteTimer));
   req.on('timeout', () => req.destroy());
   req.on('error', fail);
 });
