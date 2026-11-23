@@ -172,9 +172,12 @@ export async function extractDocument(document: DocumentRef, bytes: Uint8Array, 
   if (mime === 'text/plain' || mime === 'text/markdown') {
     text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } else if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-    text = extractDocxText(bytes, () => false).text;
+    try { text = extractDocxText(bytes, () => false).text; }
+    catch { throw new EofficeError(422, 'DOCX parsing failed.', 'The requested document is unreadable.'); }
   } else if (mime === 'application/pdf') {
-    const pages = await extractPdfPages(bytes);
+    let pages: Awaited<ReturnType<typeof extractPdfPages>>;
+    try { pages = await extractPdfPages(bytes); }
+    catch { throw new EofficeError(422, 'PDF parsing failed.', 'The requested document is unreadable.'); }
     if (pages.pages.some(p => p.kind !== 'text'))
       throw new EofficeError(422, 'PDF requires OCR outside synchronous scope.', 'The document cannot be processed synchronously.');
     pageMaterials = pages.pages.map(p => ({ page_number: p.page, text: p.text }));
