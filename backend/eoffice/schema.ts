@@ -46,6 +46,8 @@ export function validateExtraction(schema: Schema, value: unknown): Record<strin
     if (data === null) {
       if (!t.includes('null')) throw unprocessable('Required field ' + name + ' could not be extracted.');
     } else {
+      if (schema.required?.includes(name) && typeof data === 'string' && !data.trim())
+        throw unprocessable('Required field ' + name + ' could not be extracted.');
       const ok = t.some(kind => (kind === 'string' && typeof data === 'string' && !!data.trim()) ||
         (kind === 'number' && typeof data === 'number' && Number.isFinite(data)) ||
         (kind === 'integer' && typeof data === 'number' && Number.isSafeInteger(data)) ||

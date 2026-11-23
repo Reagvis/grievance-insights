@@ -159,6 +159,16 @@ describe('eOffice Phase 1 response contracts', () => {
       expect(r.statusCode).toBe(502);
     }
   });
+  it('returns 422 for whitespace-only required extraction strings without misclassifying malformed output', async () => {
+    const req = event('extract', { request_id: id, context: { documents: [docA] }, extraction_schema: schema });
+    for (const blank of [' ', '   ', '\\t', ' \\n\\t ']) {
+      const r = await api({ model: async () => extracted({ subject: blank }) })(req);
+      expect(r.statusCode).toBe(422);
+      expect(result(r).request_id).toBe(id);
+    }
+    const malformed = await api({ model: async () => extracted({ subject: 42 }) })(req);
+    expect(malformed.statusCode).toBe(502);
+  });
   it('returns proposed correspondence without invented file links', async () => {
     const r = await api()(event('draft-reply', { request_id: id, user_input: 'Draft an acknowledgement.' }));
     expect(result(r)).toEqual({ request_id: id, draft_text: 'Valid answer', references: [] });
