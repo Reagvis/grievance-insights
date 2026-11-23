@@ -13,7 +13,7 @@ This branch implements a contract handler for four endpoints under `/api/v1/ai` 
 - Chat strategy: stateless; `session_id` required, no local conversation storage. `previous_context` needs an authorized injectable history resolver. Provider tokens are currently explicitly rejected with 422 instead of silently ignored or used across user/session boundaries; negotiate this behavior on onboarding.
 - Retention: request-local data only, no permanent chat/document persistence or cache. No temporary retained data to expire. Any future artifact or state persistence must enforce default 12 h and maximum 24 h.
 
-Limits: 64,000-byte request JSON, 24,000-byte officer input and aggregate source, 2 MiB per file, 24,000-byte extracted text per document, up to four documents, 24,000-byte model response, 1,400–1,600 max model tokens. Deployment must negotiate API Gateway/Lambda synchronous budgets, file types and limits. Existing Bedrock transport has a 75-second deadline, which must be reconciled with eOffice's configured synchronous timeout before deployment.
+Limits: 64,000-byte request JSON, 24,000-byte officer input and aggregate source, 2 MiB per file, 24,000-byte extracted text per document, up to four documents, 24,000-byte model response, 1,400–1,600 max model tokens. Deployment must negotiate API Gateway/Lambda synchronous budgets, file types and limits. eOffice Bedrock calls use an 18-second request deadline (legacy grievance inference retains its existing 75-second deadline). The end-to-end budget for fetching several documents and running inference must still be benchmarked against the configured eOffice synchronous timeout before deployment.
 
 ## Outstanding blockers / security review
 
