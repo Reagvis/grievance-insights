@@ -226,3 +226,30 @@ describe('published eOffice Phase 1 v2.0 examples (mocked, no external access)',
     });
   }
 });
+
+describe('eOffice §3.4 reference shape validation', () => {
+  it('rejects invalid source page numbers instead of returning malformed references', async () => {
+    const model = vi.fn(async () => JSON.stringify({
+      text: 'Policy answer.', used_document_ids: [file.document_id],
+    }));
+    for (const page_number of [-1, 0, 1.5, Number.NaN]) {
+      const api = createEofficeApi({
+        authorize: async () => principal, model,
+        documents: { fetch: async ref => ({
+          document_id: ref.document_id, title: 'Test policy', text: 'Policy text.',
+          page_number,
+        }) },
+      });
+      const response = await api(event('chat', {
+        session_id: 'test-session', user_input: 'What does the policy say?',
+        context: { documents: [file] },
+      }));
+      expect(response.statusCode).toBe(502);
+      expect(body(response)).toEqual({
+        request_id, system_error_message: expect.any(String),
+        user_error_message: expect.any(String),
+      });
+    }
+    expect(model).not.toHaveBeenCalled();
+  });
+});
