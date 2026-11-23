@@ -154,9 +154,9 @@ export function createEofficeApi(deps: {
         }
         const pages = material.pages;
         if (!Array.isArray(pages) || !pages.length || pages.length > 100 ||
-            new Set(pages.map(p => p.page_number)).size !== pages.length ||
-            pages.some(p => !Number.isSafeInteger(p.page_number) || p.page_number < 1 ||
+            pages.some(p => !p || !Number.isSafeInteger(p.page_number) || p.page_number < 1 ||
               !bounded(p.text, MAX_INPUT) || !material.text.includes(p.text)) ||
+            new Set(pages.map(p => p.page_number)).size !== pages.length ||
             (material.page_number !== undefined &&
               (pages.length !== 1 || material.page_number !== pages[0].page_number)))
           throw new EofficeError(502, 'Document page evidence was inconsistent.', 'Document retrieval failed.');
@@ -200,7 +200,7 @@ export function createEofficeApi(deps: {
       // Keep complete schema validation separate from evidentiary validation:
       // truly unavailable mandatory values remain 422 rather than a fabricated value.
       const extracted = task === 'extract' ? validateExtraction(schema!, output.extracted_data) : undefined;
-      if (extracted) verifyExtractedFacts(extracted, output.usedIds, documents);
+      if (extracted) verifyExtractedFacts(extracted, output.quotes);
       else verifyNarrativeNumbers(output.text ?? '', output.quotes, input.user_input ?? '');
       const responseContent = extracted ? JSON.stringify(extracted) : output.text ?? '';
       verifyNoProtectedLinks(responseContent, supplied, input.user_input ?? '');
