@@ -1,6 +1,27 @@
 # Grievance Insights — Living Brain Handover
 
-**Last updated:** 2026-11-23 (Asia/Kolkata)  
+**Last updated:** 2026-11-23 (Asia/Kolkata)
+
+## CURRENT DECISION — 2026-11-23: eOffice Phase 1 API work resumed (supersedes prior hold)
+
+**User direction:** The next task is now to deliver an eOffice-integrable **pilot API that satisfies the attached `eOffice_AI_Phase1_Specification_v2(2).pdf` (Phase 1 v2.0)**. This supersedes the earlier instruction that eOffice work is on hold. **The existing live Grievance Insights website and operator-confirmed Qwen chatbot must remain unchanged.** This is a renewed development priority, **not** authorization to merge, expose endpoints, deploy AWS changes, trigger GitHub Actions, run paid Bedrock inference or bypass government authentication.
+
+**Spec reviewed directly, eight pages, 2026-11-23:** Four HTTPS POST synchronous endpoints at `/api/v1/ai/{chat,summarize,extract,draft-reply}`, exact contract fields and standardized request_id/error behavior. Chat, extract, and draft-reply require `references` arrays; summary references optional. Extract must return full declared structure, nullable optional values and an error for missing required values; never fabricate. Draft text always required; generated file URL optional if a protected temporary file is actually created. Chat state may be stateful or stateless as agreed at onboarding. Auth is **explicitly in a separately issued government specification not yet provided**; `user_id` alone is not authentication. Department/user/session isolation, secure document retrieval, SSRF/prompt-injection/malware defenses, confidentiality, human approval, and 12-hour default/24-hour maximum retention are contractual safeguards. Onboarding must agree supported schema subset, formats, sizes, endpoints, sync timeout, chat mode and authentication.
+
+**Actual code baseline on current `main`:** PR #37 merged a testable but **unexposed and fail-closed** foundation in `backend/eoffice/*`. All four core handlers and basic contract checks exist; `handler.ts` still `authorize: async () => null`, protected document access resolver throws, and there are no eOffice API Gateway routes. The JSON Schema implementation accepts only flat scalar properties; chat does not accept context tokens and previous_context requires an injected resolver; output references rely on model-attributed IDs and are not semantically verified. Document adapter supports text/plain, Markdown, DOCX, searchable PDF, with 2 MiB/file, four-document and extracted-text/prompt limits; scans requiring OCR fail 422 on the synchronous eOffice path. No dedicated malware scanning, real eOffice auth, or deployed integration has been demonstrated. Optional PDF/DOCX generated draft artifact URLs are not implemented. These limitations require **documented onboarding agreements, validated implementations, or explicit safe errors**, not silent assertions of full compatibility.
+
+**Task 22 acceptance gates (proposed):**
+1. Contract-by-contract gap matrix and offline fixture/mocked tests for examples, method/media/IDs/errors, evidence-linked references, complete extraction and drafting. Do **not** repeat previous whole-repo tests or deployment merely to rediscover known results; run narrowly targeted verification only when the owner authorizes new implementation validation.
+2. Obtain and implement the official external authentication/authorization and protected file-access specification (government protocol must not be guessed). Until then, retain fail-closed production behavior; a local mock harness can exercise API contracts safely but is not eOffice-ready authentication.
+3. Set and document onboarding decisions on schema features, document formats/size, OCR strategy, synchronous timeout, permitted hosts/egress, chat context mode and enabled endpoints; ensure realistic bounded behavior without leaking/truncating content.
+4. Resolve security and quality gaps: protected file credentials, tenancy/session separation, safe download/malware controls, prompt-injection resistance, truthful source references, response/schema validation, safe error/log handling, retention and officer review. No long-term eOffice content storage or unauthorized training.
+5. Propose isolated eOffice-only API Gateway/Lambda/IAM changes with a verified no-unintended-delete/replace Terraform plan and a rollback path. Preserve all existing Cognito, dataset, ingestion, analysis, CloudFront, S3 and pilot routes. Require explicit authorization for any merge/deploy and focused live inference.
+6. Demonstrate an end-to-end departmental eOffice-compatible request/response sequence for every enabled endpoint using official auth and protected sample documents before calling the integration complete.
+
+**Evidence classification:** User-provided PDF directly reviewed; existing code and prior merge state reviewed through GitHub connector. No code changed or tests, deployment, paid model call or live eOffice integration executed for this decision. The live chatbot remains operator-confirmed working from prior handover.
+
+---
+  
 **Canonical location:** `main`, file `docs/BRAIN_HANDOVER.md`, repository `Reagvis/grievance-insights`. Initial documentation branch `docs/brain-handover` was fast-forwarded into `main`.  
 **Purpose:** durable context for a replacement project-brain ChatGPT conversation and coordination record for the current brain. This is a historical evidence ledger, not automatically synced to activity outside the conversation.
 
