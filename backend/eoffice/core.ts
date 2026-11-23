@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { bounded, EofficeError, invalid, isObject, parseSchema, unprocessable, validateExtraction } from './schema';
 import type { DocumentRef, DocumentSource, Material } from './documents';
 
