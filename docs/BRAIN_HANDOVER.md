@@ -12,6 +12,14 @@ You are taking over the independent technical lead / reviewer role for the Griev
 
 **Current top priority:** Make the existing Grievance Insights AWS pilot provide the government eOffice Phase 1 v2.0 synchronous AI API. The seven-format / capacity pilot release is a parallel priority. This is one adapted existing product, not a replacement eOffice app or separate unrelated architecture.
 
+## Current checkpoint — user-reported local verification (2026-11-23)
+
+- Developer confirms: **"all tests ran successfully"** after running the verification steps supplied for eOffice PR #37 at head `7e738913d1f07601a795463b65bb32e26d3cfaac`. Treat this as a **user-reported local WSL pass**, not an independently observed terminal transcript; exact per-command counts/logs were not pasted. Previous failure at `0d93255...` was corrected and now reported resolved in the local run.
+- Independent reviewer inspected the corrected `validateExtraction` branch and tests including required whitespace strings on the final PR head. No GitHub Actions run was requested or performed by this brain chat.
+- PR #37 remains **open, draft, unmerged and undeployed**. Government authentication/protected-document protocol remains missing; handler production auth stays fail-closed. Next decision: review PR integration to updated `main` and decide whether to merge the inert API foundation (no eOffice public infrastructure) or keep draft pending onboarding. **Do not merge/deploy without user's explicit authorization.**
+- `main` has advanced with documentation-only commits, so PR #37 and `main` now have diverged histories. Any future merge must use a normal merge/update procedure and resolve any real conflicts without force-rebasing active work; GitHub returned `mergeable:false` at this checkpoint, so verify actual conflict/mergeability at the time of integration.
+- CI: user confirms CI workflow disabled. Do not launch/reenable/retrigger GitHub Actions; continue with local test workflow.
+
 ## 1. Developer and operating model
 
 - Primary developer: Fellow-DevJk (this user). **They use Codex**, not Claude Code. Their colleague used Claude Code. User's Codex usage limits were exhausted.
@@ -95,7 +103,7 @@ Root defect: backend/eoffice/schema.ts::validateExtraction treated required empt
 - Working retry: npm test -- --maxWorkers=2 --testTimeout=20000. Result **350/352 passed** (31/33 files, 31.57 sec). Eight timing failures disappeared. Two remaining failures: Task19 capacity-stress incremental RSS 558,964,736 bytes above 512 MiB (536,870,912 bytes), and the same eOffice 422/502 defect at older commit.
 - Isolated stress test command recommended: npx vitest run backend/analysis/capacity-stress.test.ts --maxWorkers=1 --testTimeout=30000. User reported **1/1 passed**, duration 11.64 sec. This is a genuine isolated local pass, not a full-suite or deployed Lambda benchmark.
 - Frontend npm run build completed successfully in initial user logs; Vite native-loader and Rolldown @__PURE__ messages were warnings.
-- Fresh head 7e738... still needs focused eOffice regression tests and relevant local build/validation, with no GitHub Actions.
+- **Update 2026-11-23:** User reports all requested local tests ran successfully on the corrected PR head `7e738913...`; see checkpoint above. No detailed terminal logs were supplied to this chat. No GitHub Actions are required.
 
 ## 6. Exact next steps and WSL commands
 
@@ -123,7 +131,7 @@ Root defect: backend/eoffice/schema.ts::validateExtraction treated required empt
 
    If the review worktree exists already, reuse/update it safely; do not blindly recreate. If a full test run has the known process-level RSS flake while isolated stress passes, capture RSS benchmark output and distinguish environmental test pressure from code regression. Do not simply raise assertion threshold.
 
-4. If focused tests pass, complete independent review, resolve any remaining true defects, then plan eOffice authentication onboarding. Wait for official government authentication/protected file protocol. Do not deploy public eOffice endpoints.
+4. User now reports local tests passed on final PR head; complete integration/mergeability review, resolve remaining actual conflicts if any, then plan eOffice authentication onboarding. Wait for official government authentication/protected file protocol. Do not deploy public eOffice endpoints. Merge only after separate user authorization.
 5. Parallel: Verify whether Task19/21 merge is actually deployed in AWS pilot before claiming it live. Local deployment is possible after confirming AWS identity, real Terraform plan (no unintended delete/replace), and essential smoke tests; no separate staging required. This is not authorization to deploy eOffice.
 
 ## 7. Handover upkeep rules
