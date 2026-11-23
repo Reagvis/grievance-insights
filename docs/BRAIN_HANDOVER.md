@@ -2,6 +2,16 @@
 
 **Last updated:** 2026-11-23 (Asia/Kolkata)
 
+## CHECKPOINT — 2026-11-23: Task 22A PR #39 independently source-reviewed; WSL verification pending
+
+- **Implementation PR:** [#39](https://github.com/Reagvis/grievance-insights/pull/39), head `ece27b6609749e4e66fe5d19c5d9f26ace729bcd`, base `main`, **draft/open/mergeable and unmerged** when checked. Four files only: `backend/eoffice/contract.test.ts` (new), `backend/eoffice/core.ts`, `backend/eoffice/schema.ts`, `docs/EOFFICE_CONFORMANCE_MATRIX.md` (new). No application pilot frontend/legacy API, auth handler, AWS, IAM, infra or workflow file changes.
+- **Actual source-level changes:** `validateExtraction` now normalizes missing/empty/whitespace-only optional nullable string fields to `null`; required fields continue returning 422 when unavailable, malformed values return provider error. `createEofficeApi` rejects non-positive, fractional or nonfinite `page_number` metadata before producing references. New mocked tests cover API envelopes, error and provenance shapes, fail-closed handler and four adapted specification examples. Mock PDF examples omit unavailable optional chat-history mechanisms intentionally.
+- **Independent Brain review:** Source diff and conformance matrix checked against the user-supplied original eight-page Phase 1 v2.0 PDF. No blocking defect found *in these four changed files*. Review **COMMENT** submitted on GitHub PR #39 (review ID `6021520665`); not an approval of integration or release. Source/mock coverage does not demonstrate Qwen factual grounding, true source titles or page provenance, live protected access, malware defenses, official auth, or AWS behavior.
+- **Verification state:** Implementation chat did **not run tests**. Focused WSL tests and backend typecheck are **pending**: `npx vitest run backend/eoffice/contract.test.ts backend/eoffice/core.test.ts backend/eoffice/schema.test.ts --maxWorkers=2 --testTimeout=20000`; `npm run backend:typecheck`, at exact PR head after safe `git fetch`/worktree checkout and `npm ci` if necessary. No GitHub Actions or paid Bedrock. Do not merge, expose or deploy before actual results and explicit approval.
+- **Ongoing work order:** Complete non-government-auth API contract and hardening first; defer actual official government auth/document credential integration to final gated stage. Existing signed-in Qwen chatbot and grievance dashboard are live and must be preserved.
+- **Next immediate action:** Owner runs above focused checks in WSL and supplies terminal results; Brain then decides if PR #39 can be merged safely or needs correction, and scopes Task 22B. Existing eOffice production handler remains fail-closed and unexposed.
+
+---
 ## WORKING PLAN — 2026-11-23: eOffice implementation delegated; official auth last
 
 **Owner's operating decision (new):** Continue implementing **all feasible non-authentication eOffice Phase 1 v2.0 requirements first**; request and implement the separately issued government authentication/protected-document access specification **at the final integration stage**. This is a sequencing decision, **not permission to disable or improvise authentication**. Keep `backend/eoffice/handler.ts` authorization default-deny and its protected-file credential resolver unconfigured until official government specifications arrive.
