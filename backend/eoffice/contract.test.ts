@@ -226,10 +226,14 @@ describe('published eOffice Phase 1 v2.0 examples (mocked, no external access)',
       const sources = example.sourceTitles as Record<string, { title: string; page_number?: number }>;
       const documents = { fetch: vi.fn(async (ref: { document_id: string; download_url: string }) => {
         const page = sources[ref.document_id]?.page_number;
+        const pages = page ? Array.from({ length: page }, (_, index) => ({
+          page_number: index + 1,
+          text: index + 1 === page ? support : 'Other procedural details on page ' + (index + 1) + '.',
+        })) : undefined;
         return {
           document_id: ref.document_id, title: sources[ref.document_id]?.title ?? '',
-          ...(page ? { page_number: page, pages: [{ page_number: page, text: support }] } : {}),
-          text: support,
+          ...(page && pages ? { page_number: page, pages } : {}),
+          text: pages ? pages.map(p => '[Page ' + p.page_number + ']\\n' + p.text).join('\\n') : support,
         };
       }) };
       const api = createEofficeApi({ authorize: async () => officer, model, documents });
