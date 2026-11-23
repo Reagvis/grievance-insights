@@ -9,7 +9,7 @@ export const bedrockModel: Model = async (system, prompt, maxTokens) => {
     messages: [{ role: 'user', content: [{ text: prompt }] }],
     inferenceConfig: { maxTokens, temperature: 0 },
   }));
-  const response = await signedAwsRequest('bedrock', MODEL_REGION, 'POST', url, body, { 'content-type': 'application/json' });
+  const response = await signedAwsRequest('bedrock', MODEL_REGION, 'POST', url, body, { 'content-type': 'application/json' }, 18000);
   const result = await response.json() as { stopReason?: string; output?: { message?: { content?: { text?: string }[] } } };
   if (result.stopReason !== 'end_turn') throw new Error('Incomplete model response');
   return result.output?.message?.content?.map(c => c.text ?? '').join('') ?? '';
