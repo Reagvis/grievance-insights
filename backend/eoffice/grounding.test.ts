@@ -195,6 +195,102 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
     expect(resultResponse.body).not.toContain('9.7 million');
   });
 
+  it('does not treat a number in the officer question as evidence for a document-grounded answer', async () => {
+    const question = event('chat', {
+      session_id: 'session-4',
+      user_input: 'Is the cap 9.7 million?',
+      context: { documents: [docA] },
+    });
+    const incorrect = await make({ ...good, text: 'The cap is 9.7 million.' }).api(question);
+    expect(incorrect.statusCode).toBe(502);
+    expect(result(incorrect)).toEqual({
+      request_id,
+      system_error_message: expect.any(String),
+      user_error_message: expect.any(String),
+    });
+    expect(incorrect.body).not.toContain('9.7 million');
+
+    // The same question can still receive the value actually in the evidence.
+    const supported = await make({ ...good, text: 'The cap is 1.2 million.' }).api(question);
+    expect(supported.statusCode).toBe(200);
+    expect(result(supported).answer).toBe('The cap is 1.2 million.');
+
+    // Summarization instructions accompanying documents also cannot launder
+    // unsupported facts from the officer's prompt.
+    const summary = await make({ ...good, text: 'The cap is 9.7 million.' }).api(
+      event('summarize', { user_input: 'Is the cap 9.7 million?',
+        context: { documents: [docA] } }));
+    expect(summary.statusCode).toBe(502);
+  });
+
+  it('still permits explicit officer instructions in proposed drafts and source-text-only summaries', async () => {
+    const draft = await make({
+      ...good, text: 'Please attend the meeting on 27 November 2026.',
+    }).api(event('draft-reply', {
+      user_input: 'Draft an invitation for a meeting on 27 November 2026.',
+      context: { documents: [docA] },
+    }));
+    expect(draft.statusCode).toBe(200);
+    expect(result(draft).draft_text).toBe('Please attend the meeting on 27 November 2026.');
+
+    const summary = await make({
+      text: 'The source states the limit is 9.7 million.',
+      used_document_ids: [], evidence: [],
+    }).api(event('summarize', {
+      user_input: 'Source text:\nThe source states the limit is 9.7 million.',
+    }));
+    expect(summary.statusCode).toBe(200);
+    expect(result(summary).summary).toContain('9.7 million');
+  });
+
+  it('conservatively rejects contradictory or negated boolean extraction evidence', async () => {
+    const cases = [
+      { value: true, source: 'Approved: not true.' },
+      { value: false, source: 'Approved: not false.' },
+      { value: true, source: 'Approved: false.' },
+      { value: false, source: 'Approved: true.' },
+      { value: true, source: 'Approved: true.' },
+      { value: false, source: 'Approved: false.' },
+    ];
+    const booleanSchema = {
+      type: 'object',
+      properties: { approved: { type: 'boolean' } },
+      required: ['approved'],
+    };
+    const request = event('extract', {
+      context: { documents: [docB] }, extraction_schema: booleanSchema,
+    });
+    for (const testCase of cases) {
+      const evidence = quote(docB.document_id, testCase.source);
+      const doc: Material = { ...b, text: testCase.source };
+      const response = await make({
+        extracted_data: { approved: testCase.value },
+        used_document_ids: [docB.document_id], evidence: [evidence],
+      }, { [docB.document_id]: doc }).api(request);
+      expect(response.statusCode).toBe(502);
+      expect(result(response)).toEqual({
+        request_id,
+        system_error_message: expect.any(String),
+        user_error_message: expect.any(String),
+      });
+    }
+    // Null remains the valid representation of a missing optional boolean.
+    const nullableSchema = {
+      type: 'object',
+      properties: { approved: { type: ['boolean', 'null'] } },
+    };
+    const missing = await make({
+      extracted_data: { approved: null },
+      used_document_ids: [docB.document_id],
+      evidence: [quote(docB.document_id, 'Approved: not true.')],
+    }, { [docB.document_id]: { ...b, text: 'Approved: not true.' } }).api(
+      event('extract', {
+        context: { documents: [docB] }, extraction_schema: nullableSchema,
+      }));
+    expect(missing.statusCode).toBe(200);
+    expect(result(missing).extracted_data).toEqual({ approved: null });
+  });
+
   it('rejects extracted values absent from cited source, and preserves 422 for missing required values', async () => {
     const base = {
       used_document_ids: [docB.document_id], evidence: [quote(docB.document_id, pageOther)],
