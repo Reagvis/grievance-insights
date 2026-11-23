@@ -183,10 +183,23 @@ export async function extractDocument(document: DocumentRef, bytes: Uint8Array, 
   } else throw new EofficeError(422, 'Unsupported document type.', 'The document format is unsupported.');
   if (!bounded(text, MAX_TEXT))
     throw new EofficeError(422, 'Empty or excessively long extracted document.', 'The document exceeds synchronous processing limits.');
+  const proposedTitle = declaredFilename(contentDisposition);
+  // Download response metadata is untrusted too: do not echo a temporary access
+  // token or private URL path component disguised as a file name.
+  let exposedTitle = false;
+  if (proposedTitle) {
+    try {
+      const url = new URL(document.download_url);
+      const title = proposedTitle.toLocaleLowerCase('en-US');
+      exposedTitle = title.includes(url.hostname.toLocaleLowerCase('en-US')) ||
+        [...url.searchParams.values(), ...url.pathname.split('/')].some(part =>
+          part.length >= 6 && title.includes(part.toLocaleLowerCase('en-US')));
+    } catch { exposedTitle = true; }
+  }
   return {
     document_id: document.document_id,
-    // Never promote the opaque document ID or model guesses into an asserted title.
-    title: declaredFilename(contentDisposition) ?? 'Untitled eOffice document',
+    // No opaque ID, URL or model guess is promoted to an official title.
+    title: proposedTitle && !exposedTitle ? proposedTitle : 'Untitled eOffice document',
     text, ...(page_number ? { page_number } : {}),
     ...(pageMaterials ? { pages: pageMaterials } : {}),
   };
