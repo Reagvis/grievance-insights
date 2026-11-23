@@ -2,6 +2,25 @@
 
 **Last updated:** 2026-11-23 (Asia/Kolkata)
 
+## WORKING PLAN — 2026-11-23: eOffice implementation delegated; official auth last
+
+**Owner's operating decision (new):** Continue implementing **all feasible non-authentication eOffice Phase 1 v2.0 requirements first**; request and implement the separately issued government authentication/protected-document access specification **at the final integration stage**. This is a sequencing decision, **not permission to disable or improvise authentication**. Keep `backend/eoffice/handler.ts` authorization default-deny and its protected-file credential resolver unconfigured until official government specifications arrive.
+
+**Work allocation:** Separate ChatGPT implementation chats, using the connected GitHub connector, may author focused feature branches and draft PRs. Brain chat is the independent technical lead/reviewer; it reads actual GitHub diffs and review comments, sets scoped assignments, coordinates acceptance and maintains this living file after significant milestones. User has limited Codex allowance; reserve Codex for work where it materially helps. **User's local WSL environment is the planned setting for new targeted tests, builds, final Terraform plan review and eventually approved deployment**, not GitHub Actions. Do not repeat completed tests or releases. Do not dispatch, re-enable, or trigger GitHub Actions; verify workflow-disabled status before work that could trigger automatic CI if necessary. Never infer passing test results from source code.
+
+**Sequenced Task 22 workstreams:**
+- **22A (immediate):** Existing `backend/eoffice/*` PDF-to-code contract gap audit plus minimum corrections and *new targeted* mocked/fixture tests. Produce a contract compliance matrix with exact spec sections, supported/unimplemented optional fields and onboarding limitations. No auth implementation, networking to real eOffice, new production routes, Terraform, IAM or legacy chatbot changes. Draft PR, not merge.
+- **22B:** Stronger grounded source/reference behavior, bounded document extraction and realistic PDF/DOCX/text compatibility, extraction schema completeness within an explicitly supported onboarding subset; refine error behavior and refusal semantics. Keep each PR focused, mocks only; avoid silent truncation or fabricated references.
+- **22C:** Decide/implement one safe, spec-permitted chat strategy (likely stateless with optional authorized history resolver) and document precisely what optional provider state tokens are not supported; no persistent state by default. Isolated mock integration harness for all four endpoints; no PDF/DOCX generated artifact URLs unless implemented with protected, expiring resources.
+- **22D:** Security/operational hardening independent of the unknown government protocol: review SSRF and redirected-URL rules, bounded parsing, prompt-injection defenses, malware scanning approach, confidential logging, tenant/session separation and 12h default/24h max retention only if temporary state/artifacts exist. Document onboarding choices for formats, sizes, schema features and synchronous timeout.
+- **Final integration gate (deferred):** Obtain official government authentication and protected document access specification, wire verified production adapters and separately authorized isolated infrastructure, perform focused WSL tests, reviewed zero-unintended-delete/replace plan, explicit owner-approved deployment and eOffice end-to-end acceptance. No pilot disruption.
+
+**Operational invariant:** Existing Grievance Insights pilot (live Qwen document assistant, Cognito, owner isolation, S3 data, OCR, dashboard/analysis, endpoints, jobs and CloudFront) remains operational. Never merge or deploy eOffice by default merely because core API tests pass.
+
+**Evidence:** Owner confirmed workflow priorities in this conversation. No feature code, tests, deployment or AWS changes made by this documentation-only decision.
+
+---
+
 ## CURRENT DECISION — 2026-11-23: eOffice Phase 1 API work resumed (supersedes prior hold)
 
 **User direction:** The next task is now to deliver an eOffice-integrable **pilot API that satisfies the attached `eOffice_AI_Phase1_Specification_v2(2).pdf` (Phase 1 v2.0)**. This supersedes the earlier instruction that eOffice work is on hold. **The existing live Grievance Insights website and operator-confirmed Qwen chatbot must remain unchanged.** This is a renewed development priority, **not** authorization to merge, expose endpoints, deploy AWS changes, trigger GitHub Actions, run paid Bedrock inference or bypass government authentication.
