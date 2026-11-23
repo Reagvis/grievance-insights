@@ -11,12 +11,13 @@ const officer: Principal = {
 const docA = { document_id: 'doc-A', download_url: 'https://docs.example.gov/temp/A?ticket=secret-A' };
 const docB = { document_id: 'doc-B', download_url: 'https://docs.example.gov/temp/B?ticket=secret-B' };
 const pageOne = 'The introductory note lists office correspondence and approval responsibilities.';
+const pageTwo = 'The second page records routine procedures for processing an application.';
 const pageThree = 'The departmental budget cap is 1.2 million for this proposal.';
 const pageOther = 'The office received this request on 17 November 2026 and recorded its status.';
 const a: Material = {
   document_id: docA.document_id, title: 'Budget Guidelines 2026.pdf',
-  pages: [{ page_number: 1, text: pageOne }, { page_number: 3, text: pageThree }],
-  text: '[Page 1]\n' + pageOne + '\n[Page 3]\n' + pageThree,
+  pages: [{ page_number: 1, text: pageOne }, { page_number: 2, text: pageTwo }, { page_number: 3, text: pageThree }],
+  text: '[Page 1]\n' + pageOne + '\n[Page 2]\n' + pageTwo + '\n[Page 3]\n' + pageThree,
 };
 const b: Material = {
   document_id: docB.document_id, title: 'Untitled eOffice document',
