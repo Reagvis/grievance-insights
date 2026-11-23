@@ -137,6 +137,12 @@ export function createDocumentChatApi(
       if (!dataset || dataset.ownerId !== session.userId) throw new ChatHttpError(404, 'Document not found.');
       if (dataset.status !== 'ready') throw new ChatHttpError(409, 'This document is not ready.');
       const records = await fetchRecords(dataset, files, request.recordId, request.recordIndex);
+      // A concurrent deletion must not leave a stale, formerly authorized file available for inference.
+      const current = await datasets.get(dataset.id);
+      if (!current || current.status !== 'ready' || current.ownerId !== session.userId ||
+          current.key !== dataset.key || current.recordCount !== dataset.recordCount) {
+        throw new ChatHttpError(409, 'Document changed while preparing this answer.');
+      }
       if (!records.length) throw new ChatHttpError(422, 'Document contains no readable complaint.');
       const source = JSON.stringify(records.map(record => ({
         caseId: record.id, complaint: record.complaintText, departmentResponse: record.responseText ?? null,
