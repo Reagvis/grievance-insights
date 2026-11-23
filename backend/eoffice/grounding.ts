@@ -10,6 +10,23 @@ const failure = (reason: string) => new EofficeError(502, reason, 'AI processing
 const normalize = (text: string): string => text.normalize('NFC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('en-US');
 const hasQuote = (source: string, quote: string): boolean => normalize(source).includes(normalize(quote));
 const numbers = (text: string): string[] => text.match(/\d+(?:[.,/-]\d+)*/g) ?? [];
+/** Require an extracted literal to be a distinct value, not a substring of a
+ * longer word or number (for example 7 inside 17, or 'approved' in 'unapproved').
+ */
+function literalInExcerpt(excerpt: string, value: unknown): boolean {
+  const text = normalize(excerpt);
+  const literal = normalize(String(value));
+  if (!literal) return false;
+  let at = text.indexOf(literal);
+  while (at >= 0) {
+    const before = at ? text[at - 1] : '';
+    const after = text[at + literal.length] ?? '';
+    if (!/[\p{L}\p{N}_]/u.test(before) && !/[\p{L}\p{N}_]/u.test(after)) return true;
+    at = text.indexOf(literal, at + 1);
+  }
+  return false;
+}
+
 
 /** Enforce a short verbatim source excerpt for every document in an attribution list.
  * These are internal model attestations, not a new public eOffice response field.
@@ -93,10 +110,9 @@ export function verifyExtractedFacts(
 ): void {
   for (const value of Object.values(extracted)) {
     if (value === null) continue;
-    const explicit = normalize(String(value));
     // A cited document containing the value somewhere is insufficient: the
-    // actual model-selected quote must explicitly contain the extracted value.
-    if (!citedQuotes.some(quote => normalize(quote).includes(explicit)))
+    // model-selected quote must explicitly contain the separate literal value.
+    if (!citedQuotes.some(quote => literalInExcerpt(quote, value)))
       throw failure('An extracted value is not explicitly present in cited evidence.');
   }
 }
