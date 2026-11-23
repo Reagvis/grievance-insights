@@ -224,14 +224,14 @@ describe('published eOffice Phase 1 v2.0 examples (mocked, no external access)',
         })),
       }));
       const sources = example.sourceTitles as Record<string, { title: string; page_number?: number }>;
-      const documents = { fetch: vi.fn(async (ref: { document_id: string; download_url: string }) => ({
-        document_id: ref.document_id, title: sources[ref.document_id]?.title ?? '',
-        ...(sources[ref.document_id]?.page_number ? {
-          page_number: sources[ref.document_id].page_number,
-          pages: [{ page_number: sources[ref.document_id].page_number, text: support }],
-        } : {}),
-        text: support,
-      })) };
+      const documents = { fetch: vi.fn(async (ref: { document_id: string; download_url: string }) => {
+        const page = sources[ref.document_id]?.page_number;
+        return {
+          document_id: ref.document_id, title: sources[ref.document_id]?.title ?? '',
+          ...(page ? { page_number: page, pages: [{ page_number: page, text: support }] } : {}),
+          text: support,
+        };
+      }) };
       const api = createEofficeApi({ authorize: async () => officer, model, documents });
       const response = await api(event(example.task, example.request));
       expect(response.statusCode).toBe(200);
