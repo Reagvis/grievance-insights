@@ -7,7 +7,12 @@ import { EofficeError, bounded } from './schema';
 import type { Principal } from './core';
 
 export type DocumentRef = { document_id: string; download_url: string };
-export type Material = { document_id: string; title: string; text: string; page_number?: number };
+export type PageMaterial = { page_number: number; text: string };
+export type Material = {
+  document_id: string; title: string; text: string; page_number?: number;
+  /** Actual searchable PDF page text, not model-created page numbers. */
+  pages?: readonly PageMaterial[];
+};
 /** The caller is a trusted authorization result, never the user_id from JSON. */
 export interface DocumentSource { fetch(document: DocumentRef, principal: Principal, deadline: number): Promise<Material>; }
 export type DocumentAccess = {
@@ -17,9 +22,27 @@ export type DocumentAccess = {
 type Address = { address: string; family: number };
 type Resolver = (hostname: string) => Promise<readonly Address[]>;
 type Transport = (url: URL, ip: Address, headers: Readonly<Record<string, string>>, timeoutMs: number) =>
-  Promise<{ bytes: Uint8Array; contentType: string }>;
+  Promise<{ bytes: Uint8Array; contentType: string; contentDisposition?: string }>;
 const MAX_FILE = 2 * 1024 * 1024;
 const MAX_TEXT = 24000;
+/** Accept only a safe display filename asserted by the authenticated file response.
+ * The filename is not a verified government document title; it is a display
+ * label. The two-field §3.3 request itself supplies no document title.
+ */
+export function declaredFilename(disposition: string | undefined): string | undefined {
+  if (!disposition || disposition.length > 1024 || /[\r\n\0]/.test(disposition) ||
+      !/^\s*(?:attachment|inline)\s*(?:;|$)/i.test(disposition)) return undefined;
+  const extended = /(?:^|;)\s*filename\*\s*=\s*UTF-8''([^;\s]+)/i.exec(disposition);
+  const plain = /(?:^|;)\s*filename\s*=\s*(?:"([^"]+)"|([^;\s]+))/i.exec(disposition);
+  let name: string | undefined;
+  try { name = extended ? decodeURIComponent(extended[1]) : plain?.[1] ?? plain?.[2]; }
+  catch { return undefined; }
+  if (!name || Buffer.byteLength(name, 'utf8') > 200 ||
+      /[/\\]/.test(name) || name.includes('..') ||
+      /^\.|[.]$/.test(name) || /https?:/i.test(name) ||
+      !/^[\p{L}\p{M}\p{N} _().-]+$/u.test(name)) return undefined;
+  return name;
+}
 function publicIp(address: string): boolean {
   // IPv6, including IPv4-mapped IPv6, is denied until a vetted IPv6 egress policy exists.
   if (isIP(address) !== 4) return false;
@@ -81,7 +104,12 @@ const pinnedHttpsGet: Transport = (url, ip, headers, timeoutMs) => new Promise((
     });
     res.on('end', () => {
       ended = true;
-      resolve({ bytes: Buffer.concat(chunks, total), contentType: String(res.headers['content-type'] ?? '') });
+      resolve({
+        bytes: Buffer.concat(chunks, total),
+        contentType: String(res.headers['content-type'] ?? ''),
+        contentDisposition: typeof res.headers['content-disposition'] === 'string'
+          ? res.headers['content-disposition'] : undefined,
+      });
     });
     res.on('close', () => { if (!ended) fail(); });
     res.on('error', fail);
@@ -124,7 +152,7 @@ export class HttpsDocuments implements DocumentSource {
     const remaining = Math.min(8000, deadline - Date.now());
     if (remaining < 1) throw new EofficeError(503, 'Document download deadline expired.', 'Document retrieval timed out.');
     const result = await this.download(url, addresses[0], safeHeaders(access.headers), remaining);
-    try { return await extractDocument(document, result.bytes, result.contentType); }
+    try { return await extractDocument(document, result.bytes, result.contentType, result.contentDisposition); }
     catch (error) {
       if (error instanceof EofficeError) throw error;
       throw new EofficeError(422, 'Document extraction failed.', 'The requested document is unreadable.');
@@ -132,7 +160,7 @@ export class HttpsDocuments implements DocumentSource {
   }
 }
 /** Extracts bounded UTF-8 text only. No original files reach Bedrock, and no temporary file is stored. */
-export async function extractDocument(document: DocumentRef, bytes: Uint8Array, contentType: string): Promise<Material> {
+export async function extractDocument(document: DocumentRef, bytes: Uint8Array, contentType: string, contentDisposition?: string): Promise<Material> {
   if (!bytes.length || bytes.length > MAX_FILE) throw new EofficeError(422, 'Document exceeds supported size.', 'The requested document is unsupported.');
   const mime = contentType.split(';')[0].toLowerCase().trim();
   const charset = /;\s*charset\s*=\s*"?([^";\s]+)"?/i.exec(contentType)?.[1];
@@ -140,6 +168,7 @@ export async function extractDocument(document: DocumentRef, bytes: Uint8Array, 
     throw new EofficeError(422, 'Unsupported text charset.', 'The requested document is unsupported.');
   let text: string;
   let page_number: number | undefined;
+  let pageMaterials: PageMaterial[] | undefined;
   if (mime === 'text/plain' || mime === 'text/markdown') {
     text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } else if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
@@ -148,11 +177,18 @@ export async function extractDocument(document: DocumentRef, bytes: Uint8Array, 
     const pages = await extractPdfPages(bytes);
     if (pages.pages.some(p => p.kind !== 'text'))
       throw new EofficeError(422, 'PDF requires OCR outside synchronous scope.', 'The document cannot be processed synchronously.');
+    pageMaterials = pages.pages.map(p => ({ page_number: p.page, text: p.text }));
     text = pages.pages.map(p => '[Page ' + p.page + ']\n' + p.text).join('\n');
-    page_number = pages.pages.length === 1 ? 1 : undefined;
+    page_number = pages.pages.length === 1 ? pages.pages[0].page : undefined;
   } else throw new EofficeError(422, 'Unsupported document type.', 'The document format is unsupported.');
   if (!bounded(text, MAX_TEXT))
     throw new EofficeError(422, 'Empty or excessively long extracted document.', 'The document exceeds synchronous processing limits.');
-  return { document_id: document.document_id, title: document.document_id, text, ...(page_number ? { page_number } : {}) };
+  return {
+    document_id: document.document_id,
+    // Never promote the opaque document ID or model guesses into an asserted title.
+    title: declaredFilename(contentDisposition) ?? 'Untitled eOffice document',
+    text, ...(page_number ? { page_number } : {}),
+    ...(pageMaterials ? { pages: pageMaterials } : {}),
+  };
 }
 export const documentLimits = { maxFileBytes: MAX_FILE, maxTextBytes: MAX_TEXT };
