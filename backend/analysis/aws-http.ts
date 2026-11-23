@@ -13,7 +13,7 @@ export class AwsServiceError extends Error {
 }
 /** Small credential-free-in-source SigV4 transport, using Lambda's rotating role credentials. */
 export async function signedAwsRequest(service: 's3' | 'sqs' | 'bedrock', region: string, method: string, url: string,
-  body?: Uint8Array, extraHeaders: Record<string, string> = {}): Promise<Response> {
+  body?: Uint8Array, extraHeaders: Record<string, string> = {}, timeoutMs?: number): Promise<Response> {
   const access = process.env.AWS_ACCESS_KEY_ID, secret = process.env.AWS_SECRET_ACCESS_KEY;
   const token = process.env.AWS_SESSION_TOKEN;
   if (!access || !secret || !token) throw new Error('AWS role credentials unavailable');
@@ -40,7 +40,7 @@ export async function signedAwsRequest(service: 's3' | 'sqs' | 'bedrock', region
   delete headers.host;
   const response = await fetch(url, {
     method, headers, ...(body ? { body: Buffer.from(body) } : {}),
-    signal: AbortSignal.timeout(service === 'bedrock' ? 75000 : 20000),
+    signal: AbortSignal.timeout(timeoutMs ?? (service === 'bedrock' ? 75000 : 20000)),
   });
   // Only S3 GET missing-key and conditional PUT conflicts are meaningful non-2xx
   // results to callers. SQS SendMessage and Bedrock Converse must never accept them.
