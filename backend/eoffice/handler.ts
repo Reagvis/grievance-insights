@@ -1,11 +1,14 @@
 import { createEofficeApi } from './core';
 import { bedrockModel } from './aws';
 import { HttpsDocuments } from './documents';
+import { EofficeError } from './schema';
 
-// Deliberately fail-closed. Wire an authenticated, authorized department principal
-// only after the separate eOffice authentication/protected-file-access specification arrives.
+// No production eOffice authentication or protected-file credentials are defined in Phase 1 v2.0.
+// Both boundaries remain fail-closed until the separately issued government specification arrives.
 export const handler = createEofficeApi({
   authorize: async () => null,
   model: bedrockModel,
-  documents: new HttpsDocuments(new Set((process.env.EOFFICE_DOCUMENT_HOSTS ?? '').split(',').filter(Boolean))),
+  documents: new HttpsDocuments(async () => {
+    throw new EofficeError(503, 'Protected document credentials are not configured.', 'Document retrieval is unavailable.');
+  }),
 });
