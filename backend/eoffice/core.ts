@@ -132,7 +132,9 @@ export function createEofficeApi(deps: {
       for (let i = 0; i < documents.length; i++) {
         const material = documents[i];
         if (material.document_id !== supplied[i].document_id || !bounded(material.text, MAX_INPUT) ||
-            !bounded(material.title, 256) || supplied.some(d => material.title.includes(d.download_url)))
+            !bounded(material.title, 256) ||
+            (material.page_number !== undefined && (!Number.isSafeInteger(material.page_number) || material.page_number < 1)) ||
+            supplied.some(d => material.title.includes(d.download_url)))
           throw new EofficeError(502, 'Document adapter returned inconsistent material.', 'Document retrieval failed.');
       }
       const source = documents.map(d => JSON.stringify({ document_id: d.document_id, text: d.text })).join('\n');
