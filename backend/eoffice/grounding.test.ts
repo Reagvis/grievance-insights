@@ -400,11 +400,11 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
       expect(Buffer.byteLength(narrative, 'utf8')).toBeLessThan(1600);
       expect(Buffer.byteLength(extraction, 'utf8')).toBeLessThan(1400);
 
-      const chatModel: Model = vi.fn(async (_system, _prompt, maxTokens) => {
+      const chatModel: Model = vi.fn(async (_system: string, _prompt: string, maxTokens: number) => {
         expect(maxTokens).toBe(1600);
         return narrative;
       });
-      const extractModel: Model = vi.fn(async (_system, _prompt, maxTokens) => {
+      const extractModel: Model = vi.fn(async (_system: string, _prompt: string, maxTokens: number) => {
         expect(maxTokens).toBe(1400);
         return extraction;
       });
