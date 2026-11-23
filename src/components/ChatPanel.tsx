@@ -94,7 +94,7 @@ function RichText({ text }: { text: string }) {
 
 /* ───────────── Panel ───────────── */
 
-export type ScopeOption = { key: 'all' | 'filtered' | 'note' | 'file'; label: string; scope: ChatScope };
+export type ScopeOption = { key: 'all' | 'filtered' | 'note' | 'file' | `file:${string}`; label: string; scope: ChatScope };
 
 type Props = {
   store: ChatStore;
@@ -110,14 +110,14 @@ type Props = {
   analysisPane?: ReactNode;
 };
 
-const SUGGESTIONS: Record<ScopeOption['key'], string[]> = {
+const SUGGESTIONS: Record<'all' | 'filtered' | 'note' | 'file', string[]> = {
   all: ['What are the most common complaint categories?', 'Which complaints have no response yet?', 'What do water supply complaints have in common?'],
   filtered: ['Summarise the issues in these complaints', 'Which of these have no response?'],
   note: ['Summarise this complaint and the response', 'Is there anything the response does not address?'],
   file: ['Summarise this document', 'Draft an email based on this file', 'Extract the key points'], 
 };
 
-const AI_SUGGESTIONS: Partial<Record<ScopeOption['key'], string[]>> = {
+const AI_SUGGESTIONS: Partial<Record<keyof typeof SUGGESTIONS, string[]>> = {
   note: ['Summarise this complaint and the response', 'Draft an official government file noting', 'Suggest practical solutions'],
   file: ['Summarise this document', 'Draft an email based on this file', 'Extract the key points'],
 };
@@ -193,7 +193,8 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
     send(draft);
   };
 
-  const suggestions = useMemo(() => service.kind === 'ai' ? (AI_SUGGESTIONS[scope.key] ?? SUGGESTIONS[scope.key]) : SUGGESTIONS[scope.key], [scope.key, service.kind]);
+  const suggestionKey = (scope.key.startsWith('file:') ? 'file' : scope.key) as keyof typeof SUGGESTIONS;
+  const suggestions = useMemo(() => service.kind === 'ai' ? (AI_SUGGESTIONS[suggestionKey] ?? SUGGESTIONS[suggestionKey]) : SUGGESTIONS[suggestionKey], [suggestionKey, service.kind]);
 
   return (
     <aside className="chat-panel" aria-label="Assistant">
