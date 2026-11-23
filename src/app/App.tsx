@@ -806,7 +806,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
             knownIds={new Set(recordById.keys())}
             unavailableReason={chatUnavailable}
             onOpenRecord={openRecord}
-            onClose={() => { chat.reset(); setAssistantOpen(false); }}
+            onClose={() => { if (AWS_AUTH_ENABLED) chat.reset(); setAssistantOpen(false); }}
             analysisPane={
               AWS_AUTH_ENABLED && all ? (
                 <AiAnalysisPane
