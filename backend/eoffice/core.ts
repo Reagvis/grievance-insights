@@ -156,7 +156,9 @@ export function createEofficeApi(deps: {
         if (!Array.isArray(pages) || !pages.length || pages.length > 100 ||
             pages.some(p => !p || !Number.isSafeInteger(p.page_number) || p.page_number < 1 ||
               !bounded(p.text, MAX_INPUT) || !material.text.includes(p.text)) ||
-            new Set(pages.map(p => p.page_number)).size !== pages.length ||
+            // A partial/gapped page map could conceal source material; only
+            // complete 1..N searchable-PDF page maps are acceptable.
+            pages.some((p, index) => p.page_number !== index + 1) ||
             (material.page_number !== undefined &&
               (pages.length !== 1 || material.page_number !== pages[0].page_number)))
           throw new EofficeError(502, 'Document page evidence was inconsistent.', 'Document retrieval failed.');
