@@ -77,7 +77,9 @@ export function verifySourceEvidence(
  */
 export function verifyNarrativeNumbers(text: string, evidence: readonly string[], userInput: string): void {
   const allowed = new Set(numbers(evidence.join(' ') + ' ' + userInput));
-  for (const token of numbers(text)) {
+  // Markdown list ordinals are formatting, not factual amounts or dates.
+  const prose = text.replace(/^\s*\d{1,3}[.)]\s+/gm, '');
+  for (const token of numbers(prose)) {
     if (!allowed.has(token)) throw failure('A factual number lacks explicit supplied support.');
   }
 }
