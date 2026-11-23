@@ -7,11 +7,17 @@ const principal: Principal = { department: 'dept-A', officer: 'officer_4512', pe
 const docA = { document_id: 'doc_policy_2026', download_url: 'https://dept-a.example.gov/temp/abc' };
 const docB = { document_id: 'doc_budget_2026', download_url: 'https://dept-a.example.gov/temp/xyz' };
 const schema = { type: 'object', properties: { subject: { type: 'string' }, letter_date: { type: ['string', 'null'] } }, required: ['subject'] };
-const docs: DocumentSource = { fetch: async d => ({ document_id: d.document_id, title: 'Title for ' + d.document_id, text: 'Budget cap is 1.2 million.' }) };
+const sourceText = (document_id: string) => 'Document ' + document_id + ': Budget cap is 1.2 million.';
+const docs: DocumentSource = { fetch: async d => ({
+  document_id: d.document_id, title: 'Title for ' + d.document_id, text: sourceText(d.document_id),
+}) };
+const sourceEvidence = (ids: string[]) => ids.map(document_id => ({
+  document_id, quote: sourceText(document_id),
+}));
 const narrative = (text = 'Valid answer', used_document_ids: string[] = []) =>
-  JSON.stringify({ text, used_document_ids });
+  JSON.stringify({ text, used_document_ids, evidence: sourceEvidence(used_document_ids) });
 const extracted = (extracted_data: unknown, used_document_ids: string[] = []) =>
-  JSON.stringify({ extracted_data, used_document_ids });
+  JSON.stringify({ extracted_data, used_document_ids, evidence: sourceEvidence(used_document_ids) });
 const defaultModel: Model = async () => narrative();
 const routeCases: Array<{ task: string; request: Record<string, unknown> }> = [
   { task: 'chat', request: { request_id: id, session_id: 's1', user_input: 'Budget?' } },
