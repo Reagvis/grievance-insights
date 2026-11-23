@@ -127,7 +127,14 @@ export function createEofficeApi(deps: {
       if (task === 'chat' && input.context?.provider_context_token) throw new EofficeError(422, 'Provider context tokens are not enabled.', 'Previous chat state is unavailable.');
       if (task === 'chat' && input.context?.previous_context && !deps.history)
         throw new EofficeError(422, 'History retrieval is not configured.', 'Previous context is unavailable.');
-      const documents = await withinBudget(Promise.all((input.context?.documents ?? []).map(d => deps.documents.fetch(d, principal, deadline))), deadline);
+      const supplied = input.context?.documents ?? [];
+      const documents = await withinBudget(Promise.all(supplied.map(d => deps.documents.fetch(d, principal, deadline))), deadline);
+      for (let i = 0; i < documents.length; i++) {
+        const material = documents[i];
+        if (material.document_id !== supplied[i].document_id || !bounded(material.text, MAX_INPUT) ||
+            !bounded(material.title, 256) || supplied.some(d => material.title.includes(d.download_url)))
+          throw new EofficeError(502, 'Document adapter returned inconsistent material.', 'Document retrieval failed.');
+      }
       const source = documents.map(d => JSON.stringify({ document_id: d.document_id, text: d.text })).join('\n');
       if (Buffer.byteLength(source, 'utf8') > MAX_INPUT) throw unprocessable('Combined documents exceed AI context limit.');
       let history = '';
