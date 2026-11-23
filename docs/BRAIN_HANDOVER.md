@@ -2,6 +2,16 @@
 
 **Last updated:** 2026-11-23 (Asia/Kolkata)
 
+## CHECKPOINT — 2026-11-23: Task 22A PR #39 WSL verification PASSED; code-only merge eligible
+
+- **Reviewed PR:** [#39](https://github.com/Reagvis/grievance-insights/pull/39), exact head `ece27b6609749e4e66fe5d19c5d9f26ace729bcd`, four focused changed files: `backend/eoffice/contract.test.ts`, `backend/eoffice/core.ts`, `backend/eoffice/schema.ts`, `docs/EOFFICE_CONFORMANCE_MATRIX.md`. PR remained open/draft/unmerged at last check. Default-deny `backend/eoffice/handler.ts`, existing pilot code, AWS and CI settings are untouched.
+- **Developer-supplied WSL execution evidence (2026-11-23):** clean worktree created at `ece27b6`; `npm ci` succeeded, adding 107 packages and reporting 0 audit vulnerabilities. Focused `npx vitest run backend/eoffice/contract.test.ts backend/eoffice/core.test.ts backend/eoffice/schema.test.ts --maxWorkers=2 --testTimeout=20000` **passed 3/3 test files, 44/44 tests** (23 core, 12 contract, 9 schema). `npm run backend:typecheck` ran `tsc -p backend/tsconfig.json` and exited without errors. This is **operator-provided local terminal output**, not independently executed by Brain; no complete rerun of full test/build suites.
+- **Nonblocking warnings:** Existing Rolldown `INVALID_ANNOTATION` at `src/data/demoGrievances.ts` and Vite native config import-extension warnings appear in log but did not fail tests/typecheck; unrelated to eOffice PR #39.
+- **GitHub source/integration review:** Brain independently inspected PR's complete four-file patch and original eight-page PDF. No blocking issue was found in changed code; existing known open onboarding/security/grounding work is separately tracked. After a briefly inconsistent mergeable result, GitHub REST returned `mergeable:true`, `mergeable_state:clean`. At that point `main` had advanced by one documentation-only `docs/BRAIN_HANDOVER.md` commit, not overlapping PR paths. The integration team should recheck mergeability at time of actual merge.
+- **GitHub review follow-up:** Brain submitted verification **COMMENT** on PR #39, review ID `6021725226`, noting WSL pass and recommendation **eligible for owner-authorized code-only merge**. Previous review ID `6021520665` covered the source audit. Do not interpret comment as an automatically executed merge or deployment.
+- **Current decision:** Do **not** repeat tests or deploy. Await explicit owner authorization before marking draft ready or merging PR #39. Existing live pilot and Qwen chatbot remain protected; eOffice handler still default-deny/unexposed. Task 22B should tackle document grounding/source-reference reliability and security issues separately, continuing government auth last.
+
+---
 ## CHECKPOINT — 2026-11-23: Task 22A PR #39 independently source-reviewed; WSL verification pending
 
 - **Implementation PR:** [#39](https://github.com/Reagvis/grievance-insights/pull/39), head `ece27b6609749e4e66fe5d19c5d9f26ace729bcd`, base `main`, **draft/open/mergeable and unmerged** when checked. Four files only: `backend/eoffice/contract.test.ts` (new), `backend/eoffice/core.ts`, `backend/eoffice/schema.ts`, `docs/EOFFICE_CONFORMANCE_MATRIX.md` (new). No application pilot frontend/legacy API, auth handler, AWS, IAM, infra or workflow file changes.
