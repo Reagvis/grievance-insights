@@ -26,12 +26,22 @@ You are taking over the independent technical lead / reviewer role for the Griev
 
 This criterion overrides any prior assistant suggestion to merge or deploy simply because eOffice contract unit tests pass. Maintain it in all future plans, code reviews, handovers and release decisions.
 
-## Current checkpoint — user-reported local verification (2026-11-23)
+## Latest milestone — eOffice API foundation merged without deployment (2026-11-23)
+
+- **User explicitly approved** integrating the locally verified eOffice Phase 1 API foundation into `main`, with the non-negotiable condition that the **existing live Grievance Insights pilot continue operating exactly as before**.
+- PR [#37](https://github.com/Reagvis/grievance-insights/pull/37), reviewed head `7e738913d1f07601a795463b65bb32e26d3cfaac`, was marked ready for review and **merged successfully** as `ad5aa3bea4918139d359ee9c455edcf63513357c`. GitHub confirmed `merged:true`; normal merge method, no force pushes. At the time of merge, GitHub reported the branch `mergeable:true` and `mergeable_state:clean`; diverged history was documentation-only and did not present actual conflicts.
+- Independent verification of the final integration diff: **exactly 10 files** changed: eight new `backend/eoffice/*` files, a new `docs/EOFFICE_PHASE1.md`, one change to `backend/tsconfig.json` to typecheck eOffice, and the optional `timeoutMs` parameter in `backend/analysis/aws-http.ts` (existing service defaults unchanged). No changes to `src/`, `infra/`, API Gateway routes, Lambda packaging/deployment config, dashboard, existing authentication setup or deployed AWS resources.
+- Checked `backend/eoffice/handler.ts` on merged `main`: `authorize: async () => null` remains. Protected document credential adapter also fails closed. **No eOffice endpoints are exposed; no deployment was performed**, and no live Bedrock inference was requested.
+- User reported that all supplied local WSL tests passed on the final PR head. No independently captured test log was supplied for that final run. Tests were **not rerun after this code-only merge**. An eOffice-compatible production integration remains blocked by the separate official government authentication/protected-file-access specification.
+- GitHub Actions: user confirmed CI disabled; merge commit title included `[skip ci]`. This brain chat did **not** manually start or rerun workflows.
+- Next: keep existing pilot untouched. Obtain official eOffice authentication/document-access details, decide tenant authorization and controlled document egress, assess semantic citations and realistic synchronous latency. Only then plan isolated infrastructure/API Gateway wiring and carefully review a no-unintended-delete/replace Terraform plan and existing-pilot pre/post smoke tests. Any future deployment requires separate explicit user authorization.
+
+## Previous checkpoint — user-reported local verification (2026-11-23)
 
 - Developer confirms: **"all tests ran successfully"** after running the verification steps supplied for eOffice PR #37 at head `7e738913d1f07601a795463b65bb32e26d3cfaac`. Treat this as a **user-reported local WSL pass**, not an independently observed terminal transcript; exact per-command counts/logs were not pasted. Previous failure at `0d93255...` was corrected and now reported resolved in the local run.
 - Independent reviewer inspected the corrected `validateExtraction` branch and tests including required whitespace strings on the final PR head. No GitHub Actions run was requested or performed by this brain chat.
-- PR #37 remains **open, draft, unmerged and undeployed**. Government authentication/protected-document protocol remains missing; handler production auth stays fail-closed. Next decision: review PR integration to updated `main` and decide whether to merge the inert API foundation (no eOffice public infrastructure) or keep draft pending onboarding. **Do not merge/deploy without user's explicit authorization.**
-- `main` has advanced with documentation-only commits, so PR #37 and `main` now have diverged histories. Any future merge must use a normal merge/update procedure and resolve any real conflicts without force-rebasing active work; GitHub returned `mergeable:false` at this checkpoint, so verify actual conflict/mergeability at the time of integration.
+- Historical status before integration: PR #37 was open/draft/undeployed. **Superseded by the merged milestone above**; no eOffice deployment or authentication enablement has followed.
+- Historical integration check: `main` and PR #37 previously had diverged histories. GitHub later resolved mergeability to `clean`, and normal merge succeeded; see latest milestone above.
 - CI: user confirms CI workflow disabled. Do not launch/reenable/retrigger GitHub Actions; continue with local test workflow.
 
 ## 1. Developer and operating model
@@ -83,10 +93,10 @@ Global contract: synchronous only (no async jobs/polling/callbacks); HTTP 200 on
 
 Auth and protected-file access **specified separately in a government document we have NOT received**. user_id cannot establish identity. Providers isolate department/user/session data. Temporary processing data default retention 12h and max 24h; no long-term eOffice content storage/training. Prompt injection, safe file download/SSRF, source grounding, human review, response validation required. Supported file sizes, formats, schemas, synchronous timeout, chat mode and enabled tasks to be agreed during onboarding.
 
-## 4. eOffice PR #37 (open draft)
+## 4. eOffice PR #37 (merged foundation; not deployed)
 
 - PR: https://github.com/Reagvis/grievance-insights/pull/37
-- Branch: feature/eoffice-phase1-api; base main. Keep the draft eOffice feature branch isolated from the handover changes on `main`.
+- Historical feature branch: `feature/eoffice-phase1-api`; PR #37 merged into `main` on 2026-11-23. Do not deploy or enable authentication merely because this foundation is merged.
 - Initial commit: 84d09064f20d9dd2716519855af50e3954107b4d.
 - First correction reviewed head: 0d93255d6d896f40a8be8e176f4b2f1167538665.
 - **Current latest verified PR head at 2026-11-23:** `7e738913d1f07601a795463b65bb32e26d3cfaac` (two newer commits after 0d93255). The independent reviewer inspected the corrected validator and regression test source.
@@ -122,7 +132,7 @@ Root defect: backend/eoffice/schema.ts::validateExtraction treated required empt
 ## 6. Exact next steps and WSL commands
 
 1. Developer now confirms GitHub Actions CI was disabled; optionally verify `gh workflow view ci.yml --repo Reagvis/grievance-insights --json state` when convenient. Do not manually dispatch, rerun or initiate runs.
-2. Review GitHub PR37 diff up to 7e738...; confirm extraction regression correction and preserve default-deny auth.
+2. **Completed:** independently reviewed PR #37 through `7e738...`, confirmed extraction regression correction, preservation of default-deny authentication and no existing-pilot route or infra changes. Merge commit `ad5aa3...` is now part of `main`.
 3. Locally verify new head, avoiding dirty local branch changes. Suggested sequence:
 
     cd ~/src/grievance-insights
@@ -145,7 +155,7 @@ Root defect: backend/eoffice/schema.ts::validateExtraction treated required empt
 
    If the review worktree exists already, reuse/update it safely; do not blindly recreate. If a full test run has the known process-level RSS flake while isolated stress passes, capture RSS benchmark output and distinguish environmental test pressure from code regression. Do not simply raise assertion threshold.
 
-4. User now reports local tests passed on final PR head; complete integration/mergeability review, resolve remaining actual conflicts if any, then plan eOffice authentication onboarding. Wait for official government authentication/protected file protocol. Do not deploy public eOffice endpoints. Merge only after separate user authorization.
+4. **Completed:** user-reported local validation; PR #37 normal merge to main after independent integration review and explicit approval. **Next:** official government authentication/protected document access onboarding; prepare but do not deploy public eOffice endpoints until separately authorized and all pilot-preservation checks pass.
 5. Parallel: Verify whether Task19/21 merge is actually deployed in AWS pilot before claiming it live. Local deployment is possible after confirming AWS identity, real Terraform plan (no unintended delete/replace), and essential smoke tests; no separate staging required. This is not authorization to deploy eOffice.
 
 ## 7. Handover upkeep rules
