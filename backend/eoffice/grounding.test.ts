@@ -78,6 +78,9 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
     }
     expect(declaredFilename("attachment; filename*=UTF-8''%E0%B0%AA%E0%B0%A4%E0%B1%8D%E0%B0%B0%E0%B0%82.pdf"))
       .toBe('పత్రం.pdf');
+    const sensitive = await extractDocument(docA, text, 'text/plain',
+      'attachment; filename="secret-A.pdf"');
+    expect(sensitive.title).toBe('Untitled eOffice document');
   });
 
   it('propagates only safe file labels from a mocked protected HTTPS response, not the URL', async () => {
@@ -121,6 +124,16 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
       expect(result(response)).toEqual({ request_id,
         system_error_message: expect.any(String), user_error_message: expect.any(String) });
     }
+  });
+
+  it('rejects a partial PDF page map before inference, rather than silently omitting pages', async () => {
+    const incomplete: Material = {
+      ...a, pages: [{ page_number: 1, text: pageOne }, { page_number: 3, text: pageThree }],
+    };
+    const { api, model } = make(good, { [docA.document_id]: incomplete, [docB.document_id]: b });
+    const response = await api(chat());
+    expect(response.statusCode).toBe(502);
+    expect(model).not.toHaveBeenCalled();
   });
 
   it('omits page_number when valid evidence comes from multiple pages of one document', async () => {
