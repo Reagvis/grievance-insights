@@ -1,0 +1,123 @@
+import { EofficeError, isObject } from './schema';
+import type { Material } from './documents';
+
+export type SourceEvidence = { document_id: string; quote: string; page_number?: number };
+export type SourceReference = { document_id: string; title: string; page_number?: number };
+
+const MAX_EVIDENCE = 16;
+const MAX_QUOTE_BYTES = 512;
+const failure = (reason: string) => new EofficeError(502, reason, 'AI processing failed.');
+const normalize = (text: string): string => text.normalize('NFC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('en-US');
+const hasQuote = (source: string, quote: string): boolean => normalize(source).includes(normalize(quote));
+const numbers = (text: string): string[] => text.match(/\d+(?:[.,/-]\d+)*/g) ?? [];
+
+/** Enforce a short verbatim source excerpt for every document in an attribution list.
+ * These are internal model attestations, not a new public eOffice response field.
+ * Exact excerpt checks reduce arbitrary source attribution; they do not prove that
+ * the answer's full semantic claim follows from the evidence.
+ */
+export function verifySourceEvidence(
+  raw: unknown, ids: readonly string[], documents: readonly Material[],
+): { references: SourceReference[]; quotes: string[] } {
+  if (raw === undefined && ids.length === 0) return { references: [], quotes: [] };
+  if (!Array.isArray(raw) || raw.length > MAX_EVIDENCE ||
+      (ids.length > 0 && raw.length < ids.length) || (ids.length === 0 && raw.length !== 0))
+    throw failure('Missing or excessive grounded source evidence.');
+  const byId = new Map(documents.map(d => [d.document_id, d]));
+  const claimed = new Set(ids);
+  const located = new Map<string, Array<number | undefined>>();
+  const quotes: string[] = [];
+  for (const entry of raw) {
+    if (!isObject(entry) || Object.keys(entry).some(k => !['document_id', 'quote', 'page_number'].includes(k)) ||
+        typeof entry.document_id !== 'string' || !claimed.has(entry.document_id) ||
+        typeof entry.quote !== 'string' || Buffer.byteLength(entry.quote, 'utf8') > MAX_QUOTE_BYTES ||
+        entry.quote.trim().length < 12 ||
+        (entry.page_number !== undefined && (!Number.isSafeInteger(entry.page_number) || (entry.page_number as number) < 1)))
+      throw failure('Invalid source evidence structure.');
+    const doc = byId.get(entry.document_id);
+    if (!doc) throw failure('Unrecognized source evidence document.');
+    const quote = entry.quote as string;
+    if (!hasQuote(doc.text, quote)) throw failure('Source evidence was not found in the attributed document.');
+    // If the same excerpt occurs in another attached document, source attribution
+    // to one of them is ambiguous. Require a more discriminating excerpt.
+    if (documents.some(other => other.document_id !== doc.document_id && hasQuote(other.text, quote)))
+      throw failure('Evidence does not distinguish the cited document.');
+    let page: number | undefined;
+    if (doc.pages?.length) {
+      const matching = doc.pages.filter(p => hasQuote(p.text, quote));
+      if (entry.page_number !== undefined) {
+        if (!matching.some(p => p.page_number === entry.page_number))
+          throw failure('Cited page does not contain the quoted evidence.');
+        page = entry.page_number as number;
+      } else if (matching.length === 1) page = matching[0].page_number;
+      else if (!matching.length) throw failure('Source evidence crosses or misses PDF page boundaries.');
+    } else if (entry.page_number !== undefined) {
+      throw failure('Source page cannot be verified for this document.');
+    }
+    const pages = located.get(doc.document_id) ?? [];
+    pages.push(page);
+    located.set(doc.document_id, pages);
+    quotes.push(quote);
+  }
+  if (ids.some(id => !located.has(id))) throw failure('Cited document lacks source evidence.');
+  const references = ids.map(id => {
+    const doc = byId.get(id);
+    if (!doc) throw failure('Cited document is not attached.');
+    const positions = located.get(id)!;
+    // A multi-page answer must not be assigned an arbitrary single page.
+    const page = positions.length && positions.every(p => p !== undefined && p === positions[0])
+      ? positions[0] : undefined;
+    return { document_id: id, title: doc.title, ...(page === undefined ? {} : { page_number: page }) };
+  });
+  return { references, quotes };
+}
+
+/** Bounded, deterministic guard against invented explicit amounts/dates in
+ * document-grounded prose. Interpretive claims still need human review.
+ */
+export function verifyNarrativeNumbers(text: string, evidence: readonly string[], userInput: string): void {
+  const allowed = new Set(numbers(evidence.join(' ') + ' ' + userInput));
+  for (const token of numbers(text)) {
+    if (!allowed.has(token)) throw failure('A factual number lacks explicit supplied support.');
+  }
+}
+
+/** Schema validation occurs separately. The supported extraction subset additionally
+ * requires each non-null scalar to be explicitly represented in a cited document.
+ * No inferred/reformatted dates, amounts or boolean conclusions are accepted.
+ */
+export function verifyExtractedFacts(
+  extracted: Record<string, unknown>, ids: readonly string[], documents: readonly Material[],
+): void {
+  const sources = documents.filter(d => ids.includes(d.document_id));
+  for (const value of Object.values(extracted)) {
+    if (value === null) continue;
+    const explicit = normalize(String(value));
+    if (!sources.some(source => normalize(source.text).includes(explicit)))
+      throw failure('An extracted value is not explicitly present in a cited source.');
+  }
+}
+
+/** Reject protected hosts even if the model rewrites/percent-encodes a URL.
+ * Outbound URLs not present in the officer's prompt are not independently
+ * trusted, since this module does not enable an authorized knowledge service.
+ */
+export function verifyNoProtectedLinks(
+  output: string, documents: readonly { download_url: string }[], userInput: string,
+): void {
+  let candidate = output;
+  for (let pass = 0; pass < 2; pass++) {
+    try { candidate = decodeURIComponent(candidate); } catch { break; }
+  }
+  const lower = candidate.toLocaleLowerCase('en-US');
+  for (const document of documents) {
+    let url: URL;
+    try { url = new URL(document.download_url); } catch { continue; }
+    if (lower.includes(url.hostname.toLocaleLowerCase('en-US')) ||
+        lower.includes(document.download_url.toLocaleLowerCase('en-US')))
+      throw failure('Protected source address appeared in AI output.');
+  }
+  for (const match of candidate.matchAll(/https?:\/\/[^\s<>"']+/gi)) {
+    if (!userInput.includes(match[0])) throw failure('AI generated an unverified external URL.');
+  }
+}
