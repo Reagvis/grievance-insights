@@ -113,8 +113,13 @@ type Props = {
 const SUGGESTIONS: Record<ScopeOption['key'], string[]> = {
   all: ['What are the most common complaint categories?', 'Which complaints have no response yet?', 'What do water supply complaints have in common?'],
   filtered: ['Summarise the issues in these complaints', 'Which of these have no response?'],
-  note: ['Summarise this complaint and the response', 'Draft an official government file noting', 'Suggest practical solutions'],
+  note: ['Summarise this complaint and the response', 'Is there anything the response does not address?'],
   file: ['Summarise this document', 'Draft an email based on this file', 'Extract the key points'], 
+};
+
+const AI_SUGGESTIONS: Partial<Record<ScopeOption['key'], string[]>> = {
+  note: ['Summarise this complaint and the response', 'Draft an official government file noting', 'Suggest practical solutions'],
+  file: ['Summarise this document', 'Draft an email based on this file', 'Extract the key points'],
 };
 
 export function ChatPanel({ store, service, scopes, knownIds, unavailableReason, onOpenRecord, onClose, analysisPane }: Props) {
@@ -188,7 +193,7 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
     send(draft);
   };
 
-  const suggestions = useMemo(() => SUGGESTIONS[scope.key], [scope.key]);
+  const suggestions = useMemo(() => service.kind === 'ai' ? (AI_SUGGESTIONS[scope.key] ?? SUGGESTIONS[scope.key]) : SUGGESTIONS[scope.key], [scope.key, service.kind]);
 
   return (
     <aside className="chat-panel" aria-label="Assistant">
@@ -268,7 +273,7 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
                 <div className="chat-bubble chat-bubble--bot">
                   {t.status === 'streaming' && !t.content && (
                     <span className="chat-typing">
-                      <LoaderCircle size={14} className="spin" aria-hidden /> Reading the document…
+                      <LoaderCircle size={14} className="spin" aria-hidden /> {service.kind === 'ai' ? 'Generating document answer…' : 'Reading the records…'}
                     </span>
                   )}
                   {t.content && <RichText text={t.content} />}
