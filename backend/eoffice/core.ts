@@ -183,6 +183,9 @@ export function createEofficeApi(deps: {
         'Return exactly one JSON object with no markdown fences. Include "used_document_ids" listing ONLY the ' +
         'documents actually relied on (empty array if none). For EACH cited document include an "evidence" array ' +
         'entry with "document_id" and a distinct, verbatim 12–512 byte "quote" from that document. ' +
+        'Prefer a short, distinctive excerpt (about 40–120 characters) per relied-on document; ' +
+        'add more only when needed for separate supporting pages. Keep the complete JSON envelope concise ' +
+        'within the synchronous model output-token budget; do not omit required fields or truncate quotes. ' +
         'For searchable PDF cite "page_number" only when the quote appears on that actual numbered page. ' +
         'Provide more than one excerpt if drawing from multiple pages. If unable to ground a fact, do not invent it; ' +
         'report uncertainty or leave optional extraction fields null. Never output protected URLs or credentials. ' +
