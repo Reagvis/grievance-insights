@@ -1,6 +1,6 @@
 # Pilot website — Qwen document chat MVP
 
-Status: **draft PR #38, not merged or deployed** (2026-11-23). User-reported local backend test result: 196/197 passed with one 5-second DOCX-test timeout; the previously timed-out DOCX suite subsequently **passed in isolation** using `--maxWorkers=1 --testTimeout=20000`. This is not a complete post-final-UI-change validation. No CI or live AWS tests were initiated.
+Status: **deployed to pilot and operator-confirmed working on 2026-11-23**. PR #38 merged into `main` as `f7e871c255dc0e80f59006a468ff1c816806daff`. Targeted Terraform apply was reported successful (1 API Gateway route added, 1 analysis API Lambda updated, 0 destroyed); frontend AWS build/S3 publishing reached CloudFront invalidation `I3BUSLP9SHDXMGHOKEMN1QC20R`. After rollout the operator confirmed **“chatbot is working.”** This is a live operator acceptance signal, not a complete independent regression/quality verification. User-reported backend test result: 196/197 passed initially, with the timed-out DOCX security suite subsequently passing in isolation using `--maxWorkers=1 --testTimeout=20000`; owner requested no repeat automated test runs.
 
 ## Operator-facing scope
 
@@ -14,7 +14,7 @@ The signed-in AWS pilot's **Assistant → Ask** tab uses Qwen3-32B via Amazon Be
 - Model-generated notings, decisions, suggested remedies and draft correspondence require operator review. The model must not claim a department response means verified resolution.
 - No chat history persisted in S3/DynamoDB or browser storage. The chat resets upon moving to a different opened complaint or file or closing the panel. Standard Lambda/service logs must not contain source text or prompts.
 
-## Before release
+## Historical rollout checklist (release now completed; retain for future reference)
 
 1. Install locked dependencies locally (Node 22) and run `npm run backend:typecheck`, `npx vitest run backend/analysis/chat.test.ts src/tests/document-chat.test.ts --maxWorkers=2 --testTimeout=20000`, `npm run backend:test`, `npm run lint`, `npm test -- --maxWorkers=2 --testTimeout=20000`, `npm run build:aws` and `npm run backend:package`.
 2. Exercise the AWS frontend against a mocked authenticated API with a single-record DOCX/PDF, a multi-record CSV, an empty/missing response, duplicate IDs across files, Telugu requests, and multi-turn drafting. Confirm zero existing dashboard/analysis regressions.
@@ -23,4 +23,4 @@ The signed-in AWS pilot's **Assistant → Ask** tab uses Qwen3-32B via Amazon Be
 5. Smoke-test the **currently deployed pilot** before/after deployment: Cognito sign-in/out, upload/finalize all seven formats, OCR, All Complaints, exports, existing analysis jobs/results, summary filters, and newly authenticated Qwen chat. Verify citation IDs and deny across users. Monitor CloudWatch for sanitized failures and Bedrock cost/latency.
 6. If chat latency at the bounded synchronous endpoint is unacceptable, separately design an asynchronous/streaming solution. Do not bypass request authentication or raise model/AI quotas automatically.
 
-Deployment is **not** inferred from a GitHub merge. No paid Bedrock inference should be performed without explicit approval.
+Deployment is **not** inferred from a GitHub merge alone: in this case, the owner separately reported successful targeted AWS apply, frontend publication and a working live chatbot. Do not treat those reports as proof of every legacy workflow, latency target, large-file capability or document-drafting quality. No additional paid Bedrock evaluation should be performed without approval. Government eOffice API integration remains on hold.
