@@ -89,11 +89,20 @@ export function verifySourceEvidence(
   return { references, quotes };
 }
 
-/** Bounded, deterministic guard against invented explicit amounts/dates in
- * document-grounded prose. Interpretive claims still need human review.
+/** For document-grounded Q&A, a number mentioned in the officer's question
+ * is NOT supporting evidence. The officer's text is a permissible source only
+ * for text-only summarization (§2.2), or an explicit drafting instruction (§2.4).
+ * The latter cannot establish a fact *from* a document; officer review remains
+ * necessary for proposed correspondence.
  */
-export function verifyNarrativeNumbers(text: string, evidence: readonly string[], userInput: string): void {
-  const allowed = new Set(numbers(evidence.join(' ') + ' ' + userInput));
+export function verifyNarrativeNumbers(
+  text: string, evidence: readonly string[], userInput: string,
+  officerTextRole: 'untrusted-question' | 'supplied-source-or-draft-instructions' = 'untrusted-question',
+): void {
+  const allowed = new Set(numbers(evidence.join(' ')));
+  if (officerTextRole === 'supplied-source-or-draft-instructions') {
+    for (const number of numbers(userInput)) allowed.add(number);
+  }
   // Markdown list ordinals are formatting, not factual amounts or dates.
   const prose = text.replace(/^\s*\d{1,3}[.)]\s+/gm, '');
   for (const token of numbers(prose)) {
@@ -110,6 +119,13 @@ export function verifyExtractedFacts(
 ): void {
   for (const value of Object.values(extracted)) {
     if (value === null) continue;
+    // Boolean words in a quote do not establish its polarity. For example,
+    // "Approved: not true" contains "true" but explicitly denies approval.
+    // A general-purpose negation/entailment parser is not reliable here; reject
+    // ALL non-null booleans until a separately validated field-specific scheme
+    // is agreed at departmental onboarding. Nullable missing booleans stay null.
+    if (typeof value === 'boolean')
+      throw failure('Boolean evidence cannot be safely verified by literal matching.');
     // A cited document containing the value somewhere is insufficient: the
     // model-selected quote must explicitly contain the separate literal value.
     if (!citedQuotes.some(quote => literalInExcerpt(quote, value)))
