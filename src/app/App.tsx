@@ -304,8 +304,16 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           list.push({ key: 'note', label: 'This complaint (' + original.id + ')',
             scope: { kind: 'document', datasetId: chatFile.id, recordId: original.id, recordIndex: selectedOriginalIndex } });
         }
-        list.push({ key: 'file', label: 'This file (' + chatFile.name + ')',
-          scope: { kind: 'document', datasetId: chatFile.id } });
+        // Every readable uploaded file is selectable directly from Ask.
+        // Use a stable key for the current file so complaint navigation stays intuitive.
+        for (const file of readyFiles) {
+          if (!all?.recordsByDataset.has(file.id)) continue;
+          list.push({
+            key: file.id === chatFile.id ? 'file' : `file:${file.id}`,
+            label: `File: ${file.name} (${formatCount(file.recordCount)} ${file.recordCount === 1 ? 'complaint' : 'complaints'})`,
+            scope: { kind: 'document', datasetId: file.id },
+          });
+        }
       } else {
         // Chat is explicitly disabled until a readable file is available.
         list.push({ key: 'file', label: 'No document selected', scope: { kind: 'document', datasetId: '' } });
@@ -319,7 +327,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
       list.push({ key: 'filtered', label: `Current list (${formatCount(filtered.length)})`, scope: { kind: 'records', recordIds: filtered.map((r) => r.id) } });
     }
     return list;
-  }, [selectedId, recordById, dataset.records.length, filtersActive, filtered, chatFile, chatFileRecords, selectedOriginalIndex]);
+  }, [selectedId, recordById, dataset.records.length, filtersActive, filtered, chatFile, chatFileRecords, selectedOriginalIndex, readyFiles, all]);
 
   const resetForDataset = () => {
     chat.reset();
