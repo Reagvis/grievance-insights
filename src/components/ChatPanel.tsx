@@ -327,7 +327,12 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
             {scopes.length > 1 && (
               <div className="chat-scope">
                 <label htmlFor="chat-scope-select">Ask about</label>
-                <select id="chat-scope-select" className="select" value={scope.key} onChange={(e) => setScopeKey(e.target.value as ScopeOption['key'])} disabled={busy}>
+                <select id="chat-scope-select" className="select" value={scope.key} onChange={(e) => {
+                  const next = e.target.value as ScopeOption['key'];
+                  // A file-level conversation must not inherit the history of a complaint-level question.
+                  if (next !== scope.key && service.kind === 'ai' && scope.scope.kind === 'document') store.reset();
+                  setScopeKey(next);
+                }} disabled={busy}>
                   {scopes.map((s) => (
                     <option key={s.key} value={s.key}>
                       {s.label}
