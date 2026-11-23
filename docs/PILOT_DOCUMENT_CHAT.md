@@ -1,10 +1,10 @@
 # Pilot website — Qwen document chat MVP
 
-Status: **feature branch only; not locally tested, merged, or deployed** (2026-11-23).
+Status: **draft PR #38, not merged or deployed** (2026-11-23). User-reported local backend test result: 196/197 passed with one 5-second DOCX-test timeout; the previously timed-out DOCX suite subsequently **passed in isolation** using `--maxWorkers=1 --testTimeout=20000`. This is not a complete post-final-UI-change validation. No CI or live AWS tests were initiated.
 
 ## Operator-facing scope
 
-The signed-in AWS pilot's **Assistant → Ask** tab uses Qwen3-32B via Amazon Bedrock. The operator can ask about an opened complaint or choose its originating uploaded file, and request free-form summaries, key points, emails, government file notings, draft letters, translations and suggested actions. Follow-up messages are sent in the same request as bounded in-memory history. Source files are never modified. The separate **AI analysis** tab retains its existing fixed-schema background job.
+The signed-in AWS pilot's **Assistant → Ask** tab uses Qwen3-32B via Amazon Bedrock. The operator can ask about an opened complaint, its originating uploaded file, or any other ready uploaded file from the Ask scope selector, and request free-form summaries, key points, emails, government file notings, draft letters, translations and suggested actions. Follow-up messages are sent in the same request as bounded in-memory history. Source files are never modified. The separate **AI analysis** tab retains its existing fixed-schema background job.
 
 - Document context comes from the authenticated private S3 dataset index. The browser sends an uploaded-file UUID, an optional original case ID and index, plus the operator's messages; it never supplies untrusted source text to authorize.
 - Server independently checks the existing hashed session, same-origin POST, ready dataset and ownership before reading sources or invoking Qwen.
