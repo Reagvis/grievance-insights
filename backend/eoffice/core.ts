@@ -145,6 +145,9 @@ export function createEofficeApi(deps: {
             (material.page_number !== undefined && (!Number.isSafeInteger(material.page_number) || material.page_number < 1)) ||
             supplied.some(d => material.title.includes(d.download_url)))
           throw new EofficeError(502, 'Document adapter returned inconsistent material.', 'Document retrieval failed.');
+        // A custom authorized adapter must not evade the same confidentiality
+        // checks applied to filenames from the built-in protected downloader.
+        verifyNoProtectedLinks(material.title, supplied, '');
       }
       for (const material of documents) {
         if (material.pages === undefined) {
