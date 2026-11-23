@@ -18,7 +18,11 @@ const event = (path: string, input: Record<string, unknown>): Event => ({
 });
 const body = (response: { body: string }) => JSON.parse(response.body) as Record<string, unknown>;
 const make = (output: unknown) => {
-  const model = vi.fn(async () => JSON.stringify(output));
+  const payload = output as { used_document_ids?: string[] };
+  const evidence = payload.used_document_ids?.map(document_id => ({
+    document_id, quote: 'Subject: Leave application. No file number or approval is recorded.',
+  })) ?? [];
+  const model = vi.fn(async () => JSON.stringify({ ...(output as object), evidence }));
   const documents = { fetch: vi.fn(async (ref: typeof file) =>
     ({ document_id: ref.document_id, title: 'Office note 17', text: 'Subject: Leave application. No file number or approval is recorded.' })) };
   const api = createEofficeApi({ authorize: async () => principal, model, documents });
@@ -207,12 +211,26 @@ describe('published eOffice Phase 1 v2.0 examples (mocked, no external access)',
 
   for (const example of examples) {
     it(example.task + ': implements the published mandatory fields and response envelope', async () => {
-      const model = vi.fn(async () => JSON.stringify(example.modelOutput));
+      // The published examples specify model outputs but not the original document
+      // bytes. Use synthetic mock text containing the illustrated facts, never assert
+      // that an actual protected government document has been inspected.
+      const literalFacts = 'text' in example.modelOutput ? example.modelOutput.text :
+        Object.values(example.modelOutput.extracted_data).filter(v => v !== null).join('; ');
+      const support = 'Synthetic source record: ' + literalFacts;
+      const model = vi.fn(async () => JSON.stringify({
+        ...example.modelOutput,
+        evidence: example.modelOutput.used_document_ids.map(document_id => ({
+          document_id, quote: support,
+        })),
+      }));
       const sources = example.sourceTitles as Record<string, { title: string; page_number?: number }>;
       const documents = { fetch: vi.fn(async (ref: { document_id: string; download_url: string }) => ({
         document_id: ref.document_id, title: sources[ref.document_id]?.title ?? '',
-        ...(sources[ref.document_id]?.page_number ? { page_number: sources[ref.document_id].page_number } : {}),
-        text: 'Synthetic, mock-supplied supporting text for ' + ref.document_id,
+        ...(sources[ref.document_id]?.page_number ? {
+          page_number: sources[ref.document_id].page_number,
+          pages: [{ page_number: sources[ref.document_id].page_number, text: support }],
+        } : {}),
+        text: support,
       })) };
       const api = createEofficeApi({ authorize: async () => officer, model, documents });
       const response = await api(event(example.task, example.request));
