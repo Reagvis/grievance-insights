@@ -205,6 +205,33 @@ describe('eOffice Phase 1 response contracts', () => {
     expect(time.mock.calls[0][3]).toBeLessThanOrEqual(18000);
     expect(time.mock.calls[0][3]).toBeGreaterThan(0);
   });
+  it('rejects a document adapter returning a different ID or unsafe reference metadata', async () => {
+    const wrong: DocumentSource = { fetch: async () => ({
+      document_id: 'other_department_document', title: 'Policy', text: 'Classified material',
+    }) };
+    const r = await api({ documents: wrong })(event('chat', {
+      request_id: id, session_id: 's', user_input: 'Question?', context: { documents: [docA] },
+    }));
+    expect(r.statusCode).toBe(502);
+    expect(r.body).not.toContain('Classified material');
+    expect(result(r).request_id).toBe(id);
+  });
+  it('returns 503 without invoking the model when the shared invocation budget is exhausted', async () => {
+    const clock = vi.spyOn(Date, 'now');
+    const model = vi.fn(defaultModel);
+    let reads = 0;
+    clock.mockImplementation(() => reads++ === 0 ? 100000 : 125000);
+    try {
+      const r = await api({ model })(event('chat', {
+        request_id: id, session_id: 's', user_input: 'Continue',
+      }));
+      expect(r.statusCode).toBe(503);
+      expect(result(r).request_id).toBe(id);
+      expect(model).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
+  });
   it('does not expose thrown sensitive model errors', async () => {
     const r = await api({ model: async () => { throw new Error('SECRET DOWNLOADED FILE'); } })(
       event('chat', { request_id: id, session_id: 's', user_input: 'Hi' }));
