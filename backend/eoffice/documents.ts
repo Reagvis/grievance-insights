@@ -1,4 +1,5 @@
 import { lookup } from 'node:dns/promises';
+import { get as httpsGet } from 'node:https';
 import { extractDocxText } from '../ingest/docx';
 import { extractPdfPages } from '../ingest/pdf';
 import { EofficeError, bounded } from './schema';
@@ -34,9 +35,40 @@ export class HttpsDocuments implements DocumentSource {
     const url = safeUrl(document.download_url, this.allowedHosts);
     const addresses = await lookup(url.hostname, { all: true, verbatim: true }).catch(() => []);
     if (!addresses.length || !addresses.every(entry => publicIp(entry.address))) throw new EofficeError(422, 'Document host resolves to a blocked address.', 'The requested document is unavailable.');
-    // Node's built-in fetch does not expose a per-request DNS pin. Reject by default until
-    // the deployer supplies a vetted transport which pins DNS or enforces egress at the network layer.
-    throw new EofficeError(503, 'Protected HTTPS transport requires a DNS-pinned adapter.', 'Document retrieval is temporarily unavailable.');
+    const chosen = addresses[0];
+    const data = await new Promise<{ bytes: Uint8Array; contentType: string }>((resolve, reject) => {
+      const fail = () => reject(new EofficeError(422, 'Protected document fetch failed.', 'The requested document is unavailable.'));
+      const req = httpsGet(url, {
+        timeout: 10000,
+        headers: this.requestHeaders(),
+        lookup: (_host, _opts, cb) => cb(null, chosen.address, chosen.family),
+      }, res => {
+        if (res.statusCode !== 200 || Number(res.headers['content-length'] ?? 0) > MAX_FILE) {
+          res.destroy();
+          fail();
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let size = 0;
+        res.on('data', (chunk: Buffer) => {
+          size += chunk.byteLength;
+          if (size > MAX_FILE) { res.destroy(); fail(); }
+          else chunks.push(chunk);
+        });
+        res.on('end', () => resolve({
+          bytes: Buffer.concat(chunks, size),
+          contentType: String(res.headers['content-type'] ?? ''),
+        }));
+        res.on('error', fail);
+      });
+      req.on('timeout', () => req.destroy());
+      req.on('error', fail);
+    });
+    try { return await extractDocument(document, data.bytes, data.contentType); }
+    catch (error) {
+      if (error instanceof EofficeError) throw error;
+      throw new EofficeError(422, 'Document extraction failed.', 'The requested document is unreadable.');
+    }
   }
 }
 /** Validated bytes from a trusted, DNS-pinned HTTPS transport. No file persistence. */
