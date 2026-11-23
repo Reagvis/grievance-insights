@@ -217,6 +217,23 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
     });
   });
 
+  it('does not treat an extracted number as supported merely because it is part of a longer number', async () => {
+    const model = {
+      extracted_data: { count: 7 },
+      used_document_ids: [docB.document_id],
+      evidence: [quote(docB.document_id, pageOther)],
+    };
+    const input = event('extract', {
+      context: { documents: [docB] },
+      extraction_schema: {
+        type: 'object', properties: { count: { type: 'integer' } }, required: ['count'],
+      },
+    });
+    const response = await make(model).api(input);
+    expect(response.statusCode).toBe(502);
+    expect(result(response).request_id).toBe(request_id);
+  });
+
   it('rejects protected source URLs even when encoded, without leaking them in error body', async () => {
     for (const text of [
       'Download at ' + docA.download_url,
