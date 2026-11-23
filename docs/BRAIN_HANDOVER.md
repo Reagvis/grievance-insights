@@ -1,7 +1,7 @@
 # Grievance Insights — Living Brain Handover
 
 **Last updated:** 2026-11-23 (Asia/Kolkata)  
-**Canonical location:** branch docs/brain-handover, file docs/BRAIN_HANDOVER.md, repository Reagvis/grievance-insights.  
+**Canonical location:** `main`, file `docs/BRAIN_HANDOVER.md`, repository `Reagvis/grievance-insights`. Initial documentation branch `docs/brain-handover` was fast-forwarded into `main`.  
 **Purpose:** durable context for a replacement project-brain ChatGPT conversation and coordination record for the current brain. This is a historical evidence ledger, not automatically synced to activity outside the conversation.
 
 ## READ FIRST — recovery instructions
@@ -17,7 +17,7 @@ You are taking over the independent technical lead / reviewer role for the Griev
 - Primary developer: Fellow-DevJk (this user). **They use Codex**, not Claude Code. Their colleague used Claude Code. User's Codex usage limits were exhausted.
 - Separate ChatGPT implementation chats have connected GitHub write capabilities, create commits and maintain draft PRs. This brain chat independently reviews actual diffs/commits, comments on PRs, and gives precise local WSL test/deployment commands.
 - User's machine: WSL shell previously displayed as vatjksre@excalibur; repository path ~/src/grievance-insights. Never assume clean working tree. Always check git status, branch and HEAD before switching or pulling.
-- GitHub Actions: User insists **local-only testing**. Repo CI workflow .github/workflows/ci.yml has pull_request:main and push:main automatic triggers. We instructed the user to run gh workflow disable ci.yml --repo Reagvis/grievance-insights; **no user confirmation of disabled_manually state has been received**. Last checked, no workflows were running. No CI was triggered by this handover. The separate docs/brain-handover branch does not match CI's push trigger, and no PR is opened for it. Deployment workflows use workflow_dispatch, not automatic triggers.
+- GitHub Actions: User insists **local-only testing**. Repo CI workflow .github/workflows/ci.yml has pull_request:main and push:main automatic triggers. **User explicitly confirms that they disabled the CI workflow** (referred to as the npm ci workflow); the connector has not independently read the workflow state. Last checked before that report, no workflows were running. Do not start/rerun Actions. Documentation-only main updates should use `[skip ci]` commit messages as an additional safeguard. Deployment workflows use workflow_dispatch, not automatic triggers.
 - Maintain this living document *during subsequent turns* after meaningful milestones by updating this same file via GitHub connector, then verify the remote commit. This is not an asynchronous service, scheduled job or cross-chat automatic sync. Do not give the developer downloadable copies in place of repository updates. Keep facts, hypotheses, pending work and verified/tested states separate.
 
 ## 2. Repository and production architecture
@@ -67,7 +67,7 @@ Auth and protected-file access **specified separately in a government document w
 - Branch: feature/eoffice-phase1-api; base main. Keep separate from docs/brain-handover branch.
 - Initial commit: 84d09064f20d9dd2716519855af50e3954107b4d.
 - First correction reviewed head: 0d93255d6d896f40a8be8e176f4b2f1167538665.
-- **Current latest verified PR head at 2026-11-23:** 7e738913d1f07601a795463b65bb32e26d3cfaac (two newer commits after 0d93255).
+- **Current latest verified PR head at 2026-11-23:** `7e738913d1f07601a795463b65bb32e26d3cfaac` (two newer commits after 0d93255). The independent reviewer inspected the corrected validator and regression test source.
 - Latest commit message: "test(eoffice): use real whitespace escape sequences [skip ci]". Two newer commits modify backend/eoffice/schema.ts and backend/eoffice/core.test.ts. GitHub code shows required whitespace-only string now maps to 422. **Do NOT call this fix locally verified until developer runs tests on new head.**
 - Original review comment: https://github.com/Reagvis/grievance-insights/pull/37#issuecomment-7091205548
 - Second review comment: https://github.com/Reagvis/grievance-insights/pull/37#issuecomment-7091846170
@@ -99,7 +99,7 @@ Root defect: backend/eoffice/schema.ts::validateExtraction treated required empt
 
 ## 6. Exact next steps and WSL commands
 
-1. Confirm GitHub Actions is disabled with the developer's local gh workflow view ci.yml --repo Reagvis/grievance-insights --json state. If still enabled, user can run gh workflow disable ci.yml --repo Reagvis/grievance-insights. Do not say disabled without confirmation and do not trigger runs.
+1. Developer now confirms GitHub Actions CI was disabled; optionally verify `gh workflow view ci.yml --repo Reagvis/grievance-insights --json state` when convenient. Do not manually dispatch, rerun or initiate runs.
 2. Review GitHub PR37 diff up to 7e738...; confirm extraction regression correction and preserve default-deny auth.
 3. Locally verify new head, avoiding dirty local branch changes. Suggested sequence:
 
@@ -128,11 +128,11 @@ Root defect: backend/eoffice/schema.ts::validateExtraction treated required empt
 
 ## 7. Handover upkeep rules
 
-After each material event in this conversation (PR new head, reviewed code issue, local test suite result, CI disable confirmation, auth specification arrival, safe merge, infrastructure plan/deployment), update this SAME file in docs/brain-handover branch via GitHub connector, with the new commit SHA. Keep historical evidence distinct from current operational state. Do not overwrite other team changes: fetch the current blob SHA and use an optimistic content update.
+After each material event in this conversation (PR new head, reviewed code issue, local test suite result, CI disable confirmation, auth specification arrival, safe merge, infrastructure plan/deployment), update this SAME file on `main` via GitHub connector, with the new commit SHA. Use `[skip ci]` in documentation-only commit messages. Keep historical evidence distinct from current operational state. Do not overwrite other team changes: fetch the current blob SHA and use an optimistic content update.
 
 A successor brain chat should open:
-https://github.com/Reagvis/grievance-insights/blob/docs/brain-handover/docs/BRAIN_HANDOVER.md
+https://github.com/Reagvis/grievance-insights/blob/main/docs/BRAIN_HANDOVER.md
 
-Use current GitHub state, the official specification and latest local logs as authority when they differ from this snapshot. This branch intentionally has no PR and does not trigger the current CI workflow; do not merge it into main while GitHub Actions billing is a concern without checking CI state.
+Use current GitHub state, the official specification and latest local logs as authority when they differ from this snapshot. Handover was merged into `main` by fast-forward update, and no PR was created. User confirms CI was disabled; never manually start or rerun workflows.
 
 **This handover records work and decisions; it is not a background process or a substitute for the government eOffice specification.**
