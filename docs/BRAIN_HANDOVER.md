@@ -32,7 +32,7 @@ You are taking over the independent technical lead / reviewer role for the Griev
 - Frontend bucket: grievance-insights-pilot-134857759074-frontend. CloudFront distribution: E3B0B5R1HAYD1J.
 - Existing deployment recipes: .github/workflows/deploy-infra.yml and .github/workflows/deploy-frontend.yml. Can be translated to local Terraform/AWS CLI workflow after confirming AWS identity and real plan. No need to fix GitHub Actions billing to deploy locally.
 - User urgently wants current 2,000-record and seven-format features LIVE on the existing AWS pilot, no new staging account. However **actual live AWS deployment of those features remains unverified** in this brain chat. Main-branch merge is not deployment confirmation. Never apply an unreviewed plan, replace/destroy existing resources, or incur high-volume Bedrock charges.
-- Current main HEAD when last queried (2026-11-23): 900402f2c37008df790a6da9bee75237779eefd8. VERIFY AGAIN when needed.
+- Main incorporated the documentation-only handover by fast-forward from `900402f2c37008df790a6da9bee75237779eefd8` to `e9625eab058c23c5d3e42ce539855ae6aa802b96` on 2026-11-23; subsequent documentation edits also advance main. Always recheck HEAD rather than treating this historical SHA as current.
 
 ### Task 19 — capacity (merged PR #27)
 
@@ -64,7 +64,7 @@ Auth and protected-file access **specified separately in a government document w
 ## 4. eOffice PR #37 (open draft)
 
 - PR: https://github.com/Reagvis/grievance-insights/pull/37
-- Branch: feature/eoffice-phase1-api; base main. Keep separate from docs/brain-handover branch.
+- Branch: feature/eoffice-phase1-api; base main. Keep the draft eOffice feature branch isolated from the handover changes on `main`.
 - Initial commit: 84d09064f20d9dd2716519855af50e3954107b4d.
 - First correction reviewed head: 0d93255d6d896f40a8be8e176f4b2f1167538665.
 - **Current latest verified PR head at 2026-11-23:** `7e738913d1f07601a795463b65bb32e26d3cfaac` (two newer commits after 0d93255). The independent reviewer inspected the corrected validator and regression test source.
