@@ -87,14 +87,15 @@ export function verifyNarrativeNumbers(text: string, evidence: readonly string[]
  * No inferred/reformatted dates, amounts or boolean conclusions are accepted.
  */
 export function verifyExtractedFacts(
-  extracted: Record<string, unknown>, ids: readonly string[], documents: readonly Material[],
+  extracted: Record<string, unknown>, citedQuotes: readonly string[],
 ): void {
-  const sources = documents.filter(d => ids.includes(d.document_id));
   for (const value of Object.values(extracted)) {
     if (value === null) continue;
     const explicit = normalize(String(value));
-    if (!sources.some(source => normalize(source.text).includes(explicit)))
-      throw failure('An extracted value is not explicitly present in a cited source.');
+    // A cited document containing the value somewhere is insufficient: the
+    // actual model-selected quote must explicitly contain the extracted value.
+    if (!citedQuotes.some(quote => normalize(quote).includes(explicit)))
+      throw failure('An extracted value is not explicitly present in cited evidence.');
   }
 }
 
@@ -107,15 +108,24 @@ export function verifyNoProtectedLinks(
 ): void {
   let candidate = output;
   for (let pass = 0; pass < 2; pass++) {
-    try { candidate = decodeURIComponent(candidate); } catch { break; }
+    try { candidate = decodeURIComponent(candidate); }
+    catch {
+      // Preserve percent-encoded ASCII URLs even when a separate, malformed
+      // percent sign elsewhere would make decodeURIComponent reject the string.
+      candidate = candidate.replace(/%([0-7][0-9a-f])/gi, (_whole, byte: string) =>
+        String.fromCharCode(parseInt(byte, 16)));
+    }
   }
   const lower = candidate.toLocaleLowerCase('en-US');
   for (const document of documents) {
     let url: URL;
     try { url = new URL(document.download_url); } catch { continue; }
     if (lower.includes(url.hostname.toLocaleLowerCase('en-US')) ||
-        lower.includes(document.download_url.toLocaleLowerCase('en-US')))
-      throw failure('Protected source address appeared in AI output.');
+        lower.includes(document.download_url.toLocaleLowerCase('en-US')) ||
+        (url.pathname.length >= 8 && lower.includes(url.pathname.toLocaleLowerCase('en-US'))) ||
+        [...url.searchParams.values()].some(value => value.length >= 6 &&
+          lower.includes(value.toLocaleLowerCase('en-US'))))
+      throw failure('Protected source address or token appeared in AI output.');
   }
   for (const match of candidate.matchAll(/https?:\/\/[^\s<>"']+/gi)) {
     if (!userInput.includes(match[0])) throw failure('AI generated an unverified external URL.');
