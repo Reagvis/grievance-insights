@@ -1,0 +1,79 @@
+# eOffice AI Service Integration Specification — Phase 1 v2.0 conformance matrix (Task 22A)
+
+**Source of truth:** *eOffice AI Service Integration Specification, Phase 1, Version 2.0*, uploaded eight-page PDF (October 2026), **directly inspected on 23 November 2026**. Section and page citations below refer to that exact PDF, not to a secondary summary. Baseline source: `main` commit `e5a5207b6d89aac57fb6a7ba9acc87e74dbae026`; code fixes and tests are on `feature/eoffice-phase1-contract-22a` (draft PR #39).
+
+**Scope:** contract and mocked behavior for all four undeployed eOffice endpoints only. No official government authentication, protected-document credentials, eOffice routes, production inference or deployment. Status **Covered** means the implementation can be inspected in code; it does **not** mean tests were executed or integrated government acceptance has passed. **Partial**, **Blocked**, and **Not enabled** must not be interpreted as compliant production functionality.
+
+**Requirement classification:** **Mandatory** = required if its endpoint is enabled; **Optional** = field/capability not compulsory; **Onboarding** = department-specific agreement or separately issued government specification. Per §§2 and 6.3, each endpoint itself is independently optional to enable, but its contract becomes mandatory when enabled.
+
+| Requirement / exact PDF citation | Classification | Existing implementation / Task 22A delta | Status | Confirmed gap, limitation or acceptance condition |
+| --- | --- | --- | --- | --- |
+| Four task-specific `POST /api/v1/ai/{chat,summarize,extract,draft-reply}` operations (§§1, 2, pp.1–4) | Onboarding (enablement); Mandatory (enabled contract) | `backend/eoffice/core.ts:createEofficeApi` matches four exact paths and methods | Partial | Not exposed through HTTPS/API Gateway; auth gate remains closed |
+| JSON request/response, UTF-8, 200 success (§3.1, p.4) | Mandatory | `core.ts:mediaType` and `encode` check POST/JSON and produce JSON + no-store; 200 success | Covered | HTTP method/media mismatches use 405/415; no real gateway integration validated |
+| eOffice UUID `request_id`, echoed unchanged including errors when available (§§3.1–3.2, pp.4–5; §5, pp.6–7) | Mandatory | `core.ts:requestId` validates UUID syntax; successful and bounded parseable error envelopes echo it | Covered | Malformed/binary/oversize body with no safely parsed ID omits echo; appropriate to “when available” |
+| Common error body `system_error_message`, `user_error_message`, 4xx vs 5xx (§5, pp.6–7) | Mandatory | `schema.ts:EofficeError` and `core.ts` catch; 400 malformed, 422 unprocessable input/schema/missing required, 500/502 provider failure, 503 deadline | Covered | Some exact 502 internal-model classification beyond illustrative 500; developer must verify targeted tests |
+| Never disclose stack traces, secrets, paths or protected content in officer-facing errors (§5, p.7; §6.1, p.7) | Mandatory | Generic public errors and normalized 500 on unexpected exceptions; tests check thrown secret not leaked | Partial | Requires full downstream logging/error and content-leak audit (§6.2) |
+| `user_id` identifies officer, not authentication (§§3.1–3.2, pp.4–5; §6.1, p.7) | Mandatory security boundary; field sent by eOffice | `core.ts` trusts injected principal only; checks supplied `user_id` against principal officer | Partial | Field is not explicitly described as “required” in §3.2, unlike `session_id`; code accepts omission, always requires independent authorization; government identity mapping absent |
+| Chat requires `session_id` and nonempty `user_input` (§2.1, p.1; §3.2, p.5) | Mandatory | `core.ts:request` checks both and limits length | Covered | No real user/session auth adapter |
+| Chat response `answer` (Markdown) and `references` array, `[]` when none (§2.1, pp.1–2; §3.1, p.4) | Mandatory | `core.ts` validates nonblank `text` and maps to `answer`, always includes `references` | Covered | Markdown content and factual grounding rely on model quality; §6.2 guardrails outstanding |
+| Chat `context.documents` (§2.1, p.1; §3.2, p.5) | Optional | `core.ts` fetches bounded documents through principal-scoped adapter | Partial | Protected access resolver and authorised host list not configured |
+| Chat `context.previous_context` (§§2.1, 3.2, 4, pp.1,5–6) | Optional / Onboarding | `core.ts` supports an injectable authorized history resolver; absent resolver returns 422 | Partial | Resolver not configured; secure prior-history retrieval must use official government spec |
+| Chat `context.provider_context_token`, up to 64 KB; optional echoed response token (§§2.1, 3.2, 4, pp.1–2,5–6) | Optional / Onboarding | Parses/validates token size but explicitly returns 422 if supplied; does not emit response token | Not enabled | No token strategy. Current 64,000-byte *whole-body* cap cannot carry a full 64-KB token; must be addressed if token mode enabled |
+| Stateless/stateful mode, authorized `session_id` scope and consistent prior-state handling (§4, p.6) | Onboarding; Mandatory isolation | Stateless per invocation; no persistent histories or state tokens | Partial | Need written onboarding choice; current previous-context/error behavior must be agreed, including fallback on unavailable state |
+| Summarization consumes actual `context.documents` or source text in `user_input`, not instruction alone (§2.2, p.2) | Mandatory | `hasSummarySource` heuristic filters obvious instruction-only requests when no documents; document path supports instruction-only text | Partial | Imperative-looking valid source may be rejected; arbitrary instructions without source may slip through; semantic source validation unresolved |
+| Summarization `summary` Markdown; `references` optional (§§2.2, 3.1, pp.2,4) | Mandatory summary; Optional references | `core.ts` returns `{request_id,summary}`; no additional knowledge repository used | Covered | Optional references deliberately absent; if external knowledge is added, §3.4 attribution must be supported |
+| Extraction: ≥1 `context.documents` and valid `extraction_schema` (§§2.3, 3.2, pp.2–3,5) | Mandatory | `core.ts:request` requires docs; `schema.ts:parseSchema` checks typed schema object | Covered for agreed subset | Only 1–32 flat scalar properties; nested objects, arrays, enums, regex/format constraints unsupported; onboarding agreement required by §2.3 |
+| Extraction: every declared `extracted_data` property returned (§2.3, pp.2–3) | Mandatory | `schema.ts:validateExtraction` rebuilds complete declared structure with no undeclared keys | Covered | Model still may produce unsupported/fabricated facts; grounding review needed |
+| Extraction: optional fields nullable, missing/unreadable -> `null` (§2.3, p.3) | Mandatory | `parseSchema` requires nullable optional properties; `validateExtraction` fills missing optional values with null; **22A additionally normalizes empty/whitespace-only optional strings to null** | Covered for supported types | Typed-null optional schema only; must not mistake wrong-type nonblank value for missing data |
+| Extraction: required fields valid, non-null; unavailable -> standard error, no invention (§2.3, p.3; §5, p.6) | Mandatory | `validateExtraction` 422 for missing/null/blank required strings; 502 for bad type/malformed model output | Covered at schema level | Semantic source-to-field verification cannot be established from model self-report; Task 22B |
+| Extraction `references` always array including `[]` when none (§2.3, p.3; §3.1, p.4) | Mandatory | Response includes attributed `references` from `decodeModel` | Covered at shape level | Source attribution is only model-claimed, not independently evidence checked |
+| Draft requires nonempty `user_input`, returns actual `draft_text` and `references` array (§2.4, pp.3–4; §3.1, p.4) | Mandatory | `core.ts` validates input, produces draft text and references, prompt requires officer review | Covered at shape level | Does not independently validate official facts, writing quality or officer approval |
+| Optional `generated_file_url` only for actual temporary protected HTTPS PDF/DOCX artifact; `draft_text` still required (§2.4, p.4) | Optional / Onboarding | No artifact generation, `generated_file_url` omitted | Not enabled | Future support needs protected expiring URL and retention controls; no placeholder/fabricated link |
+| eOffice `context.documents`: exactly `document_id` and `download_url`, protected HTTPS access (§3.3, p.5) | Mandatory when supplied | `core.ts` rejects malformed/extra document fields and duplicate IDs; `documents.ts` validates URLs | Partial | Official gov credential mapping, download authorization and host allowlist deferred |
+| References to eOffice documents include actual `document_id` + `title`; optional valid `page_number` (§3.4, pp.5–6) | Mandatory when relied upon | `core.ts:reference` emits IDs and nonblank titles from source adapter; **22A rejects non-positive/non-integer page metadata**; mocked example covers page 1/3 | Partial | Real `extractDocument` currently sets `title = document_id` rather than a verified document title; no reliable actual title metadata from the two-field input. Do not claim semantically accurate titles or infer page-specific provenance |
+| References to own knowledge/external sources use `title` + authorised `source_url`, never protected eOffice `download_url` (§3.4, pp.5–6) | Conditional / Optional (when such sources used) | No external knowledge-repository retrieval or external reference synthesis in this eOffice module; supplied document URLs excluded | Not enabled | External reference shape/permission validation is required if repository/knowledge sources are later supported |
+| Cite only material actually relied on (§3.4, pp.5–6; §6.2, p.7) | Mandatory | Model declares `used_document_ids`; `decodeModel` rejects unknown/duplicate IDs and emits attributed references only | Partial | IDs cannot certify factual grounding; no claim-to-evidence verification |
+| Source-URL/file safety, appropriate malware scanning, prompt-injection mitigation (§§3.3, 6.1–6.2, pp.5,7–8) | Mandatory safeguard | `documents.ts` allowlisted HTTPS, public IPv4 vetting/pinning, no redirects, bounded text/PDF/DOCX parsing; system prompt marks source/history untrusted | Partial | Malware scanning absent; defence-in-depth/egress and adversarial prompt-injection tests outstanding |
+| Confidential output, permitted usage and safe refusal handling (§§5, 6.1–6.2, pp.7–8) | Mandatory safeguard | No raw download URLs exposed through source reference formatter; model prompt bans credentials; generic officer-visible errors; output JSON parsed/validated | Partial | Only exact supplied `download_url` is blocked in generated text; full downstream confidentiality, content safety and refusal controls not demonstrated |
+| Synchronous execution, per-integration timeout, no jobs/polling/callbacks (§§1, 3.1, 5, 6.3, pp.1,4,7–8) | Mandatory synchronous; Onboarding timeout | Core has 25-second deadline, model max 18 seconds, explicit 503 timeout; no async state/jobs | Partial | Must agree and test actual departmental budget/expected document sizes |
+| File formats/sizes/output constraints (§6.3, p.8) | Onboarding | 4 docs max, 2 MiB/file, 24 KB extracted text/file, 32 KB prompt; text/plain, Markdown, DOCX, searchable PDF supported | Partial | Scanned PDF OCR returns 422; unsupported formats/large documents fail explicitly; limits require department approval, never truncate silently |
+| Temporary data retention default 12h/max 24h, no long-term storage or training (§6.1, p.7; §6.3, p.8) | Mandatory for any retained temporary state | Module keeps no eOffice history/file/artifact on disk or in a persistent cache | Covered for ephemeral-only core | Re-check downstream provider logging/training commitments; if temp state introduced apply expiry (12h default, ≤24h max) |
+| Human validation/approval of drafts and extracted fields (§§2.3–2.4, 6.1, pp.3–4,7) | Mandatory external workflow | API labels draft as proposed; no workflow side effects | Partial | Actual eOffice review, official form validation and approvals are external integration requirements |
+| Government authentication and protected-file protocol (§§1, 3.3, 6.1, 6.3, pp.1,5,7–8) | Separate specification / Onboarding | **`backend/eoffice/handler.ts` remains default-deny**; protected access resolver throws | Blocked | Official government document unavailable; **never substitute Cognito or unauthenticated access** |
+| Base URL, enabled tasks, auth, file constraints, timeout, chat mode, retention agreement (§6.3, p.8) | Onboarding | Matrix records current choices and proposed limits | Blocked | Requires written departmental compatibility agreement and explicit authorized deployment/integration |
+
+## Task 22A code changes
+
+1. `backend/eoffice/schema.ts` — missing, empty or whitespace-only nullable optional extraction strings normalize to `null`. Non-nullable required fields still fail with 422; wrong-type model output remains 502. Direct basis: PDF §2.3, p.3.
+2. `backend/eoffice/core.ts` — invalid source `page_number` (≤0, fractional, nonfinite) is rejected before generating external JSON. Direct basis: PDF §3.4, pp.5–6.
+3. `backend/eoffice/contract.test.ts` — isolated mocked tests cover all four public envelopes, required and nullable extraction fields, UUID echo, standard errors, source reference validation and fail-closed production handler. Four additional representative request/response fixtures are adapted from **the actual PDF examples** in §§2.1–2.4 (pp.1–4). Chat example omits both optional history mechanisms because they are not configured, as allowed by §§2.1 and 4; it does not pretend state tokens are supported.
+
+**Verification:** GitHub source review only. New test and backend type-check commands below **have not been executed in this chat**. No GitHub Actions, real protected downloads, or paid Bedrock calls. A source-level pass is not a proven runtime pass.
+
+**Scope protection:** The PR changes only `backend/eoffice/{core.ts,schema.ts,contract.test.ts}` and this matrix; no modifications to `backend/eoffice/handler.ts`, existing pilot endpoints, Cognito, frontend, Terraform, IAM, CI or AWS. PR remains unmerged/undeployed for the independent Brain reviewer.
+
+## Focused WSL verification
+
+Use a clean, new worktree. Check the target directory does not already exist; do not overwrite local edits.
+
+```bash
+cd ~/src/grievance-insights
+git status --short
+git fetch origin
+git worktree add ../grievance-insights-eoffice-22a origin/feature/eoffice-phase1-contract-22a
+cd ../grievance-insights-eoffice-22a
+git rev-parse HEAD
+# Run once if dependencies are unavailable in this worktree:
+npm ci
+npx vitest run backend/eoffice/contract.test.ts backend/eoffice/core.test.ts backend/eoffice/schema.test.ts --maxWorkers=2 --testTimeout=20000
+npm run backend:typecheck
+```
+
+These are **focused tests and a type-check only**; do not run whole-repository tests, GitHub Actions, Terraform, deployment, or Bedrock. Report exact failures rather than treating source-inspected changes as passing.
+
+## Independent Brain review gates
+
+- Compare this matrix against the now-supplied eight-page PDF, including exact sections and the examples' optional chat fields.
+- Review **reference title reliability** (`extractDocument` fallback ID vs actual title) and inability to guarantee claim-level grounding; plan safe remediation for Task 22B.
+- Agree schemas, formats, file-size and synchronous limits, and chat state mode at onboarding; implement official auth/protected access **last**, under independent approval.
+- Run targeted WSL tests and type-check, review exact 4-file diff, keep PR draft until explicitly approved.

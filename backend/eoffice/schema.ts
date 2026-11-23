@@ -42,7 +42,12 @@ export function validateExtraction(schema: Schema, value: unknown): Record<strin
   const result: Record<string, unknown> = {};
   for (const name of names) {
     const t = types((schema.properties[name] as Record<string, unknown>).type);
-    const data = value[name] === undefined ? null : value[name];
+    // A missing or blank nullable optional string has no extracted value.
+    // Preserve its declared key as null rather than emitting an empty value.
+    const supplied = value[name];
+    const data = supplied === undefined ||
+      (!schema.required?.includes(name) && t.includes('null') && typeof supplied === 'string' && !supplied.trim())
+      ? null : supplied;
     if (data === null) {
       if (!t.includes('null')) throw unprocessable('Required field ' + name + ' could not be extracted.');
     } else {
