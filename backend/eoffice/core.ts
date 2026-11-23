@@ -27,7 +27,8 @@ function requestId(value: unknown): value is string { return typeof value === 's
 function mediaType(event: Event): boolean {
   const values = Object.entries(event.headers ?? {}).filter(([key]) => key.toLowerCase() === 'content-type');
   if (values.length !== 1 || typeof values[0][1] !== 'string') return false;
-  return /^application\/json(?:\s*;\s*charset\s*=\s*"?utf-8"?)?$/i.test(values[0][1].trim());
+  const type = values[0][1].trim();
+  return /^application\/json$/i.test(type) || /^application\/json\s*;\s*charset\s*=\s*(?:utf-8|"utf-8")$/i.test(type);
 }
 /** Instruction-only user_input cannot be treated as document text (specification §2.2).
  * A plain source passage is accepted; to combine instructions and source, use "Source text:\n...".
@@ -160,7 +161,8 @@ export function createEofficeApi(deps: {
       const output = decodeModel(raw, documents, task);
       // Source references are only from model-attributed, submitted document IDs.
       // Protected source download URLs cannot appear in the generated narrative.
-      if (typeof output.text === 'string' && (input.context?.documents ?? []).some(d => output.text!.includes(d.download_url)))
+      const responseContent = task === 'extract' ? JSON.stringify(output.extracted_data) : output.text ?? '';
+      if ((input.context?.documents ?? []).some(d => responseContent.includes(d.download_url)))
         throw new EofficeError(502, 'Model disclosed a protected document URL.', 'AI processing failed.');
       if (task === 'extract') return encode(200, {
         request_id: id, extracted_data: validateExtraction(schema!, output.extracted_data), references: output.references,
