@@ -174,6 +174,20 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
     expect(failed.statusCode).toBe(502);
   });
 
+  it('allows Markdown list numbering without pretending it is a sourced monetary amount', async () => {
+    const response = await make({ ...good, text: '1. The cap is 1.2 million.' }).api(chat());
+    expect(response.statusCode).toBe(200);
+  });
+
+  it('rejects a protected query token in a custom adapter title before inference', async () => {
+    const unsafe: Material = { ...a, title: 'File secret-A.pdf' };
+    const { api, model } = make(good, { [docA.document_id]: unsafe, [docB.document_id]: b });
+    const response = await api(chat());
+    expect(response.statusCode).toBe(502);
+    expect(model).not.toHaveBeenCalled();
+    expect(response.body).not.toContain('secret-A');
+  });
+
   it('rejects unsupported numeric claims despite valid reference and evidence', async () => {
     const model = { ...good, text: 'The cap is 9.7 million.' };
     const resultResponse = await make(model).api(chat());
