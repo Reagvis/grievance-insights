@@ -311,6 +311,7 @@ resource "aws_apigatewayv2_integration" "analysis_api" {
 resource "aws_apigatewayv2_route" "analyses" {
   for_each = toset([
     "POST /api/datasets/{id}/analyze",
+    "POST /api/datasets/{id}/chat",
     "GET /api/datasets/{id}/analyses",
     "GET /api/analyses/{jobId}",
     "GET /api/analyses/{jobId}/results",

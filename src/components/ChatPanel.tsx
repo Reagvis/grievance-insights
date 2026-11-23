@@ -94,7 +94,7 @@ function RichText({ text }: { text: string }) {
 
 /* ───────────── Panel ───────────── */
 
-export type ScopeOption = { key: 'all' | 'filtered' | 'note'; label: string; scope: ChatScope };
+export type ScopeOption = { key: 'all' | 'filtered' | 'note' | 'file' | `file:${string}`; label: string; scope: ChatScope };
 
 type Props = {
   store: ChatStore;
@@ -110,10 +110,16 @@ type Props = {
   analysisPane?: ReactNode;
 };
 
-const SUGGESTIONS: Record<ScopeOption['key'], string[]> = {
+const SUGGESTIONS: Record<'all' | 'filtered' | 'note' | 'file', string[]> = {
   all: ['What are the most common complaint categories?', 'Which complaints have no response yet?', 'What do water supply complaints have in common?'],
   filtered: ['Summarise the issues in these complaints', 'Which of these have no response?'],
   note: ['Summarise this complaint and the response', 'Is there anything the response does not address?'],
+  file: ['Summarise this document', 'Draft an email based on this file', 'Extract the key points'], 
+};
+
+const AI_SUGGESTIONS: Partial<Record<keyof typeof SUGGESTIONS, string[]>> = {
+  note: ['Summarise this complaint and the response', 'Draft an official government file noting', 'Suggest practical solutions'],
+  file: ['Summarise this document', 'Draft an email based on this file', 'Extract the key points'],
 };
 
 export function ChatPanel({ store, service, scopes, knownIds, unavailableReason, onOpenRecord, onClose, analysisPane }: Props) {
@@ -187,7 +193,8 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
     send(draft);
   };
 
-  const suggestions = useMemo(() => SUGGESTIONS[scope.key], [scope.key]);
+  const suggestionKey = (scope.key.startsWith('file:') ? 'file' : scope.key) as keyof typeof SUGGESTIONS;
+  const suggestions = useMemo(() => service.kind === 'ai' ? (AI_SUGGESTIONS[suggestionKey] ?? SUGGESTIONS[suggestionKey]) : SUGGESTIONS[suggestionKey], [suggestionKey, service.kind]);
 
   return (
     <aside className="chat-panel" aria-label="Assistant">
@@ -239,10 +246,10 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
       <div className="chat-scroll" role="log" aria-live="polite" aria-label="Conversation">
         {active.turns.length === 0 ? (
           <div className="chat-empty">
-            <p className="chat-empty-title">Ask about the complaints</p>
+            <p className="chat-empty-title">{service.kind === 'ai' ? 'Ask Qwen about this document' : 'Ask about the complaints'}</p>
             <p className="chat-empty-text">
               {service.kind === 'ai'
-                ? 'Answers come from the complaint records and cite the case IDs they are based on. Check the cited cases before relying on an answer.'
+                ? 'Ask questions, create summaries, emails, official notings or draft letters from the selected document. Verify important details before use.'
                 : 'This offline mode only looks up records and counts them. It does not reason about the text.'}
             </p>
             {!disabled && (
@@ -267,7 +274,7 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
                 <div className="chat-bubble chat-bubble--bot">
                   {t.status === 'streaming' && !t.content && (
                     <span className="chat-typing">
-                      <LoaderCircle size={14} className="spin" aria-hidden /> Reading the records…
+                      <LoaderCircle size={14} className="spin" aria-hidden /> {service.kind === 'ai' ? 'Generating document answer…' : 'Reading the records…'}
                     </span>
                   )}
                   {t.content && <RichText text={t.content} />}
@@ -321,7 +328,12 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
             {scopes.length > 1 && (
               <div className="chat-scope">
                 <label htmlFor="chat-scope-select">Ask about</label>
-                <select id="chat-scope-select" className="select" value={scope.key} onChange={(e) => setScopeKey(e.target.value as ScopeOption['key'])} disabled={busy}>
+                <select id="chat-scope-select" className="select" value={scope.key} onChange={(e) => {
+                  const next = e.target.value as ScopeOption['key'];
+                  // A file-level conversation must not inherit the history of a complaint-level question.
+                  if (next !== scope.key && service.kind === 'ai' && scope.scope.kind === 'document') store.reset();
+                  setScopeKey(next);
+                }} disabled={busy}>
                   {scopes.map((s) => (
                     <option key={s.key} value={s.key}>
                       {s.label}
