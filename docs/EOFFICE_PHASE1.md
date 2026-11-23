@@ -6,7 +6,7 @@ This branch implements a contract handler for four endpoints under `/api/v1/ai` 
 
 - `backend/eoffice/core.ts`: injectable authorization, documents, model and optional history adapters; UTF-8 JSON contracts and safe error responses.
 - `backend/eoffice/aws.ts`: Bedrock Converse with `qwen.qwen3-32b-v1:0` in `ap-south-1`, leveraging existing SigV4 code. Never transmits original files, only extracted text.
-- `backend/eoffice/documents.ts`: allowlisted URL validation, DNS checks, bounded text extraction for UTF-8 plain text/Markdown, DOCX and searchable PDFs using existing ingestion libraries. OCR-dependent PDFs are rejected. The default HTTPS transport deliberately rejects requests instead of exposing an unpinned DNS/SSRF channel; onboard a network-verified DNS-pinned HTTPS transport with the agreed authentication before enabling document download.
+- `backend/eoffice/documents.ts`: allowlisted URL validation, DNS checks, bounded text extraction for UTF-8 plain text/Markdown, DOCX and searchable PDFs using existing ingestion libraries. OCR-dependent PDFs are rejected. The HTTPS transport performs public-IP DNS validation, pins the connection address while retaining hostname-based TLS validation, rejects redirects, and bounds download size and duration. Production credential injection and network egress restrictions must be agreed during onboarding.
 - `backend/eoffice/schema.ts`: JSON Schema subset: flat object, 1–32 named scalar properties, string/number/integer/boolean/null types and required array only. Optional fields must include null. Nested structures, arrays, enums, patterns, formats and other schema keywords are unsupported and rejected.
 - `backend/eoffice/handler.ts`: fail-closed production stub. No trust is placed in caller-supplied `user_id`.
 - No PDF/DOCX drafting artifacts or URLs are generated; `draft_text` is always returned.
@@ -18,7 +18,7 @@ Limits: 64,000-byte request JSON, 24,000-byte officer input and aggregate source
 ## Outstanding blockers / security review
 
 1. Separate official eOffice authentication, tenant identity, authorization and file-access credential protocol. Implement a trusted principal adapter; do not wire UI sessions or `user_id` as an identity proof.
-2. Approved eOffice hostname list, DNS-pinned/fixed-egress HTTPS fetch mechanism, access credentials, malware scanning, redirection policy and historical context retrieval rules. Default adapter intentionally declines downloads.
+2. Approved eOffice hostname list, protected-file credentials, vetted network egress, malware scanning and historical context retrieval rules. Default production handler intentionally denies all requests.
 3. Synchronous SLA, resource limits, task enablement, allowed schemas, chat context mode and temporary-data retention agreement.
 4. Before production: add properly isolated API Gateway routes + authorizer, scoped Lambda IAM, packaged Lambda, timeout and observability controls, after sign-off. No infrastructure changes are included here.
 5. Review grounding/reference accuracy: document references currently identify every supplied document passed into the prompt, not verified model-level citations. An explicit evidence/citation validation protocol is recommended before production.
