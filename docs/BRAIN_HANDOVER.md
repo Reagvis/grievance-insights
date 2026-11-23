@@ -20,6 +20,13 @@
 - **Frontend has not yet been published** for the new Qwen Assistant. Next: build the reviewed frontend from the merged feature commit in the WSL review worktree using `npm run build:aws` (build only, no test reruns), upload hashed assets first, static files without `--delete`, index last, and create a single CloudFront invalidation for `E3B0B5R1HAYD1J`. Verify the AWS account and the reviewed source revision. The frontend GitHub OIDC role is trust-restricted to a GitHub environment and may not be directly assumable from local AWS CLI; use an already authorized AWS credential/profile with narrow S3 publish and CloudFront invalidate permissions.
 - After frontend upload, verify the existing pilot login, browse/uploads, existing AI analysis, and a single small Qwen document question/draft; note the Bedrock inference cost. Leave eOffice inactive. Developer explicitly requested **no more automated test runs**.
 
+## Frontend publication checkpoint — 2026-11-23
+
+- Developer reports the frontend publication script reached a successful CloudFront invalidation creation after uploading the AWS-mode build and S3 assets. Invalidation ID `I3BUSLP9SHDXMGHOKEMN1QC20R` for distribution `E3B0B5R1HAYD1J`, created `2026-11-23T08:32:07.331Z`, initial state `InProgress`. That state **does not prove invalidation completion**.
+- Backend targeted Terraform apply was earlier reported successful: one API Gateway route created and only the analysis API Lambda updated. PR #38 code is merged into `main`.
+- Pending checkpoint: confirm invalidation `Completed`, sign in to live pilot and send a small document-grounded Qwen prompt, verify answer and follow-up as well as intact legacy functionality. Do not claim end-to-end success from invalidation creation alone.
+- Developer does not want any more automated test reruns; do not request them again. Manual live smoke verification is appropriate; one Qwen inference incurs a small Bedrock charge. eOffice remains paused.
+
 ## READ FIRST — recovery instructions
 
 You are taking over the independent technical lead / reviewer role for the Grievance Insights AWS pilot and its eOffice Phase 1 API integration. Read this file, inspect current GitHub state via the connector, and obtain the authoritative eOffice Phase 1 v2.0 PDF from the Project/conversation files (ask for the document if unavailable). Never treat remembered or written commit statuses as current without checking. Continue from the open engineering decisions, not a fresh design exercise.
