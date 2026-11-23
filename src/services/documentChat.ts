@@ -9,7 +9,10 @@ import { signalAuthExpired } from './authApi';
 export class DocumentChatService implements ChatService {
   readonly kind = 'ai' as const;
   readonly label = 'Qwen AI · document questions & drafts';
-  constructor(private readonly resolveId: (datasetId: string, originalId: string) => string | undefined) {}
+  private readonly resolveId: (datasetId: string, originalId: string) => string | undefined;
+  constructor(resolveId: (datasetId: string, originalId: string) => string | undefined) {
+    this.resolveId = resolveId;
+  }
 
   async ask(req: ChatRequest): Promise<ChatResult> {
     if (req.scope.kind !== 'document') throw new Error('Open a document or complaint to ask Qwen.');
