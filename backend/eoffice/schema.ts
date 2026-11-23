@@ -3,6 +3,7 @@ export class EofficeError extends Error {
 }
 export const invalid = (message = 'Invalid request.') => new EofficeError(400, message, 'The request is invalid.');
 export const unprocessable = (message = 'Unable to process supplied material.') => new EofficeError(422, message, 'The supplied document or schema could not be processed.');
+const badModel = (message: string) => new EofficeError(502, message, 'AI processing failed.');
 export const isObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 export function bounded(value: unknown, limit: number): value is string {
@@ -35,9 +36,9 @@ export function parseSchema(value: unknown): Schema {
   return { type: 'object', properties: value.properties, required: required as string[] };
 }
 export function validateExtraction(schema: Schema, value: unknown): Record<string, unknown> {
-  if (!isObject(value)) throw unprocessable('Model returned no extraction object.');
+  if (!isObject(value)) throw badModel('Model returned no extraction object.');
   const names = Object.keys(schema.properties);
-  if (Object.keys(value).some(k => !names.includes(k))) throw unprocessable('Model returned undeclared fields.');
+  if (Object.keys(value).some(k => !names.includes(k))) throw badModel('Model returned undeclared fields.');
   const result: Record<string, unknown> = {};
   for (const name of names) {
     const t = types((schema.properties[name] as Record<string, unknown>).type);
@@ -49,7 +50,7 @@ export function validateExtraction(schema: Schema, value: unknown): Record<strin
         (kind === 'number' && typeof data === 'number' && Number.isFinite(data)) ||
         (kind === 'integer' && typeof data === 'number' && Number.isSafeInteger(data)) ||
         (kind === 'boolean' && typeof data === 'boolean'));
-      if (!ok) throw unprocessable('Invalid extracted field ' + name + '.');
+      if (!ok) throw badModel('Malformed extracted field ' + name + '.');
     }
     result[name] = data;
   }
