@@ -101,6 +101,9 @@ function modelEnvelope(system: string, prompt: string, fault: string): string {
       : prompt.includes('synthetic previous alpha turn') || prompt.includes('synthetic previous beta turn')
         ? 'Authorized synthetic previous context was supplied.'
         : 'No previous conversation context was supplied.';
+    // Only cite the supporting note when the narrative actually discusses it.
+    if (used.some(f => f.material === SUPPORT_MATERIAL))
+      text += ' Additional Procurement supporting evidence was requested.';
   } else if (system.startsWith('Write a concise')) {
     text = grounded ? 'The ' + subject + ' memorandum records a cap of ' + amount + ' million.'
       : 'The supplied synthetic source passage was summarized.';
