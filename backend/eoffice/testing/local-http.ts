@@ -37,13 +37,13 @@ export function assertLocalOnly(options: LocalHttpOptions): void {
 async function readBoundedBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    let total = 0, done = false;
+    let total = 0, done = false, oversized = false;
     req.on('data', (chunk: Buffer) => {
-      if (done) return;
+      if (done || oversized) return;
       total += chunk.length;
       if (total > MAX_BODY_BYTES) {
-        done = true;
-        resolve(TOO_LARGE_BODY);
+        oversized = true;
+        chunks.length = 0; // Release any buffered input; discard the rest.
         return;
       }
       chunks.push(chunk);
@@ -51,6 +51,7 @@ async function readBoundedBody(req: IncomingMessage): Promise<string> {
     req.on('end', () => {
       if (done) return;
       done = true;
+      if (oversized) { resolve(TOO_LARGE_BODY); return; }
       try {
         resolve(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, total)));
       } catch {
