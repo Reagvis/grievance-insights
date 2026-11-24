@@ -1,0 +1,1038 @@
+{
+  "info": {
+    "name": "eOffice Phase 1 — LOCAL SYNTHETIC smoke only (Task 22E)",
+    "description": "DANGER: TEST-ONLY / NO REAL AUTH. Requires opt-in local listener on 127.0.0.1:8765. Headers choose in-memory fixtures, NOT government identity; never import into production. No real document network access or paid inference.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8765",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Chat — grounded PDF page",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000001\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000001\"); });",
+              "pm.test(\"Exact eOffice response keys\", function () { pm.expect(Object.keys(pm.response.json()).sort()).to.eql([\"answer\",\"references\",\"request_id\"]); });",
+              "pm.test(\"Grounded reference\", function () { const r=pm.response.json().references; pm.expect(r).to.be.an(\"array\").with.lengthOf(1); pm.expect(r[0].document_id).to.eql(\"synthetic-policy\"); pm.expect(r[0].title).to.eql(\"Synthetic Alpha Policy.pdf\"); pm.expect(r[0].page_number).to.eql(2); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Summarize — document",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/summarize",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000002\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"Summarize the attached policy.\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000002\"); });",
+              "pm.test(\"Exact eOffice response keys\", function () { pm.expect(Object.keys(pm.response.json()).sort()).to.eql([\"request_id\",\"summary\"]); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Extract — null optionals",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/extract",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000003\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  },\n  \"extraction_schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"subject\": {\n        \"type\": \"string\"\n      },\n      \"letter_date\": {\n        \"type\": [\n          \"string\",\n          \"null\"\n        ]\n      },\n      \"approved\": {\n        \"type\": [\n          \"boolean\",\n          \"null\"\n        ]\n      }\n    },\n    \"required\": [\n      \"subject\"\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000003\"); });",
+              "pm.test(\"Exact eOffice response keys\", function () { pm.expect(Object.keys(pm.response.json()).sort()).to.eql([\"extracted_data\",\"references\",\"request_id\"]); });",
+              "pm.test(\"Grounded reference\", function () { const r=pm.response.json().references; pm.expect(r).to.be.an(\"array\").with.lengthOf(1); pm.expect(r[0].document_id).to.eql(\"synthetic-policy\"); pm.expect(r[0].title).to.eql(\"Synthetic Alpha Policy.pdf\"); pm.expect(r[0].page_number).to.eql(2); });",
+              "pm.test(\"Complete nullable extraction\", function () { pm.expect(pm.response.json().extracted_data).to.eql({subject:\"Procurement\",letter_date:null,approved:null}); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Draft reply — draft_text",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/draft-reply",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000004\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"Draft Procurement supporting papers request.\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000004\"); });",
+              "pm.test(\"Exact eOffice response keys\", function () { pm.expect(Object.keys(pm.response.json()).sort()).to.eql([\"draft_text\",\"references\",\"request_id\"]); });",
+              "pm.test(\"Grounded reference\", function () { const r=pm.response.json().references; pm.expect(r).to.be.an(\"array\").with.lengthOf(1); pm.expect(r[0].document_id).to.eql(\"synthetic-policy\"); pm.expect(r[0].title).to.eql(\"Synthetic Alpha Policy.pdf\"); pm.expect(r[0].page_number).to.eql(2); });",
+              "pm.test(\"Proposed text exists\", function () { pm.expect(pm.response.json().draft_text).to.be.a(\"string\").and.not.empty; });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Missing synthetic actor — 403",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000005\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000005\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Explicit denial — 403",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          },
+          {
+            "key": "x-eoffice-smoke-fault",
+            "value": "auth-denied",
+            "description": "LOCAL TEST FAULT — NOT AN API PROTOCOL"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000006\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000006\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 No session — 400",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000007\",\n  \"user_input\": \"Hello\",\n  \"user_id\": \"synthetic-officer-alpha\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000007\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Provider token disabled — 422",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000008\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ],\n    \"provider_context_token\": \"synthetic-disabled-token\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 422\", function () { pm.response.to.have.status(422); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000008\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Other tenant document — 422",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000009\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/beta-policy?ticket=private-beta-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 422\", function () { pm.response.to.have.status(422); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000009\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Wrong scoped history — 422",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000010\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"previous_context\": \"synthetic-history-beta\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 422\", function () { pm.response.to.have.status(422); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000010\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Malformed model — 502",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          },
+          {
+            "key": "x-eoffice-smoke-fault",
+            "value": "bad-model-json",
+            "description": "LOCAL TEST FAULT — NOT AN API PROTOCOL"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000011\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 502\", function () { pm.response.to.have.status(502); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000011\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Fabricated reference — 502",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          },
+          {
+            "key": "x-eoffice-smoke-fault",
+            "value": "fabricated-reference",
+            "description": "LOCAL TEST FAULT — NOT AN API PROTOCOL"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000012\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 502\", function () { pm.response.to.have.status(502); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000012\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 Unsupported numeric claim — 502",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          },
+          {
+            "key": "x-eoffice-smoke-fault",
+            "value": "unsupported-number",
+            "description": "LOCAL TEST FAULT — NOT AN API PROTOCOL"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000013\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"Is the cap 9.7 million?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 502\", function () { pm.response.to.have.status(502); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000013\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 Protected URL leak — 502",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          },
+          {
+            "key": "x-eoffice-smoke-fault",
+            "value": "protected-url-leak",
+            "description": "LOCAL TEST FAULT — NOT AN API PROTOCOL"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000014\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 502\", function () { pm.response.to.have.status(502); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000014\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 Model unavailable — 503",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          },
+          {
+            "key": "x-eoffice-smoke-fault",
+            "value": "model-unavailable",
+            "description": "LOCAL TEST FAULT — NOT AN API PROTOCOL"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000015\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 503\", function () { pm.response.to.have.status(503); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000015\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 Protected document unavailable — 422",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          },
+          {
+            "key": "x-eoffice-smoke-fault",
+            "value": "document-unavailable",
+            "description": "LOCAL TEST FAULT — NOT AN API PROTOCOL"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000016\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 422\", function () { pm.response.to.have.status(422); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000016\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 Unknown route — 404",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/does-not-exist",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000017\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 404\", function () { pm.response.to.have.status(404); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000017\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 Wrong method — 405",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000018\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 405\", function () { pm.response.to.have.status(405); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000018\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "19 Wrong content type — 415",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "text/plain"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000019\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 415\", function () { pm.response.to.have.status(415); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000019\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 Oversized JSON — 400",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{{oversizedBody}}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.variables.set(\"oversizedBody\", JSON.stringify({request_id:\"11111111-2222-4333-8444-000000000020\",session_id:\"synthetic-shared-session\",user_id:\"synthetic-officer-alpha\",user_input:\"x\".repeat(65000)}));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });",
+              "pm.test(\"Unparseable/oversized body never invents UUID echo\", function () { pm.expect(pm.response.json()).not.to.have.property(\"request_id\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "21 Model-origin access denial — 500",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          },
+          {
+            "key": "x-eoffice-smoke-fault",
+            "value": "model-denied",
+            "description": "LOCAL TEST FAULT — NOT AN API PROTOCOL"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000021\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 500\", function () { pm.response.to.have.status(500); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000021\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "22 Optional real 25s timeout — 503",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-eoffice-smoke-actor",
+            "value": "alpha",
+            "description": "LOCAL TEST FIXTURE SELECTOR — NOT AUTHENTICATION"
+          },
+          {
+            "key": "x-eoffice-smoke-fault",
+            "value": "model-timeout",
+            "description": "LOCAL TEST FAULT — NOT AN API PROTOCOL"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ai/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"11111111-2222-4333-8444-000000000022\",\n  \"session_id\": \"synthetic-shared-session\",\n  \"user_id\": \"synthetic-officer-alpha\",\n  \"user_input\": \"What does the policy say?\",\n  \"context\": {\n    \"documents\": [\n      {\n        \"document_id\": \"synthetic-policy\",\n        \"download_url\": \"https://synthetic.invalid/alpha-policy?ticket=private-alpha-secret\"\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Local synthetic fixtures ONLY; 127.0.0.1; no real authentication, protected resources or AWS."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 503\", function () { pm.response.to.have.status(503); });",
+              "pm.test(\"No-store JSON\", function () { pm.expect(pm.response.headers.get(\"cache-control\")).to.eql(\"no-store\"); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"application/json\"); });",
+              "pm.test(\"No protected URLs or synthetic diagnostics\", function () { const s = pm.response.text(); [\"private-alpha-secret\",\"private-beta-secret\",\"PRIVATE_SYNTHETIC_\"].forEach(x => pm.expect(s).not.to.include(x)); });",
+              "pm.test(\"No CORS\", function () { pm.expect(pm.response.headers.has(\"access-control-allow-origin\")).to.be.false; });",
+              "pm.test(\"UUID echoed\", function () { pm.expect(pm.response.json().request_id).to.eql(\"11111111-2222-4333-8444-000000000022\"); });",
+              "pm.test(\"Standardized error envelope\", function () { const r=pm.response.json(); pm.expect(r.system_error_message).to.be.a(\"string\"); pm.expect(r.user_error_message).to.be.a(\"string\"); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
