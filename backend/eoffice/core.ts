@@ -8,6 +8,17 @@ import {
 type Task = 'chat' | 'summarize' | 'extract' | 'draft-reply';
 export type Principal = Readonly<{ department: string; officer: string; permissions: readonly Task[] }>;
 export type Authorize = (event: unknown) => Promise<Principal | null>;
+/** An optional, caller-injected and authorization-scoped history lookup.
+ * The reference is untrusted, and must never be fetched directly by the core.
+ * The resolver must verify that reference, principal and session belong together.
+ */
+export type HistoryLookup = Readonly<{
+  reference: string;
+  sessionId: string;
+  principal: Principal;
+  deadline: number;
+}>;
+export type ResolveHistory = (lookup: HistoryLookup) => Promise<string>;
 /** Last argument is the remaining per-invocation model deadline, in milliseconds. */
 export type Model = (system: string, prompt: string, maxTokens: number, timeoutMs: number) => Promise<string>;
 type Request = { request_id: string; user_id?: string; session_id?: string; user_input?: string; context?: {
@@ -106,7 +117,7 @@ async function withinBudget<T>(work: Promise<T>, deadline: number): Promise<T> {
 }
 export function createEofficeApi(deps: {
   authorize: Authorize; model: Model; documents: DocumentSource;
-  history?: (url: string, principal: Principal, deadline: number) => Promise<string>;
+  history?: ResolveHistory;
 }) {
   return async (event: Event): Promise<Response> => {
     let id: string | undefined;
@@ -133,7 +144,12 @@ export function createEofficeApi(deps: {
       if (input.user_id && input.user_id !== principal.officer) throw new EofficeError(403, 'User identity mismatch.', 'Access denied.');
       // No stateful cache: each document fetch receives the trusted principal and the same deadline.
       const schema = task === 'extract' ? parseSchema(input.extraction_schema) : undefined;
-      if (task === 'chat' && input.context?.provider_context_token) throw new EofficeError(422, 'Provider context tokens are not enabled.', 'Previous chat state is unavailable.');
+      // Optional provider-managed state is disabled for every task; never
+      // silently accept a token on a non-chat endpoint either.
+      if (input.context?.provider_context_token !== undefined)
+        throw new EofficeError(422, 'Provider context tokens are not enabled.', 'Previous chat state is unavailable.');
+      if (task !== 'chat' && input.context?.previous_context !== undefined)
+        throw invalid('previous_context is only supported for chat.');
       if (task === 'chat' && input.context?.previous_context && !deps.history)
         throw new EofficeError(422, 'History retrieval is not configured.', 'Previous context is unavailable.');
       const supplied = input.context?.documents ?? [];
@@ -170,7 +186,12 @@ export function createEofficeApi(deps: {
       if (Buffer.byteLength(source, 'utf8') > MAX_INPUT) throw unprocessable('Combined documents exceed AI context limit.');
       let history = '';
       if (task === 'chat' && input.context?.previous_context) {
-        history = await withinBudget(deps.history!(input.context.previous_context, principal, deadline), deadline);
+        history = await withinBudget(deps.history!({
+          reference: input.context.previous_context,
+          sessionId: input.session_id!, // validated for every chat request
+          principal, // obtained from trusted authorizer, never request.user_id
+          deadline,
+        }), deadline);
         if (!bounded(history, 8000)) throw unprocessable('History exceeds context limit.');
       }
       const systems: Record<Task, string> = {

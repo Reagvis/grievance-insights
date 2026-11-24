@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createEofficeApi, type Event, type Model, type Principal } from './core';
+import { createEofficeApi, type Event, type Model, type Principal, type ResolveHistory } from './core';
 import type { DocumentSource } from './documents';
 
 const id = 'b6d8f4a2-7c39-4d1a-8e2b-5f9c6d3e8f1a';
@@ -34,7 +34,7 @@ function event(task: string, request: unknown, extra: Partial<Event> = {}): Even
 }
 function api(options: {
   principal?: Principal | null; model?: Model; documents?: DocumentSource;
-  history?: (url: string, principal: Principal, deadline: number) => Promise<string>;
+  history?: ResolveHistory;
 } = {}) {
   return createEofficeApi({
     authorize: async () => options.principal === undefined ? principal : options.principal,
@@ -185,8 +185,12 @@ describe('eOffice Phase 1 response contracts', () => {
     expect(r.statusCode).toBe(403);
     expect((await api()(event('chat', { request_id: id, session_id: 's', user_input: 'hi', context: { provider_context_token: 'opaque' } }))).statusCode).toBe(422);
     expect((await api()(event('chat', { request_id: id, session_id: 's', user_input: 'hi', context: { previous_context: 'https://eoffice.example.gov/history' } }))).statusCode).toBe(422);
-    const withHistory = await api({ history: async (_url, p) => {
+    const withHistory = await api({ history: async ({ reference, principal: p, sessionId, deadline }) => {
+      expect(reference).toBe('https://eoffice.example.gov/history');
       expect(p.department).toBe('dept-A');
+      expect(p.officer).toBe(principal.officer);
+      expect(sessionId).toBe('s');
+      expect(deadline).toBeGreaterThan(Date.now());
       return 'Previous officer answer.';
     } })(event('chat', { request_id: id, session_id: 's', user_input: 'Continue', context: { previous_context: 'https://eoffice.example.gov/history' } }));
     expect(withHistory.statusCode).toBe(200);
