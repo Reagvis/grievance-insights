@@ -148,6 +148,8 @@ export function createEofficeApi(deps: {
       // silently accept a token on a non-chat endpoint either.
       if (input.context?.provider_context_token !== undefined)
         throw new EofficeError(422, 'Provider context tokens are not enabled.', 'Previous chat state is unavailable.');
+      if (task !== 'chat' && input.context?.previous_context !== undefined)
+        throw invalid('previous_context is only supported for chat.');
       if (task === 'chat' && input.context?.previous_context && !deps.history)
         throw new EofficeError(422, 'History retrieval is not configured.', 'Previous context is unavailable.');
       const supplied = input.context?.documents ?? [];
