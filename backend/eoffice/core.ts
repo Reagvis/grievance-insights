@@ -115,6 +115,34 @@ async function withinBudget<T>(work: Promise<T>, deadline: number): Promise<T> {
     ]);
   } finally { if (timer) clearTimeout(timer); }
 }
+type DependencyKind = 'authorization' | 'document' | 'history' | 'model';
+
+/** Bound each external adapter independently. Adapter-supplied diagnostics and
+ * public messages are untrusted and may contain protected data: never echo them.
+ * Timeout response is best-effort; cancellation of external work is adapter-owned.
+ */
+async function guardedDependency<T>(
+  action: () => Promise<T>, deadline: number, kind: DependencyKind,
+): Promise<T> {
+  try {
+    return await withinBudget(Promise.resolve().then(action), deadline);
+  } catch (error) {
+    if (error instanceof EofficeError && error.status === 503) {
+      throw new EofficeError(503, kind + ' operation unavailable.', 'AI service timed out.');
+    }
+    if (kind === 'authorization' || (error instanceof EofficeError && error.status === 403)) {
+      throw new EofficeError(403, kind + ' access denied.', 'Access denied.');
+    }
+    if (error instanceof EofficeError && error.status === 422 && kind === 'document') {
+      throw new EofficeError(422, 'Authorized document unavailable.', 'The requested document is unavailable.');
+    }
+    if (error instanceof EofficeError && error.status === 422 && kind === 'history') {
+      throw new EofficeError(422, 'Authorized history unavailable.', 'Previous context is unavailable.');
+    }
+    throw new EofficeError(500, kind + ' dependency failed.', 'AI service could not complete the request.');
+  }
+}
+
 export function createEofficeApi(deps: {
   authorize: Authorize; model: Model; documents: DocumentSource;
   history?: ResolveHistory;
@@ -137,7 +165,7 @@ export function createEofficeApi(deps: {
       if (event.isBase64Encoded) throw invalid('Base64 request bodies are not UTF-8 JSON.');
       if (typeof event.body !== 'string' || !event.body.length || Buffer.byteLength(event.body, 'utf8') > MAX_BODY) throw invalid('Missing or oversized JSON body.');
       if (parsed === undefined) throw invalid('Malformed JSON body.');
-      const principal = await deps.authorize(event);
+      const principal = await guardedDependency(() => deps.authorize(event), deadline, 'authorization');
       if (!principal || !identity(principal.department) || !identity(principal.officer) || !Array.isArray(principal.permissions) || !principal.permissions.includes(task))
         throw new EofficeError(403, 'Provider authorization required.', 'Access denied.');
       const input = request(parsed, task);
@@ -153,7 +181,7 @@ export function createEofficeApi(deps: {
       if (task === 'chat' && input.context?.previous_context && !deps.history)
         throw new EofficeError(422, 'History retrieval is not configured.', 'Previous context is unavailable.');
       const supplied = input.context?.documents ?? [];
-      const documents = await withinBudget(Promise.all(supplied.map(d => deps.documents.fetch(d, principal, deadline))), deadline);
+      const documents = await guardedDependency(() => Promise.all(supplied.map(d => deps.documents.fetch(d, principal, deadline))), deadline, 'document');
       for (let i = 0; i < documents.length; i++) {
         const material = documents[i];
         if (material.document_id !== supplied[i].document_id || !bounded(material.text, MAX_INPUT) ||
@@ -186,12 +214,12 @@ export function createEofficeApi(deps: {
       if (Buffer.byteLength(source, 'utf8') > MAX_INPUT) throw unprocessable('Combined documents exceed AI context limit.');
       let history = '';
       if (task === 'chat' && input.context?.previous_context) {
-        history = await withinBudget(deps.history!({
-          reference: input.context.previous_context,
+        history = await guardedDependency(() => deps.history!({
+          reference: input.context!.previous_context!,
           sessionId: input.session_id!, // validated for every chat request
           principal, // obtained from trusted authorizer, never request.user_id
           deadline,
-        }), deadline);
+        }), deadline, 'history');
         if (!bounded(history, 8000)) throw unprocessable('History exceeds context limit.');
       }
       const systems: Record<Task, string> = {
@@ -223,7 +251,7 @@ export function createEofficeApi(deps: {
         throw unprocessable('Combined model prompt exceeds synchronous limit.');
       const modelTime = Math.min(MODEL_MAX_MS, deadline - Date.now() - 500);
       if (modelTime < 1000) throw new EofficeError(503, 'Insufficient time for synchronous inference.', 'AI service timed out.');
-      const raw = await withinBudget(deps.model(system, prompt, task === 'extract' ? 1400 : 1600, modelTime), deadline);
+      const raw = await guardedDependency(() => deps.model(system, prompt, task === 'extract' ? 1400 : 1600, modelTime), deadline, 'model');
       if (!bounded(raw, MAX_OUTPUT)) throw new EofficeError(502, 'Empty or oversized model response.', 'AI processing failed.');
       const output = decodeModel(raw, documents, task);
       // Keep complete schema validation separate from evidentiary validation:
