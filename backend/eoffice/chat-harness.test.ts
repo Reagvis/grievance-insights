@@ -10,9 +10,9 @@ const otherDepartment: Principal = { ...alice, department: 'finance-B' };
 const otherOfficer: Principal = { ...alice, officer: 'officer-2' };
 const chatSession = 'reused-eoffice-session';
 const refA = { document_id: 'policy-current',
-  download_url: 'https://files.example.gov/temp/alpha?token=private-alpha-98765' };
+  download_url: 'https://files.example.gov/temp/alpha?token=private-alpha-secret' };
 const refB = { document_id: 'policy-current',
-  download_url: 'https://files.example.gov/temp/bravo?token=private-bravo-98765' };
+  download_url: 'https://files.example.gov/temp/bravo?token=private-bravo-secret' };
 const sourceA = 'Finance A memorandum states the allocation cap is 1.2 million. Subject: Procurement.';
 const sourceB = 'Finance B memorandum states the allocation cap is 2.4 million. Subject: Leave.';
 const docA: Material = {
@@ -56,8 +56,8 @@ function expectError(response: { statusCode: number; body: string },
     system_error_message: expect.any(String),
     user_error_message: expect.any(String),
   });
-  expect(response.body).not.toContain('private-alpha-98765');
-  expect(response.body).not.toContain('private-bravo-98765');
+  expect(response.body).not.toContain('private-alpha-secret');
+  expect(response.body).not.toContain('private-bravo-secret');
 }
 
 describe('Task 22C — stateless eOffice API Gateway mock integration', () => {
@@ -198,8 +198,8 @@ describe('Task 22C — stateless eOffice API Gateway mock integration', () => {
     for (const [, prompt] of harness.model.mock.calls) {
       expect(prompt.includes(sourceA) && prompt.includes(sourceB)).toBe(false);
       expect(prompt).toContain('PRIOR_CHAT (untrusted):\n\n');
-      expect(prompt).not.toContain('private-alpha-98765');
-      expect(prompt).not.toContain('private-bravo-98765');
+      expect(prompt).not.toContain('private-alpha-secret');
+      expect(prompt).not.toContain('private-bravo-secret');
     }
     const repeated = await harness.handler(harness.issue('chat', chatInput(23, refA), alice));
     expect(repeated.statusCode).toBe(200);
