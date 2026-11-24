@@ -33,13 +33,14 @@ export function createMockEofficeHarness(options: {
   const documentFetch = vi.fn(async (
     reference: DocumentRef, principal: Principal, _deadline: number,
   ): Promise<Material> => {
-    if (options.fetchDocument) return options.fetchDocument(reference, principal, _deadline);
     const match = options.documents?.find(d =>
       d.department === principal.department &&
       d.officer === principal.officer &&
       d.downloadUrl === reference.download_url &&
       d.material.document_id === reference.document_id);
     if (!match) throw unprocessable('Authorized test document unavailable.');
+    // Even failure-simulation overrides cannot bypass the test's isolation boundary.
+    if (options.fetchDocument) return options.fetchDocument(reference, principal, _deadline);
     return match.material;
   });
   const resolveHistory = vi.fn(async (lookup: HistoryLookup): Promise<string> => {
