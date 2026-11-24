@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { request as httpRequest, type Server } from 'node:http';
 import { createConnection } from 'node:net';
 import https from 'node:https';
+import dns from 'node:dns';
 import {
   assertLocalOnly, LOCAL_HOST, startLocalEofficeServer,
 } from './testing/local-http';
@@ -289,14 +290,17 @@ describe('Task 22E — actual loopback HTTP → createEofficeApi', () => {
   it('performs no HTTPS, DNS or fetch calls from the local synthetic adapters', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const httpsSpy = vi.spyOn(https, 'request');
+    const dnsSpy = vi.spyOn(dns, 'lookup');
     try {
       const response = await post('chat', chat(70));
       requireSafe(response, 200, id(70));
       expect(fetchSpy).not.toHaveBeenCalled();
       expect(httpsSpy).not.toHaveBeenCalled();
+      expect(dnsSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
       httpsSpy.mockRestore();
+      dnsSpy.mockRestore();
     }
   });
 
