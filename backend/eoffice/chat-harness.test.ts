@@ -311,6 +311,25 @@ describe('Task 22C — stateless eOffice API Gateway mock integration', () => {
     expect(harness.documentFetch).not.toHaveBeenCalled();
     expect(harness.resolveHistory).not.toHaveBeenCalled();
     expect(harness.model).not.toHaveBeenCalled();
+
+    const notChat = await harness.handler(harness.issue('summarize', {
+      request_id: uuid(42), user_id: alice.officer,
+      user_input: 'Summarize the attached memorandum.',
+      context: { documents: [refA], provider_context_token: token },
+    }, alice));
+    expectError(notChat, 422, uuid(42));
+    expect(notChat.body).not.toContain(token);
+    expect(harness.documentFetch).not.toHaveBeenCalled();
+    expect(harness.model).not.toHaveBeenCalled();
+
+    const nonChatHistory = await harness.handler(harness.issue('summarize', {
+      request_id: uuid(43), user_id: alice.officer,
+      user_input: 'Summarize the attached memorandum.',
+      context: { documents: [refA], previous_context: 'https://history.example.gov/untrusted' },
+    }, alice));
+    expectError(nonChatHistory, 400, uuid(43));
+    expect(harness.resolveHistory).not.toHaveBeenCalled();
+    expect(harness.documentFetch).not.toHaveBeenCalled();
   });
 
   it('returns standardized validation errors and preserves request-ID echo where valid', async () => {
