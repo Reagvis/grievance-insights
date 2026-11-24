@@ -1,0 +1,444 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
+import { createEofficeApi, type Event, type Model, type Principal } from './core';
+import { HttpsDocuments, declaredFilename, extractDocument, type DocumentSource, type Material } from './documents';
+
+const request_id = '7f9bc8c2-71a4-42fa-a32c-fac64fb0842e';
+const officer: Principal = {
+  department: 'dept-A', officer: 'officer-4',
+  permissions: ['chat', 'summarize', 'extract', 'draft-reply'],
+};
+const docA = { document_id: 'doc-A', download_url: 'https://docs.example.gov/temp/A?ticket=secret-A' };
+const docB = { document_id: 'doc-B', download_url: 'https://docs.example.gov/temp/B?ticket=secret-B' };
+const pageOne = 'The introductory note lists office correspondence and approval responsibilities.';
+const pageTwo = 'The second page records routine procedures for processing an application.';
+const pageThree = 'The departmental budget cap is 1.2 million for this proposal.';
+const pageOther = 'The office received this request on 17 November 2026 and recorded its status.';
+const a: Material = {
+  document_id: docA.document_id, title: 'Budget Guidelines 2026.pdf',
+  pages: [{ page_number: 1, text: pageOne }, { page_number: 2, text: pageTwo }, { page_number: 3, text: pageThree }],
+  text: '[Page 1]\n' + pageOne + '\n[Page 2]\n' + pageTwo + '\n[Page 3]\n' + pageThree,
+};
+const b: Material = {
+  document_id: docB.document_id, title: 'Untitled eOffice document',
+  text: pageOther,
+};
+const materials: Record<string, Material> = { [docA.document_id]: a, [docB.document_id]: b };
+const schema = {
+  type: 'object', properties: {
+    subject: { type: 'string' }, letter_date: { type: ['string', 'null'] },
+  }, required: ['subject'],
+};
+function event(task: string, input: Record<string, unknown>): Event {
+  return {
+    rawPath: '/api/v1/ai/' + task, requestContext: { http: { method: 'POST' } },
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ request_id, user_id: officer.officer, ...input }),
+  };
+}
+const result = (r: { body: string }) => JSON.parse(r.body) as Record<string, unknown>;
+function make(output: Record<string, unknown>, sources = materials) {
+  const model: Model = vi.fn(async () => JSON.stringify(output));
+  const documents: DocumentSource = {
+    fetch: async d => {
+      const material = sources[d.document_id];
+      if (!material) throw new Error('Unknown fixture document');
+      return material;
+    },
+  };
+  return { api: createEofficeApi({ authorize: async () => officer, model, documents }), model };
+}
+const quote = (document_id: string, value: string, page_number?: number) => ({
+  document_id, quote: value, ...(page_number ? { page_number } : {}),
+});
+const chat = (documents = [docA, docB]) =>
+  event('chat', { session_id: 'session-4', user_input: 'What does the policy say?', context: { documents } });
+const good = {
+  text: 'The cap is 1.2 million.', used_document_ids: [docA.document_id],
+  evidence: [quote(docA.document_id, pageThree)],
+};
+
+describe('Task 22B: bounded evidence and provenance enforcement', () => {
+  it('uses authenticated filename metadata as a label and never fabricates a title from document_id', async () => {
+    const text = new TextEncoder().encode('The valid source records an approved office decision.');
+    const known = await extractDocument(docA, text, 'text/plain',
+      'attachment; filename="Budget Guidelines 2026.txt"');
+    expect(known.title).toBe('Budget Guidelines 2026.txt');
+    expect(known.text).toBe('The valid source records an approved office decision.');
+    expect(known).not.toHaveProperty('pages');
+    for (const unsafe of [
+      'attachment; filename="../../private.txt"',
+      'attachment; filename="https://docs.example.gov/secret"',
+      'attachment; filename="notes\r\nAuthorization: stolen"',
+      'attachment; filename="admin\\secrets.pdf"',
+    ]) {
+      const fallback = await extractDocument(docA, text, 'text/plain', unsafe);
+      expect(fallback.title).toBe('Untitled eOffice document');
+      expect(fallback.title).not.toContain(docA.document_id);
+    }
+    expect(declaredFilename("attachment; filename*=UTF-8''%E0%B0%AA%E0%B0%A4%E0%B1%8D%E0%B0%B0%E0%B0%82.pdf"))
+      .toBe('పత్రం.pdf');
+    const sensitive = await extractDocument(docA, text, 'text/plain',
+      'attachment; filename="secret-A.pdf"');
+    expect(sensitive.title).toBe('Untitled eOffice document');
+  });
+
+  it('propagates only safe file labels from a mocked protected HTTPS response, not the URL', async () => {
+    const download = vi.fn(async () => ({
+      bytes: new TextEncoder().encode('This department document records the procurement budget decision.'),
+      contentType: 'text/plain; charset=utf-8',
+      contentDisposition: 'attachment; filename="Procurement Record 2026.txt"',
+    }));
+    const source = new HttpsDocuments(
+      async () => ({ allowedHosts: new Set(['docs.example.gov']), headers: { Authorization: 'private' } }),
+      async () => [{ address: '8.8.8.8', family: 4 }],
+      download,
+    );
+    const material = await source.fetch(docA, officer, Date.now() + 5000);
+    expect(material.title).toBe('Procurement Record 2026.txt');
+    expect(material.title).not.toContain('secret-A');
+    expect(download).toHaveBeenCalledTimes(1);
+  });
+
+  it('derives a PDF page from verified source text, rather than accepting the model assertion', async () => {
+    const { api } = make(good);
+    const response = await api(chat());
+    expect(response.statusCode).toBe(200);
+    expect(result(response)).toEqual({
+      request_id, answer: good.text,
+      references: [{ document_id: docA.document_id, title: a.title, page_number: 3 }],
+    });
+  });
+
+  it('refuses fabricated page numbers, unknown documents and evidence from the wrong page', async () => {
+    const claims = [
+      { ...good, evidence: [quote(docA.document_id, pageThree, 1)] },
+      { ...good, evidence: [quote(docA.document_id, pageThree, 2)] },
+      { ...good, evidence: [quote('unknown-document', pageThree)] },
+      { ...good, used_document_ids: ['unknown-document'] },
+      { ...good, evidence: [quote(docA.document_id, 'The policy approved 900 million.') ] },
+    ];
+    for (const output of claims) {
+      const response = await make(output).api(chat());
+      expect(response.statusCode).toBe(502);
+      expect(result(response)).toEqual({ request_id,
+        system_error_message: expect.any(String), user_error_message: expect.any(String) });
+    }
+  });
+
+  it('rejects a partial PDF page map before inference, rather than silently omitting pages', async () => {
+    const incomplete: Material = {
+      ...a, pages: [{ page_number: 1, text: pageOne }, { page_number: 3, text: pageThree }],
+    };
+    const { api, model } = make(good, { [docA.document_id]: incomplete, [docB.document_id]: b });
+    const response = await api(chat());
+    expect(response.statusCode).toBe(502);
+    expect(model).not.toHaveBeenCalled();
+  });
+
+  it('omits page_number when valid evidence comes from multiple pages of one document', async () => {
+    const { api } = make({
+      text: 'The introduction and the budget cap are noted.',
+      used_document_ids: [docA.document_id],
+      evidence: [quote(docA.document_id, pageOne), quote(docA.document_id, pageThree)],
+    });
+    const response = await api(chat([docA]));
+    expect(response.statusCode).toBe(200);
+    expect(result(response).references).toEqual([{ document_id: docA.document_id, title: a.title }]);
+  });
+
+  it('requires independently matching evidence for every used document, including multi-document outputs', async () => {
+    const valid = {
+      text: 'The budget is 1.2 million and the letter was received on 17 November 2026.',
+      used_document_ids: [docA.document_id, docB.document_id],
+      evidence: [quote(docA.document_id, pageThree), quote(docB.document_id, pageOther)],
+    };
+    const response = await make(valid).api(chat());
+    expect(response.statusCode).toBe(200);
+    expect(result(response).references).toEqual([
+      { document_id: docA.document_id, title: a.title, page_number: 3 },
+      { document_id: docB.document_id, title: b.title },
+    ]);
+    for (const evidence of [
+      [quote(docA.document_id, pageThree)],
+      [quote(docA.document_id, pageThree), quote(docB.document_id, pageThree)],
+    ]) {
+      const failed = await make({ ...valid, evidence }).api(chat());
+      expect(failed.statusCode).toBe(502);
+    }
+  });
+
+  it('rejects an ambiguous cross-document quote instead of guessing attribution', async () => {
+    const duplicate: Material = { ...b, text: pageThree };
+    const failed = await make(good, { [docA.document_id]: a, [docB.document_id]: duplicate }).api(chat());
+    expect(failed.statusCode).toBe(502);
+  });
+
+  it('allows Markdown list numbering without pretending it is a sourced monetary amount', async () => {
+    const response = await make({ ...good, text: '1. The cap is 1.2 million.' }).api(chat());
+    expect(response.statusCode).toBe(200);
+  });
+
+  it('rejects a protected query token in a custom adapter title before inference', async () => {
+    const unsafe: Material = { ...a, title: 'File secret-A.pdf' };
+    const { api, model } = make(good, { [docA.document_id]: unsafe, [docB.document_id]: b });
+    const response = await api(chat());
+    expect(response.statusCode).toBe(502);
+    expect(model).not.toHaveBeenCalled();
+    expect(response.body).not.toContain('secret-A');
+  });
+
+  it('rejects unsupported numeric claims despite valid reference and evidence', async () => {
+    const model = { ...good, text: 'The cap is 9.7 million.' };
+    const resultResponse = await make(model).api(chat());
+    expect(resultResponse.statusCode).toBe(502);
+    expect(resultResponse.body).not.toContain('9.7 million');
+  });
+
+  it('does not treat a number in the officer question as evidence for a document-grounded answer', async () => {
+    const question = event('chat', {
+      session_id: 'session-4',
+      user_input: 'Is the cap 9.7 million?',
+      context: { documents: [docA] },
+    });
+    const incorrect = await make({ ...good, text: 'The cap is 9.7 million.' }).api(question);
+    expect(incorrect.statusCode).toBe(502);
+    expect(result(incorrect)).toEqual({
+      request_id,
+      system_error_message: expect.any(String),
+      user_error_message: expect.any(String),
+    });
+    expect(incorrect.body).not.toContain('9.7 million');
+
+    // The same question can still receive the value actually in the evidence.
+    const supported = await make({ ...good, text: 'The cap is 1.2 million.' }).api(question);
+    expect(supported.statusCode).toBe(200);
+    expect(result(supported).answer).toBe('The cap is 1.2 million.');
+
+    // Summarization instructions accompanying documents also cannot launder
+    // unsupported facts from the officer's prompt.
+    const summary = await make({ ...good, text: 'The cap is 9.7 million.' }).api(
+      event('summarize', { user_input: 'Is the cap 9.7 million?',
+        context: { documents: [docA] } }));
+    expect(summary.statusCode).toBe(502);
+  });
+
+  it('still permits explicit officer instructions in proposed drafts and source-text-only summaries', async () => {
+    const draft = await make({
+      ...good, text: 'Please attend the meeting on 27 November 2026.',
+    }).api(event('draft-reply', {
+      user_input: 'Draft an invitation for a meeting on 27 November 2026.',
+      context: { documents: [docA] },
+    }));
+    expect(draft.statusCode).toBe(200);
+    expect(result(draft).draft_text).toBe('Please attend the meeting on 27 November 2026.');
+
+    const summary = await make({
+      text: 'The source states the limit is 9.7 million.',
+      used_document_ids: [], evidence: [],
+    }).api(event('summarize', {
+      user_input: 'Source text:\nThe source states the limit is 9.7 million.',
+    }));
+    expect(summary.statusCode).toBe(200);
+    expect(result(summary).summary).toContain('9.7 million');
+  });
+
+  it('conservatively rejects contradictory or negated boolean extraction evidence', async () => {
+    const cases = [
+      { value: true, source: 'Approved: not true.' },
+      { value: false, source: 'Approved: not false.' },
+      { value: true, source: 'Approved: false.' },
+      { value: false, source: 'Approved: true.' },
+      { value: true, source: 'Approved: true.' },
+      { value: false, source: 'Approved: false.' },
+    ];
+    const booleanSchema = {
+      type: 'object',
+      properties: { approved: { type: 'boolean' } },
+      required: ['approved'],
+    };
+    const request = event('extract', {
+      context: { documents: [docB] }, extraction_schema: booleanSchema,
+    });
+    for (const testCase of cases) {
+      const evidence = quote(docB.document_id, testCase.source);
+      const doc: Material = { ...b, text: testCase.source };
+      const response = await make({
+        extracted_data: { approved: testCase.value },
+        used_document_ids: [docB.document_id], evidence: [evidence],
+      }, { [docB.document_id]: doc }).api(request);
+      expect(response.statusCode).toBe(502);
+      expect(result(response)).toEqual({
+        request_id,
+        system_error_message: expect.any(String),
+        user_error_message: expect.any(String),
+      });
+    }
+    // Null remains the valid representation of a missing optional boolean.
+    const nullableSchema = {
+      type: 'object',
+      properties: { approved: { type: ['boolean', 'null'] } },
+    };
+    const missing = await make({
+      extracted_data: { approved: null },
+      used_document_ids: [docB.document_id],
+      evidence: [quote(docB.document_id, 'Approved: not true.')],
+    }, { [docB.document_id]: { ...b, text: 'Approved: not true.' } }).api(
+      event('extract', {
+        context: { documents: [docB] }, extraction_schema: nullableSchema,
+      }));
+    expect(missing.statusCode).toBe(200);
+    expect(result(missing).extracted_data).toEqual({ approved: null });
+  });
+
+  it('rejects extracted values absent from cited source, and preserves 422 for missing required values', async () => {
+    const base = {
+      used_document_ids: [docB.document_id], evidence: [quote(docB.document_id, pageOther)],
+    };
+    const input = event('extract', { context: { documents: [docB] }, extraction_schema: schema });
+    const unsupported = await make({ ...base, extracted_data: {
+      subject: 'An invented approval', letter_date: null,
+    } }).api(input);
+    expect(unsupported.statusCode).toBe(502);
+    const missing = await make({ ...base, extracted_data: {
+      subject: null, letter_date: null,
+    } }).api(input);
+    expect(missing.statusCode).toBe(422);
+    const supported = await make({ ...base, extracted_data: {
+      subject: 'The office received this request', letter_date: null,
+    } }).api(input);
+    expect(supported.statusCode).toBe(200);
+    expect(result(supported).extracted_data).toEqual({
+      subject: 'The office received this request', letter_date: null,
+    });
+  });
+
+  it('does not treat an extracted number as supported merely because it is part of a longer number', async () => {
+    const model = {
+      extracted_data: { count: 7 },
+      used_document_ids: [docB.document_id],
+      evidence: [quote(docB.document_id, pageOther)],
+    };
+    const input = event('extract', {
+      context: { documents: [docB] },
+      extraction_schema: {
+        type: 'object', properties: { count: { type: 'integer' } }, required: ['count'],
+      },
+    });
+    const response = await make(model).api(input);
+    expect(response.statusCode).toBe(502);
+    expect(result(response).request_id).toBe(request_id);
+  });
+
+  it('rejects protected source URLs even when encoded, without leaking them in error body', async () => {
+    for (const text of [
+      'Download at ' + docA.download_url,
+      'Download at ' + encodeURIComponent(docA.download_url),
+      'See https://docs.example.gov/another-private-resource',
+      'The bearer ticket is secret-A.',
+    ]) {
+      const response = await make({ ...good, text }).api(chat());
+      expect(response.statusCode).toBe(502);
+      expect(response.body).not.toContain('secret-A');
+      expect(result(response).request_id).toBe(request_id);
+    }
+  });
+
+  it('rejects an invented external link in a proposed official draft', async () => {
+    const output = {
+      text: 'Please visit https://fabricated.example.org/approval',
+      used_document_ids: [], evidence: [],
+    };
+    const response = await make(output).api(
+      event('draft-reply', { user_input: 'Draft a short receipt acknowledgement.' }));
+    expect(response.statusCode).toBe(502);
+  });
+
+  it('keeps representative 2–4-document evidence envelopes below current requested token counts', async () => {
+    // Byte count is a deliberately conservative proxy for these ASCII-only
+    // fixtures, NOT a Qwen tokenizer measurement or production latency claim.
+    // The maximum permitted 16 × 512-byte quotes cannot be assumed to fit.
+    for (const count of [2, 3, 4]) {
+      const attached = Array.from({ length: count }, (_, index) => ({
+        document_id: 'routing_' + String.fromCharCode(65 + index),
+        download_url: 'https://docs.example.gov/temp/routing-' + String.fromCharCode(65 + index),
+      }));
+      const materialsById: Record<string, Material> = {};
+      const fields: Record<string, { type: 'string' }> = {};
+      const values: Record<string, string> = {};
+      const excerpts = attached.map((ref, index) => {
+        const letter = String.fromCharCode(65 + index);
+        const value = 'Authorized section ' + letter + ' review';
+        const quoteText = 'Office routing policy ' + letter + ' requires ' + value +
+          ' before correspondence is dispatched by the responsible officer.';
+        materialsById[ref.document_id] = {
+          document_id: ref.document_id,
+          title: 'Routing ' + letter + ' procedure',
+          text: quoteText,
+        };
+        fields['rule_' + letter] = { type: 'string' };
+        values['rule_' + letter] = value;
+        return quote(ref.document_id, quoteText);
+      });
+      const source: DocumentSource = { fetch: async ref => {
+        const material = materialsById[ref.document_id];
+        if (!material) throw new Error('Unknown mock source');
+        return material;
+      } };
+      const ids = attached.map(ref => ref.document_id);
+      const narrative = JSON.stringify({
+        text: 'The supplied office policies require review by the responsible section ' +
+          'before correspondence is sent. Officers should consult the individual ' +
+          'procedures for the applicable responsibilities.',
+        used_document_ids: ids, evidence: excerpts,
+      });
+      const extraction = JSON.stringify({
+        extracted_data: values, used_document_ids: ids, evidence: excerpts,
+      });
+      // These concise, real-shaped examples fit even under a pessimistic
+      // one-ASCII-byte-per-token comparison, not guaranteed for longer answers.
+      expect(Buffer.byteLength(narrative, 'utf8')).toBeLessThan(1600);
+      expect(Buffer.byteLength(extraction, 'utf8')).toBeLessThan(1400);
+
+      const chatModel: Model = vi.fn(async (_system: string, _prompt: string, maxTokens: number) => {
+        expect(maxTokens).toBe(1600);
+        return narrative;
+      });
+      const extractModel: Model = vi.fn(async (_system: string, _prompt: string, maxTokens: number) => {
+        expect(maxTokens).toBe(1400);
+        return extraction;
+      });
+      const deps = { authorize: async () => officer, documents: source };
+      const chatResponse = await createEofficeApi({ ...deps, model: chatModel })(event('chat', {
+        session_id: 'budget-test', user_input: 'Describe the office routing procedures.',
+        context: { documents: attached },
+      }));
+      expect(chatResponse.statusCode).toBe(200);
+      expect(result(chatResponse).references).toHaveLength(count);
+
+      const extractionResponse = await createEofficeApi({ ...deps, model: extractModel })(event('extract', {
+        context: { documents: attached },
+        extraction_schema: { type: 'object', properties: fields, required: Object.keys(fields) },
+      }));
+      expect(extractionResponse.statusCode).toBe(200);
+      expect(result(extractionResponse).extracted_data).toEqual(values);
+    }
+    expect(16 * 512).toBeGreaterThan(1600);
+  });
+
+  it('retains explicit source-size, invalid-PDF, and OCR-required failures without truncating text', async () => {
+    const tooLong = new TextEncoder().encode('This is a valid source paragraph.\n'.repeat(1000));
+    await expect(extractDocument(docA, tooLong, 'text/plain')).rejects.toMatchObject({ status: 422 });
+    await expect(extractDocument(docA, new Uint8Array([0xff, 0xfe]), 'text/plain'))
+      .rejects.toThrow();
+    await expect(extractDocument(docA, new TextEncoder().encode('not really a PDF'), 'application/pdf'))
+      .rejects.toMatchObject({ status: 422 });
+    const searchable = readFileSync(new URL('../ingest/fixtures/searchable-english-3page.pdf', import.meta.url));
+    const pdf = await extractDocument(docA, searchable, 'application/pdf');
+    expect(pdf.pages).toHaveLength(3);
+    expect(pdf.pages?.map(page => page.page_number)).toEqual([1, 2, 3]);
+    expect(pdf.text).toContain('[Page 3]');
+    const scanned = readFileSync(new URL('../ingest/fixtures/scanned-telugu-2page.pdf', import.meta.url));
+    await expect(extractDocument(docA, scanned, 'application/pdf')).rejects.toMatchObject({ status: 422 });
+  });
+});
