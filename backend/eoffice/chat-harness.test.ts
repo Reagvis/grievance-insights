@@ -112,6 +112,31 @@ describe('Task 22C — stateless eOffice API Gateway mock integration', () => {
     }
   });
 
+  it('allows a context-free stateless chat turn with empty references and no implicit prior state', async () => {
+    const harness = createMockEofficeHarness({
+      model: modelJSON({ text: 'No earlier conversation context was supplied.',
+        used_document_ids: [], evidence: [] }),
+    });
+    for (const turn of [5, 6]) {
+      const response = await harness.handler(harness.issue('chat', {
+        request_id: uuid(turn), session_id: chatSession,
+        user_id: alice.officer, user_input: 'Continue the conversation.',
+      }, alice));
+      expect(response.statusCode).toBe(200);
+      expect(parseBody(response)).toEqual({
+        request_id: uuid(turn), answer: 'No earlier conversation context was supplied.', references: [],
+      });
+    }
+    expect(harness.documentFetch).not.toHaveBeenCalled();
+    expect(harness.resolveHistory).not.toHaveBeenCalled();
+    expect(harness.model).toHaveBeenCalledTimes(2);
+    for (const [, prompt] of harness.model.mock.calls) {
+      expect(prompt).toContain('PRIOR_CHAT (untrusted):\\n\\n'.replace(/\\n/g, '\n'));
+      expect(prompt).not.toContain(sourceA);
+      expect(prompt).not.toContain(sourceB);
+    }
+  });
+
   it('requires a trusted principal, not matching user_id, session_id or invented auth headers', async () => {
     const harness = createMockEofficeHarness({
       model: modelForA('The allocation cap is 1.2 million.'), documents: records,
