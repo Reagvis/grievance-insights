@@ -139,6 +139,9 @@ async function guardedDependency<T>(
     if (error instanceof EofficeError && error.status === 422 && kind === 'history') {
       throw new EofficeError(422, 'Authorized history unavailable.', 'Previous context is unavailable.');
     }
+    if (error instanceof EofficeError && error.status === 502 && kind === 'model') {
+      throw new EofficeError(502, 'Model dependency returned an invalid response.', 'AI processing failed.');
+    }
     throw new EofficeError(500, kind + ' dependency failed.', 'AI service could not complete the request.');
   }
 }
