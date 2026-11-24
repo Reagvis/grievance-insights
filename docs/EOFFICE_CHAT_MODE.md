@@ -1,6 +1,6 @@
 # eOffice Phase 1 — proposed stateless chat policy and offline integration harness (Task 22C)
 
-**Status:** implementation in draft branch `feature/eoffice-chat-harness-22c`; **not enabled or deployed**. This is a proposed department operating mode, **not yet approved through onboarding**. Basis: original *eOffice AI Service Integration Specification, Phase 1, Version 2.0*, particularly §§2.1, 3.1–3.4, 4, 5, 6.1–6.3. Government authentication and protected-file access are specified separately and **not implemented here**. Existing Grievance Insights pilot routes, datasets, Cognito, UI, AWS resources and the working Qwen document chatbot are unchanged.
+**Status:** Task 22C PR #41 was **merged code-only** into `main` at `7761ea37874930ebc8a1bc38baa89ae7b9c7f1fd`. The eOffice endpoints remain **not enabled or deployed**. Stateless operation is a proposed departmental mode, **not yet approved through onboarding**. Basis: original *eOffice AI Service Integration Specification, Phase 1, Version 2.0*, particularly §§2.1, 3.1–3.4, 4, 5, 6.1–6.3. Government authentication and protected-file access are specified separately and **not implemented here**. Existing Grievance Insights pilot routes, datasets, Cognito, UI, AWS resources and the working Qwen document chatbot are unchanged.
 
 ## 1. Stateless conversation boundary
 
@@ -59,7 +59,9 @@ The model still performs **lexical grounding**, not semantic proof. A real provi
 
 Onboarding must confirm the **stateless/context-free default**, whether/how authorized `previous_context` is to be supported, token mode (currently disabled), session isolation, 64 KB-token body-size compatibility if ever enabled, provider file/title constraints, supported JSON Schema subset, configured synchronous timeout, and retention policy (§6.3). A stateless implementation creates no persistent chat state, but downstream provider logging and training restrictions must still be independently verified (§6.1).
 
-## 6. Focused WSL verification (no CI, AWS or full-suite reruns)
+## 6. Historical Task 22C focused verification instructions
+
+The following commands are the **original Task 22C review recipe**, retained for traceability rather than an instruction to rerun already completed checks. PR #41 is merged code-only. For the current unmerged Task 22D correction, use the focused commands in [EOFFICE_SECURITY_HARDENING.md](EOFFICE_SECURITY_HARDENING.md).
 
 From the developer's existing repository (inspect status and choose a different worktree path if it already exists):
 
@@ -75,4 +77,4 @@ npx vitest run backend/eoffice/chat-harness.test.ts backend/eoffice/core.test.ts
 npm run backend:typecheck
 ```
 
-**Runtime tests/typecheck are not executed or represented as passing in this implementation chat.** Leave PR draft for independent Brain source review and operator WSL verification. No Actions, paid Bedrock, live government access, merge or deploy.
+**Historical verification record:** The original Task 22C implementation chat did not run tests. The Brain-maintained handover reports operator verification of **77/77 focused tests** for PR #41 and an earlier backend type-check, before its code-only merge; those runs have **not** been independently rerun in Task 22D. This is not evidence of production integration or an authorization to deploy. The Task 22D draft PR remains subject to separate Brain review and focused WSL verification. No GitHub Actions, paid Bedrock or government requests are required.
