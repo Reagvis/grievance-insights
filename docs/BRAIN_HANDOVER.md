@@ -2,6 +2,15 @@
 
 **Last updated:** 2026-11-24 (Asia/Kolkata)
 
+## WSL FOLLOW-UP — 2026-11-24: PR #40 one-line fixture fix source-reviewed, focused retest pending
+
+- **Latest implementation head:** [PR #40](https://github.com/Reagvis/grievance-insights/pull/40), `feature/eoffice-source-grounding-22b`, commit `097111d221b6d26a96eca17301e2d87ecc70dbf4`; open/draft/unmerged. GitHub `compare_commits` against prior `68e0e2fbbfea0909a37e14a6a1498f318c850306` confirms **only** `backend/eoffice/contract.test.ts` changed (1 insertion, 1 deletion). Earlier 63/64 WSL result was against the **old** head and must not be represented as the new head's result.
+- **Independent Brain finding:** The fixture formerly returned a three-page PDF map plus top-level `Material.page_number: 3`, which correctly failed `core.ts` page-integrity verification (502). New fixture returns `pages` for any mocked PDF, and `page_number` only when `pages.length === 1`. For the published chat three-page example, the page-3 reference can still derive from the matching source excerpt. Production `backend/eoffice/core.ts` was not changed or weakened. Source review sees no remaining defect in this limited correction, **runtime retest pending**.
+- **GitHub review:** Brain posted [review 6033542063](https://github.com/Reagvis/grievance-insights/pull/40#pullrequestreview-6033542063) on latest head, action COMMENT because connected account is the PR author. Source-level acceptance of one-line fix is not authorization to merge or deploy.
+- **Required focused WSL action:** In the existing clean 22B review worktree, `git status --short`, `git fetch origin`, checkout exact new head, verify `git rev-parse HEAD`; then run **only** `npx vitest run backend/eoffice/contract.test.ts --maxWorkers=2 --testTimeout=20000` and `npm run backend:typecheck` (not yet verified for PR #40). Report terminal output. Don't repeat other 63 already passing tests solely for fixture correction, and do not run GitHub Actions, Bedrock, merge, Terraform or deployment. User approval required for any future code-only merge.
+- **Persistent limits:** Task 22B grounded citations are lexical rather than semantic proof; all non-null boolean extractions are conservatively rejected pending onboarding agreement; extreme evidence envelopes can exceed model output tokens. Government authentication remains deferred with default-deny handler, and existing live Qwen pilot remains untouched.
+
+---
 ## WSL CHECKPOINT — 2026-11-24: PR #40 63/64 tests passed; published chat fixture rejected
 
 - **User-reported local WSL results** on PR #40 head `68e0e2fbbfea0909a37e14a6a1498f318c850306`: focused 4-file Vitest run **1 failed / 63 passed (64 total)**. Only failing test: `backend/eoffice/contract.test.ts > published eOffice Phase 1 v2.0 examples > chat`, expected HTTP 200 but got 502 at line 241. The other three test files passed. **No backend typecheck log was supplied in this report**; do not mark it passed. No Actions/Bedrock/deployment.
