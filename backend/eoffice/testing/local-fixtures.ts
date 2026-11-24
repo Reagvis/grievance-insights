@@ -73,9 +73,11 @@ function modelEnvelope(system: string, prompt: string, fault: string): string {
   });
 
   const source = prompt.split('\nPRIOR_CHAT (untrusted):\n')[0];
-  const used = fixtures.filter(f => source.includes(f.material.text) &&
-    // Deduplicate because both synthetic departments intentionally share the ID.
-    (f.material === ALPHA_MATERIAL || f.material === BETA_MATERIAL || f.material === SUPPORT_MATERIAL));
+  // JSONL escapes newlines in full material.text; distinctive excerpts are
+  // unchanged and let the synthetic responder pick only attached sources.
+  const used = fixtures.filter(f => source.includes(
+    f.material === ALPHA_MATERIAL ? ALPHA_QUOTE
+      : f.material === BETA_MATERIAL ? BETA_QUOTE : SUPPORT_QUOTE));
   const cited = used.map(f => ({
     document_id: f.ref.document_id,
     quote: f.material === ALPHA_MATERIAL ? ALPHA_QUOTE
