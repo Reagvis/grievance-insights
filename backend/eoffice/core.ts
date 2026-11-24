@@ -130,13 +130,23 @@ async function guardedDependency<T>(
     if (error instanceof EofficeError && error.status === 503) {
       throw new EofficeError(503, kind + ' operation unavailable.', 'AI service timed out.');
     }
-    if (kind === 'authorization' || (error instanceof EofficeError && error.status === 403)) {
-      throw new EofficeError(403, kind + ' access denied.', 'Access denied.');
+    // A genuine denial is an explicit 403 from the trusted authorization
+    // adapter (or a null/insufficient principal checked by the caller).
+    // An authorization outage is NOT proof that the officer was denied.
+    if (kind === 'authorization') {
+      if (error instanceof EofficeError && error.status === 403) {
+        throw new EofficeError(403, 'Authorization denied.', 'Access denied.');
+      }
+      throw new EofficeError(500, 'Authorization dependency failed.', 'AI service could not complete the request.');
     }
-    if (error instanceof EofficeError && error.status === 422 && kind === 'document') {
+    // A dependency's own 403 describes protected resource access, never the
+    // caller's authorization to use this API. Never forward adapter messages.
+    if (kind === 'document' && error instanceof EofficeError &&
+        (error.status === 403 || error.status === 422)) {
       throw new EofficeError(422, 'Authorized document unavailable.', 'The requested document is unavailable.');
     }
-    if (error instanceof EofficeError && error.status === 422 && kind === 'history') {
+    if (kind === 'history' && error instanceof EofficeError &&
+        (error.status === 403 || error.status === 422)) {
       throw new EofficeError(422, 'Authorized history unavailable.', 'Previous context is unavailable.');
     }
     if (error instanceof EofficeError && error.status === 502 && kind === 'model') {
