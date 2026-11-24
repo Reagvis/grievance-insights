@@ -100,3 +100,20 @@ See [EOFFICE_CHAT_MODE.md](EOFFICE_CHAT_MODE.md) for the proposed operating poli
 Task 22C changes the optional injected `history` seam to receive `{reference, sessionId, principal, deadline}`, so an authorized resolver can validate the exact department, officer and session. A **mock-only** resolver demonstrates the expected isolation. Production has no resolver: `previous_context` is rejected with 422, not dereferenced inside core. `provider_context_token` remains disabled (422, never forwarded/returned), including the known 64,000-byte whole-request incompatibility with a maximum 64-KB future token. With no supplied authorized prior context, chat is independent-turn, not automatic multi-turn recall.
 
 An offline API Gateway event harness now covers all four successful endpoint response envelopes, UUID echo, eOffice source excerpt and page references, `draft_text`, optional null extraction values, unauthorized and cross-tenant access, same-session concurrency, unsupported tokens, invalid inputs, malformed model evidence, confidentiality and model/document timeouts. It uses in-memory synthetic fixtures and mocked authorizers/adapters only. **Do not interpret mock test coverage as deployed government integration, proof of model factual correctness, prompt-injection protection or real token/latency testing.** Existing Task 22B non-null boolean conservative rejection remains unchanged. Production `handler.ts` remains fail-closed; no eOffice route, auth protocol, persistence, frontend or AWS configuration is introduced. Focused WSL tests and typecheck are pending, without Actions or Bedrock.
+
+
+## Task 22D addendum — dependency boundary and SSRF hardening (draft)
+
+**Baseline:** Task 22C PR #41 merged code-only into `main` at `7761ea37874930ebc8a1bc38baa89ae7b9c7f1fd`. The new Task 22D branch is source-only and not merged/deployed; all focused tests and backend typecheck remain pending at its final head.
+
+| Area | Proposed 22D evidence | Residual / onboarding gate |
+| --- | --- | --- |
+| Authorization deadlines | Wrap the injected authorizer under the shared 25-second deadline; synthetic non-settling callback test expects 503 | Timed-out external operations are not automatically cancelled |
+| Secret-safe adapter errors | Adapter-supplied diagnostic/public message strings are replaced with fixed safe errors; offline tests use synthetic secrets | Real infrastructure, provider logs, and official protocols remain unaudited |
+| Principal/session isolation | Mock document override now requires prevalidated department, officer, document ID and URL; stalled history test included | Production principal and protected-file authorization still unavailable |
+| SSRF controls | Offline tests for exact HTTPS host match, credentials/port rejection, mixed private DNS results, and injected transport | No real government endpoints or external DNS tested; redirects are not auto-followed by existing Node HTTPS transport |
+| Prompt and factual trust | Task 22B lexical evidence and Task 22C untrusted-history treatment unchanged | No claim of semantic correctness or full model prompt-injection resistance |
+| Malware and temporary state | Documented future scanning/quarantine responsibility; no new stored eOffice artifacts | Government scanning policy and 12-hour default/24-hour max lifecycle apply if storage is introduced |
+| Deployment and auth | `backend/eoffice/handler.ts` untouched, default-deny | Official government auth/protected-document integration stays separate and last |
+
+See [EOFFICE_SECURITY_HARDENING.md](EOFFICE_SECURITY_HARDENING.md) for focused WSL verification, known limits, exact safety boundary and deferred operational decisions.
