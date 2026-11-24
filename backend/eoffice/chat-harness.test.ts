@@ -410,6 +410,9 @@ describe('Task 22C — stateless eOffice API Gateway mock integration', () => {
           } : {}),
         });
         const pending = harness.handler(harness.issue('chat', chatInput(80), alice));
+        // Allow authorization and document promises to install the bounded
+        // deadline timer before advancing the fake clock.
+        for (let flush = 0; flush < 8; flush++) await Promise.resolve();
         await vi.advanceTimersByTimeAsync(25001);
         const response = await pending;
         expectError(response, 503, uuid(80));
