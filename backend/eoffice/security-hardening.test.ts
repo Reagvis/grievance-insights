@@ -93,6 +93,11 @@ describe('Task 22D — isolated dependency boundaries', () => {
         deps: { authorize: authorized, documents,
           model: async () => { throw secretError(503); } },
       },
+      {
+        name: 'malformed provider response', status: 502, context: undefined,
+        deps: { authorize: authorized, documents,
+          model: async () => { throw secretError(502); } },
+      },
     ];
     for (const scenario of cases) {
       const result = await createEofficeApi(scenario.deps)(
