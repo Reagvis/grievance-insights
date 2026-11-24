@@ -1,5 +1,17 @@
 # Grievance Insights — Living Brain Handover
 
+
+## WORK IN PROGRESS — 2026-11-24: Task 22D draft security hardening
+
+- **Task 22C completed code-only:** PR #41 merged into `main` at `7761ea37874930ebc8a1bc38baa89ae7b9c7f1fd`. Source scope was six eOffice code/test/docs files; production eOffice handler remains fail-closed. Operator reported 77/77 focused tests passed at final test-only correction; backend typecheck previously passed. No deployment or paid inference.
+- **Owner direction:** Proceed to Task 22D in a separate branch and draft PR, without merging, deploying, triggering Actions, calling Bedrock or changing the live pilot Qwen chatbot.
+- **Draft work:** `feature/eoffice-security-hardening-22d` based on the exact 22C merge SHA; bound asynchronous authorization and redact errors from injected dependency adapters; enforce fixture scope before mock document overrides; add offline security tests for authorization/history deadlines, sensitive error redaction and SSRF DNS/URL cases. Document deferred malware, log retention and cancellation decisions. See `docs/EOFFICE_SECURITY_HARDENING.md`.
+- **Safety:** `backend/eoffice/handler.ts`, API routes, government auth, protected credentials, AWS IAM/Terraform, frontend and deployed pilot remain unchanged. Model-grounding checks and public eOffice request/response schemas are preserved. No persistent chat or generated artifacts are added.
+- **Verification and acceptance:** Source-only work is **not yet independently verified**. Run exact-head targeted WSL eOffice Vitest and `npm run backend:typecheck`, then independent diff review. Keep draft/unmerged until owner authorizes code-only merge. No government production readiness claimed.
+
+---
+
+
 **Last updated:** 2026-11-24 (Asia/Kolkata)
 
 ## WORK PLAN — 2026-11-24: Task 22C stateless conversation boundary and mocked four-endpoint harness
