@@ -144,7 +144,10 @@ export function createEofficeApi(deps: {
       if (input.user_id && input.user_id !== principal.officer) throw new EofficeError(403, 'User identity mismatch.', 'Access denied.');
       // No stateful cache: each document fetch receives the trusted principal and the same deadline.
       const schema = task === 'extract' ? parseSchema(input.extraction_schema) : undefined;
-      if (task === 'chat' && input.context?.provider_context_token) throw new EofficeError(422, 'Provider context tokens are not enabled.', 'Previous chat state is unavailable.');
+      // Optional provider-managed state is disabled for every task; never
+      // silently accept a token on a non-chat endpoint either.
+      if (input.context?.provider_context_token !== undefined)
+        throw new EofficeError(422, 'Provider context tokens are not enabled.', 'Previous chat state is unavailable.');
       if (task === 'chat' && input.context?.previous_context && !deps.history)
         throw new EofficeError(422, 'History retrieval is not configured.', 'Previous context is unavailable.');
       const supplied = input.context?.documents ?? [];
