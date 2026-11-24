@@ -108,6 +108,121 @@ describe('Task 22D — isolated dependency boundaries', () => {
     }
   });
 
+  it('distinguishes genuine auth denial from unexpected identity-service exceptions', async () => {
+    const secretError = (status: number) =>
+      new EofficeError(status, 'PRIVATE_DIAGNOSTIC auth credentials',
+        'PRIVATE_PUBLIC_MESSAGE auth credentials');
+    const scenarios = [
+      { name: 'null principal', authorize: async () => null, expected: 403 },
+      { name: 'explicit trusted denial', authorize: async () => { throw secretError(403); }, expected: 403 },
+      { name: 'unexpected identity outage', authorize: async () => {
+        throw new Error('PRIVATE_DIAGNOSTIC identity provider unavailable');
+      }, expected: 500 },
+      { name: 'upstream authorization fault', authorize: async () => {
+        throw secretError(500);
+      }, expected: 500 },
+      { name: 'unexpected authorization input error', authorize: async () => {
+        throw secretError(422);
+      }, expected: 500 },
+      { name: 'reported authorization unavailability', authorize: async () => {
+        throw secretError(503);
+      }, expected: 503 },
+    ];
+    for (const scenario of scenarios) {
+      const fetch = vi.fn(async () => material);
+      const model = vi.fn(answer);
+      const handler = createEofficeApi({
+        authorize: scenario.authorize,
+        documents: { fetch }, model,
+      });
+      const response = await handler(request({ documents: [ref] }));
+      expect(response.statusCode, scenario.name).toBe(scenario.expected);
+      expect(JSON.parse(response.body), scenario.name).toEqual({
+        request_id: id,
+        system_error_message: expect.any(String),
+        user_error_message: expect.any(String),
+      });
+      assertRedacted(response.body);
+      expect(response.body).not.toContain('auth credentials');
+      expect(response.body).not.toContain('identity provider');
+      expect(fetch, scenario.name).not.toHaveBeenCalled();
+      expect(model, scenario.name).not.toHaveBeenCalled();
+    }
+  });
+
+  it('classifies protected document and history access denial as 422, not caller 403', async () => {
+    for (const kind of ['document', 'history'] as const) {
+      for (const status of [403, 422]) {
+        const secret = new EofficeError(status, 'PRIVATE_DIAGNOSTIC restricted URL',
+          'PRIVATE_PUBLIC_MESSAGE protected token');
+        const fetch = vi.fn(async () => {
+          if (kind === 'document') throw secret;
+          return material;
+        });
+        const history = vi.fn(async () => {
+          if (kind === 'history') throw secret;
+          return 'Authorized history placeholder.';
+        });
+        const model = vi.fn(answer);
+        const handler = createEofficeApi({
+          authorize: authorized, documents: { fetch }, model, history,
+        });
+        const response = await handler(request(kind === 'document'
+          ? { documents: [ref] }
+          : { previous_context: 'opaque-authorized-history-reference' }));
+        expect(response.statusCode, kind + ' ' + status).toBe(422);
+        expect(JSON.parse(response.body)).toEqual({
+          request_id: id,
+          system_error_message: kind === 'document'
+            ? 'Authorized document unavailable.'
+            : 'Authorized history unavailable.',
+          user_error_message: kind === 'document'
+            ? 'The requested document is unavailable.'
+            : 'Previous context is unavailable.',
+        });
+        assertRedacted(response.body);
+        expect(response.body).not.toContain('restricted URL');
+        expect(response.body).not.toContain('protected token');
+        expect(model).not.toHaveBeenCalled();
+        if (kind === 'history') expect(fetch).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  it('never lets model-supplied 403 become caller denial; preserves 502/503 failures', async () => {
+    const cases = [
+      { name: 'misleading model 403', status: 403, expected: 500 },
+      { name: 'malformed provider 502', status: 502, expected: 502 },
+      { name: 'model unavailable 503', status: 503, expected: 503 },
+    ];
+    for (const scenario of cases) {
+      const model = vi.fn(async () => {
+        throw new EofficeError(scenario.status, 'PRIVATE_DIAGNOSTIC model credentials',
+          'PRIVATE_PUBLIC_MESSAGE protected token');
+      });
+      const response = await createEofficeApi({
+        authorize: authorized, documents, model,
+      })(request());
+      expect(response.statusCode, scenario.name).toBe(scenario.expected);
+      const payload = JSON.parse(response.body);
+      expect(payload).toEqual({
+        request_id: id,
+        system_error_message: expect.any(String),
+        user_error_message: expect.any(String),
+      });
+      if (scenario.status === 403) expect(payload.user_error_message).not.toBe('Access denied.');
+      assertRedacted(response.body);
+      expect(response.body).not.toContain('model credentials');
+      expect(response.body).not.toContain('protected token');
+      expect(model).toHaveBeenCalledOnce();
+    }
+    const malformed = await createEofficeApi({
+      authorize: authorized, documents, model: async () => 'not JSON',
+    })(request());
+    expect(malformed.statusCode).toBe(502);
+    expect(JSON.parse(malformed.body).request_id).toBe(id);
+  });
+
   it('does not let a test-only document override bypass officer or department scope', async () => {
     const override = vi.fn(async () => material);
     const harness = createMockEofficeHarness({
