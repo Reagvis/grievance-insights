@@ -68,6 +68,83 @@ describe('Task 22D — isolated dependency boundaries', () => {
     },
   );
 
+  it.each(['document', 'history'] as const)(
+    'does not start an already-expired %s adapter or later model inference', async kind => {
+      const start = 100_000;
+      let now = start;
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+      try {
+        const fetch = vi.fn(async () => {
+          if (kind === 'history') now = start + 25_000;
+          return material;
+        });
+        const history = vi.fn(async () => 'Authorized prior conversation.');
+        const model = vi.fn(answer);
+        const handler = createEofficeApi({
+          authorize: async () => {
+            if (kind === 'document') now = start + 25_000;
+            return principal;
+          },
+          documents: { fetch }, history, model,
+        });
+        const response = await handler(request(kind === 'document'
+          ? { documents: [ref] }
+          : { documents: [ref], previous_context: 'opaque-authorized-history-reference' }));
+        expect(response.statusCode).toBe(503);
+        expect(JSON.parse(response.body)).toEqual({
+          request_id: id,
+          system_error_message: expect.any(String),
+          user_error_message: 'AI service timed out.',
+        });
+        if (kind === 'document') expect(fetch).not.toHaveBeenCalled();
+        else expect(fetch).toHaveBeenCalledOnce();
+        expect(history).not.toHaveBeenCalled();
+        expect(model).not.toHaveBeenCalled();
+      } finally {
+        clock.mockRestore();
+      }
+    },
+  );
+
+  it('rechecks the deadline inside the queued microtask before starting document retrieval', async () => {
+    const start = 200_000;
+    let now = start;
+    let readsAfterAuth = 0;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const fetch = vi.fn(async () => material);
+      const model = vi.fn(answer);
+      const handler = createEofficeApi({
+        authorize: async () => {
+          // First document check sees valid time. The second check (inside
+          // withinBudget) sees valid time but advances the clock so the
+          // previously queued microtask must refuse to call fetch().
+          clock.mockImplementation(() => {
+            readsAfterAuth++;
+            if (readsAfterAuth === 2) {
+              now = start + 25_000;
+              return start;
+            }
+            return now;
+          });
+          return principal;
+        },
+        documents: { fetch }, model,
+      });
+      const response = await handler(request({ documents: [ref] }));
+      expect(response.statusCode).toBe(503);
+      expect(JSON.parse(response.body)).toMatchObject({
+        request_id: id,
+        user_error_message: 'AI service timed out.',
+      });
+      expect(readsAfterAuth).toBeGreaterThanOrEqual(3);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(model).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('never exposes diagnostics or public messages supplied by adapters', async () => {
     const secretError = (status: number) =>
       new EofficeError(status, 'PRIVATE_DIAGNOSTIC', 'PRIVATE_PUBLIC_MESSAGE');
