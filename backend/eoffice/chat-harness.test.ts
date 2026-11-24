@@ -161,7 +161,13 @@ describe('Task 22C — stateless eOffice API Gateway mock integration', () => {
       model: modelForA('The allocation cap is 1.2 million.'), documents: records,
     });
     for (const principal of [otherOfficer, otherDepartment]) {
-      const reply = await harness.handler(harness.issue('chat', chatInput(14), principal));
+      const reply = await harness.handler(
+        harness.issue(
+          'chat',
+          { ...chatInput(14), user_id: principal.officer },
+          principal
+        )
+      );
       expectError(reply, 422, uuid(14));
     }
     expect(harness.model).not.toHaveBeenCalled();
