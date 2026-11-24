@@ -103,13 +103,19 @@ function decodeModel(raw: string, documents: Material[], task: Task): {
     usedIds: ids as string[],
   };
 }
-async function withinBudget<T>(work: Promise<T>, deadline: number): Promise<T> {
+async function withinBudget<T>(action: () => Promise<T>, deadline: number): Promise<T> {
   const ms = deadline - Date.now();
   if (ms <= 0) throw new EofficeError(503, 'Synchronous processing deadline exhausted.', 'AI service timed out.');
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      work,
+      Promise.resolve().then(() => {
+        // Check again when the microtask runs: never start an adapter after
+        // the shared deadline, even if time expired after scheduling.
+        if (deadline - Date.now() <= 0)
+          throw new EofficeError(503, 'Synchronous processing deadline exhausted.', 'AI service timed out.');
+        return action();
+      }),
       new Promise<T>((_, reject) => { timer = setTimeout(() =>
         reject(new EofficeError(503, 'Synchronous processing deadline exceeded.', 'AI service timed out.')), ms); }),
     ]);
@@ -125,17 +131,9 @@ async function guardedDependency<T>(
   action: () => Promise<T>, deadline: number, kind: DependencyKind,
 ): Promise<T> {
   try {
-    // Do not even schedule an adapter if the shared deadline has expired.
-    if (deadline - Date.now() <= 0)
-      throw new EofficeError(503, 'Synchronous processing deadline exhausted.', 'AI service timed out.');
-    return await withinBudget(Promise.resolve().then(() => {
-      // The budget may expire between scheduling this microtask and running it.
-      // Reject before invoking the adapter; already-running calls still need
-      // their own transport-level cancellation.
-      if (deadline - Date.now() <= 0)
-        throw new EofficeError(503, 'Synchronous processing deadline exhausted.', 'AI service timed out.');
-      return action();
-    }), deadline);
+    // withinBudget checks before scheduling and again before invoking action.
+    // Already-started adapters still require their own transport cancellation.
+    return await withinBudget(action, deadline);
   } catch (error) {
     if (error instanceof EofficeError && error.status === 503) {
       throw new EofficeError(503, kind + ' operation unavailable.', 'AI service timed out.');
