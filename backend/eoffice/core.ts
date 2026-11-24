@@ -125,7 +125,17 @@ async function guardedDependency<T>(
   action: () => Promise<T>, deadline: number, kind: DependencyKind,
 ): Promise<T> {
   try {
-    return await withinBudget(Promise.resolve().then(action), deadline);
+    // Do not even schedule an adapter if the shared deadline has expired.
+    if (deadline - Date.now() <= 0)
+      throw new EofficeError(503, 'Synchronous processing deadline exhausted.', 'AI service timed out.');
+    return await withinBudget(Promise.resolve().then(() => {
+      // The budget may expire between scheduling this microtask and running it.
+      // Reject before invoking the adapter; already-running calls still need
+      // their own transport-level cancellation.
+      if (deadline - Date.now() <= 0)
+        throw new EofficeError(503, 'Synchronous processing deadline exhausted.', 'AI service timed out.');
+      return action();
+    }), deadline);
   } catch (error) {
     if (error instanceof EofficeError && error.status === 503) {
       throw new EofficeError(503, kind + ' operation unavailable.', 'AI service timed out.');
