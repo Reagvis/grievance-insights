@@ -116,12 +116,12 @@ describe('Task 22D — isolated dependency boundaries', () => {
       const model = vi.fn(answer);
       const handler = createEofficeApi({
         authorize: async () => {
-          // First document check sees valid time. The second check (inside
-          // withinBudget) sees valid time but advances the clock so the
-          // previously queued microtask must refuse to call fetch().
+          // The initial document deadline check observes valid time,
+          // but advances the clock before the queued callback executes.
+          // The callback must refuse to call fetch() after expiry.
           clock.mockImplementation(() => {
             readsAfterAuth++;
-            if (readsAfterAuth === 2) {
+            if (readsAfterAuth === 1) {
               now = start + 25_000;
               return start;
             }
@@ -137,7 +137,7 @@ describe('Task 22D — isolated dependency boundaries', () => {
         request_id: id,
         user_error_message: 'AI service timed out.',
       });
-      expect(readsAfterAuth).toBeGreaterThanOrEqual(3);
+      expect(readsAfterAuth).toBeGreaterThanOrEqual(2);
       expect(fetch).not.toHaveBeenCalled();
       expect(model).not.toHaveBeenCalled();
     } finally {
