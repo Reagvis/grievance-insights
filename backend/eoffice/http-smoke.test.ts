@@ -23,7 +23,7 @@ const extraction_schema = {
   },
   required: ['subject'],
 };
-const chat = (n: number, context: Record<string, unknown> | undefined = ctx) => ({
+const chat = (n: number, context: Record<string, unknown> | null = ctx) => ({
   request_id: id(n), session_id: SHARED_SESSION,
   user_id: 'synthetic-officer-alpha',
   user_input: 'What does the policy say?',
@@ -224,7 +224,7 @@ describe('Task 22E — actual loopback HTTP → createEofficeApi', () => {
     errorShape(await post('chat', {
       ...chat(23, { documents: [ALPHA_REF] }), user_id: 'synthetic-officer-beta',
     }, { actor: 'beta' }), 422, id(23));
-    const noContext = await post('chat', chat(24, undefined));
+    const noContext = await post('chat', chat(24, null));
     requireSafe(noContext, 200, id(24));
     expect(noContext.json).toEqual({
       request_id: id(24), answer: 'No previous conversation context was supplied.', references: [],
@@ -235,7 +235,7 @@ describe('Task 22E — actual loopback HTTP → createEofficeApi', () => {
     const allowed = await post('chat', chat(30, { previous_context: HISTORY_ALPHA }));
     requireSafe(allowed, 200, id(30));
     expect(allowed.json.answer).toBe('Authorized synthetic previous context was supplied.');
-    const later = await post('chat', chat(31, undefined));
+    const later = await post('chat', chat(31, null));
     requireSafe(later, 200, id(31));
     expect(later.json.answer).toBe('No previous conversation context was supplied.');
     errorShape(await post('chat', chat(32, { previous_context: HISTORY_BETA })), 422, id(32));
