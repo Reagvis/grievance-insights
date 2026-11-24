@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { request as httpRequest, type Server } from 'node:http';
 import { createConnection } from 'node:net';
+import { spawnSync } from 'node:child_process';
 import https from 'node:https';
 import dns from 'node:dns';
 import {
@@ -117,6 +118,22 @@ describe('Task 22E — actual loopback HTTP → createEofficeApi', () => {
     vi.stubEnv('AWS_LAMBDA_FUNCTION_NAME', 'unsafe-lambda');
     expect(() => assertLocalOnly({ testOnly: true })).toThrow(/production/);
     vi.unstubAllEnvs();
+  });
+
+  it('refuses CLI startup without explicit flag or under production environment', () => {
+    const entry = 'scripts/eoffice-http-smoke.mjs';
+    const noOptIn = spawnSync(process.execPath, [entry], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 5000,
+    });
+    expect(noOptIn.status).toBe(2);
+    expect(noOptIn.stderr).toContain('Refused.');
+
+    const production = spawnSync(process.execPath, [entry, '--test-only'], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 5000,
+      env: { ...process.env, NODE_ENV: 'production' },
+    });
+    expect(production.status).toBe(2);
+    expect(production.stderr).toContain('production/AWS Lambda');
   });
 
   it('returns exact 200 public envelopes for all four routes, with grounded page and nullable fields', async () => {
