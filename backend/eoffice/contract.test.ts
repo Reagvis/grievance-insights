@@ -232,7 +232,7 @@ describe('published eOffice Phase 1 v2.0 examples (mocked, no external access)',
         })) : undefined;
         return {
           document_id: ref.document_id, title: sources[ref.document_id]?.title ?? '',
-          ...(page && pages ? { page_number: page, pages } : {}),
+          ...(pages ? { pages, ...(pages.length === 1 ? { page_number: pages[0].page_number } : {}) } : {}),
           text: pages ? pages.map(p => '[Page ' + p.page_number + ']\\n' + p.text).join('\\n') : support,
         };
       }) };
