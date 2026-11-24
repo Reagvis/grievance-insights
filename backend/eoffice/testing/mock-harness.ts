@@ -23,6 +23,8 @@ export function createMockEofficeHarness(options: {
   documents?: readonly ScopedDocument[];
   histories?: readonly ScopedHistory[];
   enableHistory?: boolean;
+  /** Test-only override for deadline/failure simulations. */
+  fetchDocument?: (reference: DocumentRef, principal: Principal, deadline: number) => Promise<Material>;
   model: Model;
 }) {
   const bound = new WeakMap<Event, Principal>();
@@ -31,6 +33,7 @@ export function createMockEofficeHarness(options: {
   const documentFetch = vi.fn(async (
     reference: DocumentRef, principal: Principal, _deadline: number,
   ): Promise<Material> => {
+    if (options.fetchDocument) return options.fetchDocument(reference, principal, _deadline);
     const match = options.documents?.find(d =>
       d.department === principal.department &&
       d.officer === principal.officer &&
