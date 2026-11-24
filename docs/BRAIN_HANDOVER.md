@@ -2,6 +2,14 @@
 
 **Last updated:** 2026-11-24 (Asia/Kolkata)
 
+## WSL CHECKPOINT — 2026-11-24: PR #40 63/64 tests passed; published chat fixture rejected
+
+- **User-reported local WSL results** on PR #40 head `68e0e2fbbfea0909a37e14a6a1498f318c850306`: focused 4-file Vitest run **1 failed / 63 passed (64 total)**. Only failing test: `backend/eoffice/contract.test.ts > published eOffice Phase 1 v2.0 examples > chat`, expected HTTP 200 but got 502 at line 241. The other three test files passed. **No backend typecheck log was supplied in this report**; do not mark it passed. No Actions/Bedrock/deployment.
+- **Independent code diagnosis:** `backend/eoffice/contract.test.ts` builds a mock of a three-page searchable PDF (page 1..3) while also supplying `Material.page_number: 3`. `backend/eoffice/core.ts` intentionally rejects a top-level `page_number` on a document with a multi-page `pages` map (`pages.length !== 1`) to avoid unverifiable document-level page claims. The production PDF extractor sets this top-level field only for one-page PDFs. This is a **fixture metadata inconsistency**, not justification to weaken the production source checker; diagnosis from code and WSL failure, not independent runtime reproduction.
+- **Required minimal correction:** On existing PR #40, adjust only `backend/eoffice/contract.test.ts` to include `pages` and include top-level `page_number` only if `pages.length === 1`. The published chat example should still derive `references[].page_number: 3` by matching the model's evidence quote to page 3. Do not change `core.ts`, actual page-validation semantics, the public contract, auth, pilot or infra for this fixture fix.
+- **GitHub review comment:** [review 6033522459](https://github.com/Reagvis/grievance-insights/pull/40#pullrequestreview-6033522459) requests the minimal correction. After implementation chat pushes a new head, perform a focused WSL re-run of only `npx vitest run backend/eoffice/contract.test.ts --maxWorkers=2 --testTimeout=20000` and `npm run backend:typecheck` if still unverified. Don't automatically repeat the other 63 passing tests, no CI, no Bedrock, no deployment. PR stays draft, unmerged pending user approval.
+
+---
 ## REVIEW CHECKPOINT — 2026-11-24: PR #40 revised, two blockers resolved in source; WSL pending
 
 - **Second Task 22B independent review** of [draft PR #40](https://github.com/Reagvis/grievance-insights/pull/40), current head `68e0e2fbbfea0909a37e14a6a1498f318c850306`. GitHub shows open, draft, unmerged, `mergeable:true`, `mergeable_state:clean` (check again before any eventual merge). Branch is one documentation-only handover commit behind `main`, with no overlapping PR file paths. Eight overall changed files under `backend/eoffice/*` and `docs/*`; no pilot/infra/frontend/auth-handler changes.
