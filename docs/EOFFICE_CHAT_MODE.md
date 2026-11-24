@@ -12,7 +12,7 @@
 
 ## 2. Optional history reference
 
-`context.previous_context` is a protected **eOffice-issued reference**, not inline trusted context and never a general-purpose fetch instruction. The production `backend/eoffice/handler.ts` has **no history resolver**: a supplied valid reference yields an explicit standardized **422** without loading documents or calling the model.
+`context.previous_context` is a protected **eOffice-issued reference**, not inline trusted context and never a general-purpose fetch instruction. The production `backend/eoffice/handler.ts` has **no history resolver**: a supplied valid chat reference yields an explicit standardized **422** without loading documents or calling the model. `previous_context` on a non-chat endpoint is invalid (**400**) because the field applies only to `/chat` (§3.2).
 
 For offline testing only, `createEofficeApi()` exposes an optional `ResolveHistory` seam:
 
@@ -31,7 +31,7 @@ Retrieved history is bounded and inserted under `PRIOR_CHAT (untrusted)` with a 
 
 ## 3. Provider context tokens
 
-`context.provider_context_token` is **disabled**. A syntactically valid supplied token yields HTTP **422** before document retrieval, history lookup or inference. It is not included in the prompt, response, references, logs, model call or any persisted store. The service does **not** generate `provider_context_token` in successful chat responses.
+`context.provider_context_token` is **disabled**. A syntactically valid supplied token yields HTTP **422** on any endpoint (including non-chat endpoints, where it is not a defined field), before document retrieval, history lookup or inference. It is not included in the prompt, response, references, logs, model call or any persisted store. The service does **not** generate `provider_context_token` in successful chat responses.
 
 The original PDF (§§3.2, 4) permits optional tokens up to **64 KB**. The core's existing **64,000-byte limit for the entire JSON request body** is too small for a full-size token plus the mandatory fields and serialization overhead. This is a documented **incompatibility only if token mode is enabled later**, not grounds to accept or expand the limit now. Token issuance, expiry, replay protections, session binding and handling alongside `previous_context` require departmental onboarding, an approved design and new tests. The feature remains rejected until then.
 
