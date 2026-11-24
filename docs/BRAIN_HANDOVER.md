@@ -2,6 +2,14 @@
 
 **Last updated:** 2026-11-24 (Asia/Kolkata)
 
+## WSL VERIFICATION — 2026-11-24: PR #40 corrected contract tests 12/12 passed; typecheck unreported
+
+- **User-reported WSL result for the Task 22B targeted correction:** `backend/eoffice/contract.test.ts` **1 test file passed, 12/12 tests passed**, 733 ms run duration, test run started at 09:44:00 (user local Asia/Kolkata). This is the expected narrow re-test after fixture correction; no failures were reported. The exact checkout SHA was not included in this terminal excerpt, but GitHub PR #40 still points to reviewed head `097111d221b6d26a96eca17301e2d87ecc70dbf4`; confirm local HEAD before final integration decisions.
+- **Earlier evidence, distinct revision:** At former head `68e0e2fbbfea0909a37e14a6a1498f318c850306`, user reported 63/64 tests passed with one published chat fixture failure; the subsequent one-line change only affects this fixture. Taken together these results support targeted coverage, **but the complete 64-test suite was not rerun on the latest head** and should not be described as such.
+- **Outstanding requirement:** There is **no `npm run backend:typecheck` result in the user's latest response**, so compile verification remains pending; ask for terminal output or run it in the existing WSL worktree. No CI, Bedrock or deployment required. Draft PR remains unmerged and is not authorized for a merge solely by this test pass.
+- **Brain decision:** Corrected test fixture appears verified through the user's WSL run; independent source review and both prior factual-grounding blockers already addressed. Await backend typecheck and explicit owner approval for any **code-only** merge. Preserve the live pilot and default-deny eOffice authentication.
+
+---
 ## WSL FOLLOW-UP — 2026-11-24: PR #40 one-line fixture fix source-reviewed, focused retest pending
 
 - **Latest implementation head:** [PR #40](https://github.com/Reagvis/grievance-insights/pull/40), `feature/eoffice-source-grounding-22b`, commit `097111d221b6d26a96eca17301e2d87ecc70dbf4`; open/draft/unmerged. GitHub `compare_commits` against prior `68e0e2fbbfea0909a37e14a6a1498f318c850306` confirms **only** `backend/eoffice/contract.test.ts` changed (1 insertion, 1 deletion). Earlier 63/64 WSL result was against the **old** head and must not be represented as the new head's result.
