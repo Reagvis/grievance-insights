@@ -12,7 +12,7 @@ import { unprocessable } from '../schema';
  * No network, persisted chat state, filesystem or provider calls.
  */
 export type ScopedDocument = Readonly<{
-  department: string; officer: string; material: Material;
+  department: string; officer: string; downloadUrl: string; material: Material;
 }>;
 export type ScopedHistory = Readonly<{
   reference: string; sessionId: string;
@@ -37,6 +37,7 @@ export function createMockEofficeHarness(options: {
     const match = options.documents?.find(d =>
       d.department === principal.department &&
       d.officer === principal.officer &&
+      d.downloadUrl === reference.download_url &&
       d.material.document_id === reference.document_id);
     if (!match) throw unprocessable('Authorized test document unavailable.');
     return match.material;
