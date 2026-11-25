@@ -1,6 +1,6 @@
 # Task 23 — Pilot release readiness and rollback runbook
 
-Status: **Gate A packaging and frontend build provisionally passed under WSL Node 24; release on HOLD pending Node 22 repeat, full ZIP digest audit, remote-state plan review and separate explicit deployment approval**. Updated 2026-11-25. Scope: live Grievance Insights pilot `https://telangana-gov-pilot.reagvis.com`; not eOffice. The currently operating Qwen pilot is not to be interrupted.
+Status: **Gate A PASSED** (Node 22 packaging/build operator-confirmed; five ZIP integrity/size/hash checks passed); **Gate B attribute-scope review PASSED** (0 create, 5 package-only Lambda updates, 0 destroy; redundant auth republish needs release decision); **Gate C backup acquisition PASSED** (all deployed Lambda ZIPs and current S3 static files saved). **Release on HOLD pending backup consistency check, fresh exact plan, and separate explicit deployment approval**. Updated 2026-11-25. Scope: live Grievance Insights pilot `https://telangana-gov-pilot.reagvis.com`; not eOffice. The currently operating Qwen pilot is not to be interrupted.
 
 ## Reviewed baseline and actual software delta
 
@@ -224,6 +224,46 @@ If \`GetFunction\` or \`GetObjectVersion\` is denied, **stop** and report only t
 
 **Still outstanding before rollback is judged complete:** verify that all old `index.html`-referenced versioned or immutable assets (including dynamic JavaScript chunks, fonts and workers) remain present in the static S3 bucket; keep full backups private; prepare a separately approved, controlled restore sequence and account for pre-release XLSX datasets if a backend downgrade becomes necessary. Confirm that packaging/frontend build actually ran under Node 22, not the previously shown Node 24. Attribute-scope review of Terraform passed, but the needless `auth_api` filename-only update should not be accepted without a release decision. **Release remains HOLD pending fresh exact plan and separate explicit owner approval.**
 
+### Gate C operator frontend static backup results (2026-11-25)
+
+The owner confirmed the Lambda packages and frontend AWS build **passed on Node.js 22**, in addition to the earlier Node 24 logs. This is operator-attested, not a replayed Node22 raw transcript. Gate A is now **PASS** on the agreed operator-evidence standard.
+
+Owner ran read-only `aws s3 sync` of the current private frontend bucket to `$HOME/task23-rollback.FdtpquVQ/live-frontend/` and reported **PASS**, **41 files under `assets/`**, **6.4 MiB** local disk footprint. The saved current static snapshot includes a nonempty `index.html`; a separate version-specific `live-index.html` was already recovered. These files, together with the five hashed/CRC-verified deployed Lambda ZIP archives, complete **rollback backup acquisition** without any AWS write. **Do not confuse a successful sync with a rehearsed restoration.** Existing S3 versioning and the 30-day lifecycle limit still apply.
+
+**Minimal local consistency check (no AWS):**
+
+```bash
+BACKUP_DIR="$HOME/task23-rollback.FdtpquVQ"
+cmp -s "$BACKUP_DIR/live-index.html" "$BACKUP_DIR/live-frontend/index.html" &&
+  echo "PASS: saved versioned HTML matches current S3 snapshot"
+python3 - <<'PY'
+from pathlib import Path
+from html.parser import HTMLParser
+from urllib.parse import urlsplit
+root = Path.home() / 'task23-rollback.FdtpquVQ' / 'live-frontend'
+class Assets(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.references = set()
+    def handle_starttag(self, tag, attrs):
+        for key, value in attrs:
+            if key in ('href', 'src') and value:
+                asset = urlsplit(value).path.lstrip('/')
+                if asset.startswith('assets/'):
+                    self.references.add(asset)
+p = Assets()
+p.feed((root / 'index.html').read_text(encoding='utf-8'))
+missing = [name for name in sorted(p.references) if not (root / name).is_file()]
+if missing:
+    raise SystemExit('FAIL: missing direct HTML assets: ' + ', '.join(missing))
+print(f'PASS: {len(p.references)} direct HTML asset references exist')
+PY
+```
+
+This checks the index and its **direct** asset references. It does not independently prove every possible lazy dynamic import, but the sync copied all 41 currently present hashed/static assets. If equality fails, stop rather than assume the old frontend reference is safe. Keep all binaries and downloaded website files private.
+
+**Next decision:** The existing plan proposes a redundant auth-api filename-only update (hash unchanged). Before requesting owner deployment permission, select and record a risk-managed, non-state-surgery handling of that update, rerun and inspect a **fresh exact plan** against the release worktree and current state, and record a practical restore sequence. No apply, Lambda update, frontend publish or CloudFront invalidation is authorized at this stage.
+
 ## Gate D — separately authorized release sequence and focused acceptance
 
 **HOLD; nothing below has been executed or authorized by the present readiness review.** Only after Gates A–C are accepted and the owner explicitly approves deployment:
@@ -243,10 +283,10 @@ If \`GetFunction\` or \`GetObjectVersion\` is denied, **stop** and report only t
 | Prior operator Task 23 focused tests | **Reported passed** (32/32 23C combined; separate 23B/23D gates) |
 | Task 23 AWS frontend build | **Operator reported passed** after targeted corrections |
 | Infra code, deploy workflows, dependencies unchanged since historical pilot chat rollout | **GitHub comparison verified** |
-| Runtime-sized Lambda ZIPs, offline OCR packaging self-check | **PASS**: five ZIP sizes/integrity and SHA-256 values audited; packaged OCR 94% on prior Node 24 run. Node22 compatibility **PENDING confirmation** |
+| Runtime-sized Lambda ZIPs, offline OCR packaging self-check | **PASS**: all five ZIP size/CRC/hash audits, offline OCR 94%; Node22 packaging and AWS frontend build success separately confirmed by owner (no fresh raw Node22 log supplied) |
 | Realistic XLSX near-limit finalize latency/memory; browser Telugu fidelity | **PENDING** |
 | Actual AWS code hashes, read-only remote Terraform plan, absence of infrastructure drift | **Live account and 5 Lambda hashes VERIFIED** (1 matches, 4 differ); read-only remote plan/drift review **PENDING Gate B** |
-| Live rollback binaries and S3 VersionId backups | **PASS**: all five actual deployed Lambda ZIPs backed up and SHA/CRC verified, previous index.html version retrieved; full old hashed/static asset availability and controlled rollback rehearsal **PENDING** |
+| Live rollback binaries and S3 VersionId backups | **PASS backup acquisition**: 5 deployed Lambda ZIPs SHA/CRC verified; versioned HTML and 41 current static assets (6.4 MiB) saved locally; saved-vs-current HTML equality/direct asset checks and restore procedure still **PENDING** |
 | Real-model Qwen chart UX and authentication smoke in pilot | **PENDING separately approved release** |
 | Any actual AWS deployment | **NOT AUTHORIZED / NOT EXECUTED** |
 
