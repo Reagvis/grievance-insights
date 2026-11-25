@@ -1580,28 +1580,12 @@ button.case-chip:hover {
   }
 }
 
-/* ───── Assistant: Ask | AI analysis ───── */
-.chat-modes {
-  margin: 10px 16px 0;
-  align-self: stretch;
-}
-.chat-modes button {
-  flex: 1;
-}
+/* ───── Assistant conversation ───── */
 .chat-ask {
   display: flex;
   flex: 1;
   min-height: 0;
   flex-direction: column;
-}
-.chat-ask[hidden] {
-  display: none;
-}
-.chat-analysis {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 14px 16px 24px;
 }
 .ai-pane {
   display: grid;
