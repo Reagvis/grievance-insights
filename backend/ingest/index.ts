@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { GrievanceRecord } from '../../src/domain/grievance';
 import { cleanText, isKnownLabel, parseDocumentText, type DocumentKind } from '../../src/utils/documentImport';
 import { parseCsvImport, parseJsonImport, type ImportResult } from '../../src/utils/importer';
+import { parseWorkbook, type ParsedWorkbook } from './xlsx';
 import { extractDocxText } from './docx';
 import { formatFromName, IngestError, LIMITS, type SourceFormat } from './limits';
 import { extractPdfPages, type PdfJs } from './pdf';
@@ -36,6 +37,7 @@ export type CanonicalDataset = {
 export type OcrPage = { page: number; text: string; confidence: number };
 export type IngestResult =
   | { kind: 'complete'; canonical: Omit<CanonicalDataset, 'extractedAt'> }
+  | { kind: 'workbook'; workbook: ParsedWorkbook }
   | { kind: 'needs_ocr'; pageCount: number; ocrPages: number[]; textPages: number[] };
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -134,9 +136,10 @@ function documentRecord(format: DocumentKind, name: string, text: string, source
 export async function ingestDocument(input: { name: string; bytes: Uint8Array; ocr?: Map<number, OcrPage>; pdfjs?: PdfJs }): Promise<IngestResult> {
   const { name, bytes } = input;
   const format = formatFromName(name);
-  if (!format) throw new IngestError('Unsupported file type. Use .txt, .md, .docx, .csv, .json, .jsonl or .pdf.', 'unsupported');
+  if (!format) throw new IngestError('Unsupported file type. Use .txt, .md, .docx, .csv, .json, .jsonl or .pdf or .xlsx.', 'unsupported');
   if (!bytes.length) throw new IngestError('The file is empty.', 'too_large');
   if (bytes.length > LIMITS.bytes[format]) throw new IngestError('The file is larger than the ' + Math.round(LIMITS.bytes[format] / 1048576) + ' MiB limit for .' + format + ' files.', 'too_large');
+  if (format === 'xlsx') return { kind: 'workbook', workbook: parseWorkbook(bytes, name) };
   const sourceSha256 = sha256(bytes);
   const base = { schemaVersion: 1 as const, format, sourceFile: name, sourceSha256 };
   const notes: string[] = [];

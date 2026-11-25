@@ -6,10 +6,10 @@ import { mapHeader, parseJsonImport } from '../../src/utils/importer';
 import { validateRecordBounds } from '../datasets/bounds';
 import { IngestError } from './limits';
 
-const fail = (message = 'Invalid or unsupported XLSX workbook. Save a plain, unencrypted .xlsx and retry.'): never => {
+function fail(message = 'Invalid or unsupported XLSX workbook. Save a plain, unencrypted .xlsx and retry.'): never {
   throw new IngestError(message, 'invalid_content');
-};
-const limit = (): never => fail('Workbook exceeds the safe Excel size or worksheet limits. Split it into smaller files.');
+}
+function limit(): never { return fail('Workbook exceeds the safe Excel size or worksheet limits. Split it into smaller files.'); }
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const size = (s: string) => Buffer.byteLength(s, 'utf8');
 const blank = (): WorkbookCell => ({ kind: 'blank' });
