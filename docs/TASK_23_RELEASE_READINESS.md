@@ -161,6 +161,63 @@ Review decision: **GO to rollback-binary preparation; HOLD release**. Confirm ru
 - Retain the old versioned `index.html` and immutable hashed frontend assets; do not delete existing `assets/*`. Existing frontend publication order is hashed assets first, other static assets second, `index.html` **last**, followed by CloudFront invalidation. A rollback must restore old Lambda codes first, restore the prior version of `index.html` (and any overwritten non-hashed files), then invalidate CloudFront. Verify version IDs, backup ZIP integrity, auth, and existing CSV/PDF chat after rollback.
 - Prefer rollback through a reviewed Terraform artifact change so state remains consistent. Direct Lambda code updates bypass Terraform and cause drift; only use as emergency recovery with explicit approval and a reconciliation plan. Do not automatically delete newly uploaded private datasets; discuss compatibility if restoring a backend that does not understand `.xlsx` metadata.
 
+### Gate C safe read-only rollback archive capture
+
+Run from the existing WSL release checkout **only with permitted read access**. This downloads **currently deployed** Lambda bytes (not rebuilt release packages), verifies each against the AWS \`CodeSha256\` value captured above, and saves the current deployed frontend HTML version. It makes **no AWS changes and invokes no Lambda functions or Bedrock**. A Lambda \`get-function\` code-location response is a **temporary bearer download URL**; the Python code keeps it in process memory and never prints it, commits it or puts it in shell command arguments.
+
+\`\`\`bash
+cd ~/src/grievance-insights-task23-release
+umask 077
+BACKUP_DIR="$(mktemp -d "$HOME/task23-rollback.XXXXXXXX")"
+export BACKUP_DIR
+python3 - <<'PY'
+import base64, hashlib, json, os, shutil, subprocess, urllib.request, zipfile
+from pathlib import Path
+
+root = Path(os.environ["BACKUP_DIR"])
+expect = {
+  "auth-api": "pmUewZn/33RRfPNgkkSdEi1+kLRTv+x/X6r8xk/fJ8k=",
+  "datasets-api": "U390XDSXyxej1DB6QNdlox7JJ31hQjz5Ph/sgIQXY3A=",
+  "analyses-api": "gf3Tvkg9GLqRO9bzR9AlgZRFVDpt1F0uYzjyl6fu3vg=",
+  "analyses-worker": "1wjKz383UChxmIIVYpJy0Bwevwx1gjAq+xa4kCe0R78=",
+  "extractor": "VFWH0WYk0amdcl8ksO6durd5btqz6tDnJKQ9UrG4Qcc=",
+}
+for suffix, old_hash in expect.items():
+    result = json.loads(subprocess.check_output([
+        "aws", "--region", "ap-south-1", "lambda", "get-function",
+        "--function-name", "grievance-insights-pilot-" + suffix,
+        "--query", "{Location:Code.Location,Hash:Configuration.CodeSha256}",
+        "--output", "json",
+    ], text=True))
+    if result["Hash"] != old_hash:
+        raise RuntimeError("Live Lambda code changed since inventory: " + suffix)
+    target = root / ("live-" + suffix + ".zip")
+    with urllib.request.urlopen(result["Location"], timeout=120) as resp, target.open("xb") as out:
+        shutil.copyfileobj(resp, out)
+    digest = base64.b64encode(hashlib.sha256(target.read_bytes()).digest()).decode()
+    if digest != old_hash:
+        raise RuntimeError("Downloaded rollback ZIP hash mismatch: " + suffix)
+    with zipfile.ZipFile(target) as archive:
+        if archive.testzip() is not None:
+            raise RuntimeError("Corrupt deployed rollback ZIP: " + suffix)
+    print(suffix + ": current deployed ZIP archived, SHA-256 verified")
+print("All 5 live Lambda ZIP backups verified locally. Keep this directory private.")
+PY
+
+aws s3api get-object \
+  --region ap-south-1 \
+  --bucket grievance-insights-pilot-134857759074-frontend \
+  --key index.html \
+  --version-id GhD4CoA8agy8Qz89LRLNUrgqp1Yuwdo5 \
+  "$BACKUP_DIR/live-index.html" \
+  --query '{VersionId:VersionId,ETag:ETag}' --output json
+
+test -s "$BACKUP_DIR/live-index.html"
+echo "Previous frontend entry point archived locally."
+\`\`\`
+
+If \`GetFunction\` or \`GetObjectVersion\` is denied, **stop** and report only the access-denied operation; do not modify IAM or ask for broad permissions automatically. Do **not** share rollback archives or signed URLs in chat or GitHub. Before actual release, confirm that all old hashed assets referenced by this HTML are still present in S3 (including lazily loaded chunks), keep the local backup directory secure, and document a reviewed restore procedure. An old \`index.html\` by itself is not a full static-site backup. On deployment day, regenerate a **fresh exact Terraform plan** against the chosen artifact paths and review it again rather than applying a stale saved plan.
+
 ## Gate D — separately authorized release sequence and focused acceptance
 
 **HOLD; nothing below has been executed or authorized by the present readiness review.** Only after Gates A–C are accepted and the owner explicitly approves deployment:
