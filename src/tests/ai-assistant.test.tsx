@@ -1,5 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { AssistantLauncher, ChatPanel, useChatStore } from '../components/ChatPanel';
+import { DocumentChatService } from '../services/documentChat';
 import { AnalysisResults } from '../components/AiAnalysisPane';
 import type { GrievanceRecord } from '../domain/grievance';
 import type { AnalysisItem, AnalysisJob, AnalysisReport } from '../services/analysisApi';
@@ -19,7 +21,7 @@ const report: AnalysisReport = {
 };
 const props = { datasetId: 'd', mergedIdOf: (_d: string, id: string) => (id === 'GONE' ? undefined : id === 'B' ? 'B (new.csv)' : id), onOpenRecord: () => {} };
 
-describe('AI results inside the assistant', () => {
+describe('Existing analysis results component', () => {
   it('shows counts, categories (non-zero only), urgent complaints and notes, with the honesty caveat', () => {
     const html = renderToStaticMarkup(<AnalysisResults {...props} job={job('completed')} report={report} />);
     expect(html).toContain('Nothing here confirms that a problem was fixed');
@@ -52,5 +54,28 @@ describe('opening a complaint named by a per-file report', () => {
     expect(mergedIdOf(m, 'a', 'X')).toBe('X');
     expect(mergedIdOf(m, 'b', 'X')).toBe('X (old.csv)');
     expect(mergedIdOf(m, 'b', 'nope')).toBeUndefined();
+  });
+});
+
+
+describe('Task 23A pilot Assistant markup', () => {
+  function Panel() {
+    const store = useChatStore();
+    return <ChatPanel store={store} service={new DocumentChatService(() => undefined)}
+      scopes={[{ key: 'file:a', label: 'File: Synthetic A', scope: { kind: 'document', datasetId: 'a' } },
+        { key: 'file:b', label: 'File: Synthetic B', scope: { kind: 'document', datasetId: 'b' } }]}
+      knownIds={new Set()} unavailableReason={null} onOpenRecord={() => {}} onClose={() => {}} />;
+  }
+  it('opens directly into accessible document Ask with no model branding or analysis mode', () => {
+    const html = renderToStaticMarkup(<Panel />);
+    expect(html).toContain('AI document assistant');
+    expect(html).toContain('Ask about this document');
+    expect(html).toContain('Summarise this document');
+    expect(html).toContain('aria-label="Close assistant"');
+    expect(html).toContain('aria-label="Send question"');
+    expect(html).toContain('id="chat-scope-select"');
+    expect(html).toContain('role="log"');
+    expect(html).not.toMatch(/Qwen|AI analysis|Assistant mode|chat-modes/i);
+    expect(renderToStaticMarkup(<AssistantLauncher onOpen={() => {}} />)).toContain('aria-label="Open assistant"');
   });
 });
