@@ -2,7 +2,7 @@
  * Supported input formats and the hard limits applied to untrusted uploads.
  * Limits are deliberately conservative and documented in docs/TASK_21_INGESTION.md.
  */
-export const SOURCE_FORMATS = ['txt', 'md', 'docx', 'csv', 'json', 'jsonl', 'pdf'] as const;
+export const SOURCE_FORMATS = ['txt', 'md', 'docx', 'csv', 'json', 'jsonl', 'pdf', 'xlsx'] as const;
 export type SourceFormat = (typeof SOURCE_FORMATS)[number];
 
 export const CONTENT_TYPE: Record<SourceFormat, string> = {
@@ -13,13 +13,14 @@ export const CONTENT_TYPE: Record<SourceFormat, string> = {
   json: 'application/json',
   jsonl: 'application/x-ndjson',
   pdf: 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
 
 const MiB = 1024 * 1024;
 
 export const LIMITS = {
   /** Maximum upload size per format (bytes). CSV/JSON keep the existing pilot limit. */
-  bytes: { txt: 1 * MiB, md: 1 * MiB, csv: 20 * MiB, json: 20 * MiB, jsonl: 20 * MiB, docx: 5 * MiB, pdf: 10 * MiB } as Record<SourceFormat, number>,
+  bytes: { txt: 1 * MiB, md: 1 * MiB, csv: 20 * MiB, json: 20 * MiB, jsonl: 20 * MiB, docx: 5 * MiB, pdf: 10 * MiB, xlsx: 2 * MiB } as Record<SourceFormat, number>,
   /** Records per dataset (Task 19). Document formats always yield exactly one. */
   records: 2000,
   docx: {

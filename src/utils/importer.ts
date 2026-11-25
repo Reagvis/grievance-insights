@@ -82,7 +82,7 @@ for (const [key, list] of Object.entries(ALIASES) as Array<[FieldKey, string[]]>
   for (const alias of list) ALIAS_LOOKUP.set(alias, key);
 }
 
-function mapHeader(name: string): FieldKey | undefined {
+export function mapHeader(name: string): FieldKey | undefined {
   const k = name.normalize('NFC').trim().toLowerCase().replace(/[\s-]+/g, '_');
   return ALIAS_LOOKUP.get(k) ?? ALIAS_LOOKUP.get(k.replace(/_/g, ''));
 }
