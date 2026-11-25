@@ -30,6 +30,7 @@ const base = 'http://127.0.0.1:' + port;
 const pages = [
   { html: '/tests/dashboard-interactive.html', result: 'dashboard-browser-result', label: 'Dashboard', budget: 12000 },
   { html: '/tests/upload-interactive.html', result: 'upload-browser-result', label: 'Upload', budget: 60000 },
+  { html: '/tests/assistant-interactive.html', result: 'assistant-browser-result', label: 'Assistant', budget: 12000 },
 ];
 const url = base + pages[0].html;
 const userDataDir = await mkdtemp(join(tmpdir(), 'grievance-dashboard-browser-'));

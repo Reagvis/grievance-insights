@@ -35,3 +35,26 @@ describe('signed-in document assistant client', () => {
       .rejects.toThrow('Open a document');
   });
 });
+
+
+describe('document Assistant branding and cancellation', () => {
+  it('uses neutral operator-facing labels', async () => {
+    const service = new DocumentChatService(() => undefined);
+    expect(service.label).toBe('AI document assistant');
+    await expect(service.ask({ scope: { kind: 'all' }, messages: [{ role: 'user', content: 'Question' }] }))
+      .rejects.toThrow('Open a document or complaint to use the Assistant.');
+  });
+
+  it('ignores an old fetch response even if the transport disregards the abort signal', async () => {
+    const ac = new AbortController();
+    const delta = vi.fn();
+    let resolve!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(r => { resolve = r; })));
+    const service = new DocumentChatService(() => undefined);
+    const request = service.ask({ scope, messages: [{ role: 'user', content: 'Summarise' }], signal: ac.signal, onDelta: delta });
+    ac.abort();
+    resolve(new Response(JSON.stringify({ answer: 'Previous file text', citations: [] }), { status: 200 }));
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+    expect(delta).not.toHaveBeenCalled();
+  });
+});

@@ -1,5 +1,5 @@
 import { Bot, Copy, LoaderCircle, MessageSquarePlus, RotateCcw, Send, Square, TriangleAlert, X } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { ChatScope, ChatService, Citation } from '../services/chat';
 
 /* ───────────── Conversation state (memory only: real complaint text is never persisted in the browser) ───────────── */
@@ -106,8 +106,6 @@ type Props = {
   unavailableReason: string | null;
   onOpenRecord: (id: string) => void;
   onClose: () => void;
-  /** Signed-in build: the AI analysis tools, shown as a second mode of the assistant. */
-  analysisPane?: ReactNode;
 };
 
 const SUGGESTIONS: Record<'all' | 'filtered' | 'note' | 'file', string[]> = {
@@ -122,21 +120,46 @@ const AI_SUGGESTIONS: Partial<Record<keyof typeof SUGGESTIONS, string[]>> = {
   file: ['Summarise this document', 'Draft an email based on this file', 'Extract the key points'],
 };
 
-export function ChatPanel({ store, service, scopes, knownIds, unavailableReason, onOpenRecord, onClose, analysisPane }: Props) {
-  const [mode, setMode] = useState<'ask' | 'analysis'>('ask');
+type ConversationProps = Props & { scope: ScopeOption; onScopeChange: (key: ScopeOption['key']) => void };
+
+export function ChatPanel(props: Props) {
+  const [scopeKey, setScopeKey] = useState<ScopeOption['key']>(props.scopes[0].key);
+  const scope = props.scopes.find(s => s.key === scopeKey) ?? props.scopes[0];
+  // Key by the actual selector, not its display key or label. A disappearing
+  // file, record change, disabled document or switch back must start fresh.
+  const conversationProps = { ...props, scope, onScopeChange: setScopeKey };
+  if (scope.scope.kind === 'document') {
+    const { datasetId, recordId, recordIndex } = scope.scope;
+    const key = JSON.stringify([datasetId, recordId, recordIndex, props.unavailableReason]);
+    return <DocumentConversation key={key} {...conversationProps} />;
+  }
+  return <ChatConversation {...conversationProps} />;
+}
+
+function DocumentConversation(props: ConversationProps) {
+  // The store belongs to this mounted document scope only. Never reuse the
+  // parent (legacy lookup/live chat) store across authorized file selections.
+  const store = useChatStore();
+  return <ChatConversation {...props} store={store} />;
+}
+
+function ChatConversation({ store, service, scopes, scope, onScopeChange, knownIds, unavailableReason, onOpenRecord, onClose }: ConversationProps) {
   const { chats, active, setActiveId, newChat, patchTurn, addTurns, dropTurnsFrom, turnId } = store;
   const [draft, setDraft] = useState('');
-  const [scopeKey, setScopeKey] = useState<ScopeOption['key']>(scopes[0].key);
   const controller = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const scope = scopes.find((s) => s.key === scopeKey) ?? scopes[0];
   const busy = active.turns.some((t) => t.status === 'streaming');
   const disabled = unavailableReason !== null;
 
-  // If the chosen scope disappears (e.g. the note was closed), `scope` above already falls back to the first available one.
-  useEffect(() => () => controller.current?.abort(), []);
+  // Layout cleanup invalidates callbacks at unmount, including services
+  // that ignore AbortSignal. Old replies cannot patch a replacement store.
+  useLayoutEffect(() => () => {
+    const pending = controller.current;
+    controller.current = null;
+    pending?.abort();
+  }, []);
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [active.turns]);
@@ -157,10 +180,15 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
           messages,
           scope: scope.scope,
           signal: ac.signal,
-          onDelta: (text) => patchTurn(chatId, reply.id, (t) => ({ content: t.content + text })),
+          onDelta: (text) => {
+            if (controller.current === ac && !ac.signal.aborted) patchTurn(chatId, reply.id, (t) => ({ content: t.content + text }));
+          },
         });
+        if (controller.current !== ac) return;
+        ac.signal.throwIfAborted();
         patchTurn(chatId, reply.id, { content: result.answer, citations: result.citations, status: 'done' });
       } catch (e) {
+        if (controller.current !== ac) return;
         if (ac.signal.aborted) {
           patchTurn(chatId, reply.id, (t) => ({ status: 'stopped', content: t.content }));
         } else {
@@ -175,7 +203,7 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
 
   const send = (text: string) => {
     const q = text.trim();
-    if (!q || busy || disabled) return;
+    if (!q || busy || disabled || controller.current) return;
     setDraft('');
     void run(active.id, active.turns, q);
   };
@@ -183,7 +211,7 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
   const retry = (reply: ChatTurn) => {
     const idx = active.turns.findIndex((t) => t.id === reply.id);
     const user = active.turns[idx - 1];
-    if (!user || user.role !== 'user' || busy) return;
+    if (!user || user.role !== 'user' || busy || disabled || controller.current) return;
     dropTurnsFrom(active.id, reply.id);
     void run(active.id, active.turns.slice(0, idx - 1), user.content, user);
   };
@@ -219,15 +247,7 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
         </div>
       </header>
 
-      {analysisPane && (
-        <div className="chat-modes segmented" role="group" aria-label="Assistant mode">
-          <button type="button" aria-pressed={mode === 'ask'} onClick={() => setMode('ask')}>Ask</button>
-          <button type="button" aria-pressed={mode === 'analysis'} onClick={() => setMode('analysis')}>AI analysis</button>
-        </div>
-      )}
-      {analysisPane && mode === 'analysis' && <div className="chat-analysis">{analysisPane}</div>}
-
-      <div className="chat-ask" hidden={mode === 'analysis' && !!analysisPane}>
+      <div className="chat-ask">
       {chats.length > 1 && (
         <div className="chat-history">
           <label htmlFor="chat-history-select" className="sr-only">
@@ -246,7 +266,7 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
       <div className="chat-scroll" role="log" aria-live="polite" aria-label="Conversation">
         {active.turns.length === 0 ? (
           <div className="chat-empty">
-            <p className="chat-empty-title">{service.kind === 'ai' ? 'Ask Qwen about this document' : 'Ask about the complaints'}</p>
+            <p className="chat-empty-title">{service.kind === 'ai' ? 'Ask about this document' : 'Ask about the complaints'}</p>
             <p className="chat-empty-text">
               {service.kind === 'ai'
                 ? 'Ask questions, create summaries, emails, official notings or draft letters from the selected document. Verify important details before use.'
@@ -329,11 +349,8 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
               <div className="chat-scope">
                 <label htmlFor="chat-scope-select">Ask about</label>
                 <select id="chat-scope-select" className="select" value={scope.key} onChange={(e) => {
-                  const next = e.target.value as ScopeOption['key'];
-                  // A file-level conversation must not inherit the history of a complaint-level question.
-                  if (next !== scope.key && service.kind === 'ai' && scope.scope.kind === 'document') store.reset();
-                  setScopeKey(next);
-                }} disabled={busy}>
+                  onScopeChange(e.target.value as ScopeOption['key']);
+                }} disabled={busy && scope.scope.kind !== 'document'}>
                   {scopes.map((s) => (
                     <option key={s.key} value={s.key}>
                       {s.label}
@@ -372,7 +389,9 @@ export function ChatPanel({ store, service, scopes, knownIds, unavailableReason,
                 </button>
               )}
             </form>
-            <p className="chat-privacy">Conversations stay in this tab only and are cleared when you close it.</p>
+            <p className="chat-privacy">{scope.scope.kind === 'document'
+              ? 'Conversations stay in this tab and are cleared when you change document or complaint, close the Assistant or sign out.'
+              : 'Conversations stay in this tab only and are cleared when you close it.'}</p>
           </>
         )}
       </footer>

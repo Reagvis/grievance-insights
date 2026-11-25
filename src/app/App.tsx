@@ -24,7 +24,6 @@ import { AWS_AUTH_ENABLED, defaultSummaryService } from '../services/runtimeServ
 import { FileProblems } from '../components/FileProblems';
 import { SummaryFilters } from '../components/SummaryFilters';
 import { UploadPage, type BatchResult } from '../components/UploadPage';
-import { AiAnalysisPane } from '../components/AiAnalysisPane';
 import { loadAllComplaints, mergedIdOf, type AllComplaints, type SourceRef } from '../services/allComplaints';
 import { removeDataset } from '../services/datasetApi';
 import {
@@ -273,13 +272,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     ? chatFileRecords.findIndex(r => mergedIdOf(all, chatFile.id, r.id) === selectedId)
     : -1;
   const chatSourceKey = AWS_AUTH_ENABLED ? (chatFile?.id ?? 'none') + ':' + (selectedId ?? '') : '';
-  const lastChatSourceKey = useRef(chatSourceKey);
-  useEffect(() => {
-    if (AWS_AUTH_ENABLED && lastChatSourceKey.current !== chatSourceKey) {
-      chat.reset();
-      lastChatSourceKey.current = chatSourceKey;
-    }
-  }, [chatSourceKey, chat.reset]);
   const chatService: ChatService = useMemo(
     () => AWS_AUTH_ENABLED
       ? new DocumentChatService((fileId, originalId) => all ? mergedIdOf(all, fileId, originalId) : undefined)
@@ -287,7 +279,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     [dataset, all],
   );
   const chatUnavailable = AWS_AUTH_ENABLED
-    ? (!chatFile ? 'Upload and open a document to ask Qwen.' : null)
+    ? (!chatFile ? 'Upload and open a document to use the Assistant.' : null)
     : !IS_LIVE
       ? null
       : healthError
@@ -305,11 +297,11 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
             scope: { kind: 'document', datasetId: chatFile.id, recordId: original.id, recordIndex: selectedOriginalIndex } });
         }
         // Every readable uploaded file is selectable directly from Ask.
-        // Use a stable key for the current file so complaint navigation stays intuitive.
+        // File keys identify the actual dataset, regardless of navigation.
         for (const file of readyFiles) {
           if (!all?.recordsByDataset.has(file.id)) continue;
           list.push({
-            key: file.id === chatFile.id ? 'file' : `file:${file.id}`,
+            key: `file:${file.id}`,
             label: `File: ${file.name} (${formatCount(file.recordCount)} ${file.recordCount === 1 ? 'complaint' : 'complaints'})`,
             scope: { kind: 'document', datasetId: file.id },
           });
@@ -815,18 +807,6 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
             unavailableReason={chatUnavailable}
             onOpenRecord={openRecord}
             onClose={() => { if (AWS_AUTH_ENABLED) chat.reset(); setAssistantOpen(false); }}
-            analysisPane={
-              AWS_AUTH_ENABLED && all ? (
-                <AiAnalysisPane
-                  files={readyFiles.map((f) => ({ id: f.id, name: f.name, count: f.recordCount }))}
-                  recordsByDataset={all.recordsByDataset}
-                  mergedIdOf={(datasetId, originalId) => mergedIdOf(all, datasetId, originalId)}
-                  onOpenRecord={openRecord}
-                  preferredFileId={selectedId ? all.sourceOf.get(selectedId)?.datasetId : undefined}
-                  selectedId={selectedId ?? undefined}
-                />
-              ) : undefined
-            }
           />
         )}
         {!AWS_AUTH_ENABLED && importOpen && <ImportDialog onClose={() => setImportOpen(false)} onUse={applyImport} />}

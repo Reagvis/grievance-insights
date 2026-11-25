@@ -8,14 +8,15 @@ import { signalAuthExpired } from './authApi';
  */
 export class DocumentChatService implements ChatService {
   readonly kind = 'ai' as const;
-  readonly label = 'Qwen AI · document questions & drafts';
+  readonly label = 'AI document assistant';
   private readonly resolveId: (datasetId: string, originalId: string) => string | undefined;
   constructor(resolveId: (datasetId: string, originalId: string) => string | undefined) {
     this.resolveId = resolveId;
   }
 
   async ask(req: ChatRequest): Promise<ChatResult> {
-    if (req.scope.kind !== 'document') throw new Error('Open a document or complaint to ask Qwen.');
+    req.signal?.throwIfAborted();
+    if (req.scope.kind !== 'document') throw new Error('Open a document or complaint to use the Assistant.');
     const scope = req.scope;
     const response = await fetch('/api/datasets/' + encodeURIComponent(scope.datasetId) + '/chat', {
       method: 'POST',
@@ -30,6 +31,7 @@ export class DocumentChatService implements ChatService {
       }),
       signal: req.signal,
     });
+    req.signal?.throwIfAborted();
     if (response.status === 401) {
       signalAuthExpired();
       throw new Error('Your administrator session expired. Please sign in again.');
@@ -39,6 +41,7 @@ export class DocumentChatService implements ChatService {
       throw new Error(typeof error.error === 'string' ? error.error : 'The AI could not answer. Please retry.');
     }
     const body = await response.json() as { answer?: unknown; citations?: unknown };
+    req.signal?.throwIfAborted();
     if (typeof body.answer !== 'string' || !body.answer.trim() || body.answer.length > 20_000 ||
         !Array.isArray(body.citations) || body.citations.length > 40) {
       throw new Error('The AI service returned an invalid answer.');
