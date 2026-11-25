@@ -113,6 +113,31 @@ A `terraform plan` is **not** a deployment approval; save a sanitized resource/a
 
 **Remaining Gate B:** The owner should confirm final Node22 local package + frontend build success, then execute the **non-applying** Terraform plan and provide only sanitized resource address/action summary from the commands above. A plan which changes anything besides reviewed Lambda code (or requires new IAM, API routes, S3/Cognito, eOffice, replacement, create/delete) is a release blocker and must not be applied. Even an acceptable plan does not authorize deployment.
 
+## Gate B remote Terraform plan: five in-place Lambda updates (2026-11-25)
+
+The operator reports remote-state-backed `terraform plan` completed with **0 to add, 5 to change, 0 to destroy**, and a sanitized action list of exactly `aws_lambda_function.analysis_api`, `analysis_worker`, `auth_api`, `datasets_api`, and `extractor`, each marked `update`. The plan is a private local file `/tmp/tmp.mTUItNWACh/task23-release.tfplan`; **it has not been applied**. No other changed resource addresses were reported. This confirms a nondestructive five-resource change *at action level only*, not the safety of every update attribute.
+
+**Hard blocker: unexpected auth update.** Current auth Lambda `CodeSha256` is identical to the intended auth ZIP (`pmUewZn/33RRfPNgkkSdEi1+kLRTv+x/X6r8xk/fJ8k=`). This plan nevertheless includes `aws_lambda_function.auth_api` as an in-place update. Before approving a plan, inspect only the changed attribute names and `source_code_hash` before/after, checking for Terraform state drift, package hash mismatches or unexpected auth configuration changes. Do not infer an auth defect from an unexplained diff; do not apply, suppress or ignore the update. The other four Lambda code digests differ between currently deployed and proposed archives, but their planned changes must be limited to explicitly reviewed code updates. If plan shows changes to environment variables, execution roles, auth settings, permissions, memory, concurrency, timeout, runtime, layers or logging, pause and obtain separate scope authorization.
+
+**Sanitized inspection command** (no values of private environment variables or full plan JSON are printed):
+
+```bash
+PLAN="/tmp/tmp.mTUItNWACh/task23-release.tfplan"
+terraform -chdir=infra show -json "$PLAN" |
+  jq -r '
+    .resource_changes[]?
+    | select(.type == "aws_lambda_function" and .change.actions == ["update"])
+    | . as $r
+    | ($r.change.before // {}) as $before
+    | ($r.change.after // {}) as $after
+    | ((($before | keys_unsorted) + ($after | keys_unsorted)) | unique
+       | map(select($before[.] != $after[.]))) as $changed
+    | "\($r.address)\n  changed attributes: \($changed | join(", "))\n  source_code_hash: \($before.source_code_hash // "(unset)") -> \($after.source_code_hash // "(unset)")"
+  '
+```
+
+Send only its output. The plan file itself is sensitive; retain it privately and do not commit it. Gate B action summary and the unexpected auth update were also recorded in [Issue #54](https://github.com/Reagvis/grievance-insights/issues/54#issuecomment-7156996403). **Release remains HOLD**, with actual deployed Lambda rollback ZIPs, full frontend static assets and Node.js 22 packaging/build confirmation still outstanding.
+
 ## Gate C — rollback materials to prepare **before** an authorized deployment
 
 - Record exact deployment identity: selected `main` SHA, five artifact SHA-256 values, current AWS Lambda `CodeSha256`, function version/LastModified and current S3 `index.html` `VersionId`. The frontend bucket has versioning enabled and noncurrent versions are retained under the currently configured lifecycle (nominally 30 days).
