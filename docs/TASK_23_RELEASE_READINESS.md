@@ -61,6 +61,18 @@ The owner fetched `main` and checked out commit `74eaf5c6843091964b56701acd98d87
 
 **Compatibility qualification:** The project deploys Node.js 22 Lambdas, but the local packaging health/OCR smoke ran under **Node 24**, so this evidence does **not** yet close the required Node 22 runtime test. Next, switch this existing WSL worktree to Node.js 22 and rerun `npm run backend:package` and `npm run build:aws` (no reinstall or global test rerun), then run the five-ZIP decompressed size/CRC/SHA-256 script above. AWS Lambda `CodeSha256` uses base64 SHA-256; record that encoding or convert hex to base64 before comparing with the live inventory. **No AWS code revision, remote Terraform plan, S3 VersionId, cold-start, near-limit XLSX latency/memory or backup has been verified yet.** Gate A remains provisional and deployment remains **HOLD**.
 
+## Gate A verified five-package audit (2026-11-25)
+
+| Lambda | ZIP MiB | Expanded MiB | SHA-256 hex | AWS `CodeSha256` base64 |
+|---|---:|---:|---|---|
+| auth | 0.27 | 1.55 | `a6651ec199ffdf74517cf36092449d122d7e90b453bfec7f5faafcc64fdf27c9` | `pmUewZn/33RRfPNgkkSdEi1+kLRTv+x/X6r8xk/fJ8k=` |
+| datasets | 0.99 | 5.05 | `dc1db015efe0952140c20d8420c1e9a62a506c7559c10096627ebb17accdb8d5` | `3B2wFe/glSFAwg2EIMHppipQbHVZwQCWYn67F6zNuNU=` |
+| analysis-api | 0.25 | 1.35 | `47df2358e7cf029e144436c867231e79844cc614198fe0477705dbe18f422953` | `R98jWOfPAp4URDbIZyMeeYRMxhQZj+BHdwXb4Y9CKVM=` |
+| analysis-worker | 0.24 | 1.33 | `7d7f6b4c025f224aab55f9325396a3ea4552dc2a52ea97b7c22c134c7ae61488` | `fX9rTAJfIkqrVfkyU5aj6kVS3CpS6pe3wiwTTHrmFIg=` |
+| extractor | 22.32 | 58.95 | `e55e0e4c0f05d99117994f85813a5fb28ba98f6d357077a4a7a86abdb73a894e` | `5V4OTA8F2ZEXmU+FgTpfsoupj201cHekp6hqvbc6iU4=` |
+
+**Operator audit passed:** Python `zipfile.testzip()` completed for all five archives without errors; all compressed and expanded sizes remain below conservative 45/200 MiB thresholds. All supplied SHA-256 hexadecimal values match the supplied AWS Base64 versions (independently verified conversion); extractor digest matches the initial self-check's SHA prefix. **Node.js 22 rerun is not evidenced by the pasted hashes** (the previously observed runtime was Node 24). Before closing runtime compatibility, record `node --version` and success of `npm run backend:package` and `npm run build:aws` under Node 22, without repeating full tests.
+
 ## Gate B — live environment inventory and remote Terraform plan (read-only with respect to infrastructure)
 
 **Not executed by Brain.** Requires the operator's existing permitted AWS identity and remote Terraform state access. Verify the account and region first; do not copy credentials, tokens, remote state, plan JSON or private user data into chat. The Terraform plan can acquire and release a short-lived backend state lock; it must not be applied under this gate.
@@ -111,7 +123,7 @@ A `terraform plan` is **not** a deployment approval; save a sanitized resource/a
 | Prior operator Task 23 focused tests | **Reported passed** (32/32 23C combined; separate 23B/23D gates) |
 | Task 23 AWS frontend build | **Operator reported passed** after targeted corrections |
 | Infra code, deploy workflows, dependencies unchanged since historical pilot chat rollout | **GitHub comparison verified** |
-| Runtime-sized Lambda ZIPs, offline OCR packaging self-check | **PROVISIONAL PASS on Node 24** (five archives, extractor 22.3 MiB / 59.0 MiB, real OCR 94%); Node 22 compatibility and full five-ZIP size/hash audit still **PENDING Gate A** |
+| Runtime-sized Lambda ZIPs, offline OCR packaging self-check | **PASS**: five ZIP sizes/integrity and SHA-256 values audited; packaged OCR 94% on prior Node 24 run. Node22 compatibility **PENDING confirmation** |
 | Realistic XLSX near-limit finalize latency/memory; browser Telugu fidelity | **PENDING** |
 | Actual AWS code hashes, read-only remote Terraform plan, absence of infrastructure drift | **PENDING Gate B** |
 | Live rollback binaries and S3 VersionId backups | **PENDING Gate C** |
