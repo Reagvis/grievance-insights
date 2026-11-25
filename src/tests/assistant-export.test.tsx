@@ -6,7 +6,7 @@ import { canExport, exportName, parseAssistantDocument, requestedOrientation, pa
 import { buildAssistantDocx } from '../utils/assistantDocx';
 import { encodeAssistantPdf, layoutAssistantPdf, buildAssistantPdf } from '../utils/assistantPdf';
 import { downloadAssistantAnswer, generateAssistantExport } from '../utils/assistantExport';
-import { loadNodePdfJs } from '../../backend/ingest/pdf';
+import { loadNodePdfJs } from './helpers/assistantPdfReader.mjs';
 
 const answer = '# Report\n\n**Water** and *roads*: ప్రభుత్వ తెలుగు\n\n- First item\n- Second item\n\n3. Third\n4. Fourth\n\n| Area | Count |\n| --- | --- |\n| తెలుగు | 12 |\n\n<script>alert(1)</script> & <unsafe>';
 const turn = { role: 'assistant', status: 'done', content: answer, id: 7 };
@@ -66,9 +66,18 @@ describe('Task 23D answer formatting and integrity', () => {
       const document = await task.promise;
       expect(document.numPages).toBe(1);
       const page = await document.getPage(1);
-      const text = (await page.getTextContent()).items.map(i => i.str ?? '').join(' ').normalize('NFC');
-      for (const s of ['Report','Water','ప్రభుత్వ తెలుగు','First item','Count','12','<script>alert(1)</script>']) expect(text).toContain(s);
-      expect(text).not.toContain('\ufffd');
+      // PDF.js can return a standalone space item between words; joining items
+      // also adds separators. Normalize whitespace only, never strip characters
+      // or concatenate words. Check the whole visible answer in reading order.
+      const items = (await page.getTextContent()).items;
+      const raw = items.map(i => i.str ?? '').join(' ');
+      const canonical = (s: string) => s.normalize('NFC').replace(/\s+/gu, ' ').trim();
+      const expected = 'Report Water and roads: ప్రభుత్వ తెలుగు • First item • Second item 3. Third 4. Fourth Area Count తెలుగు 12 <script>alert(1)</script> & <unsafe>';
+      expect(raw).not.toMatch(/[\u0000\ufffd\p{Co}]/u);
+      expect(canonical(raw)).toBe(canonical(expected));
+      // Independently require the exact Telugu code-point sequences, including
+      // conjuncts and vowel signs, with no loss, insertion or reordering.
+      expect(raw.match(/[\u0c00-\u0c7f\u200c\u200d]+/gu)).toEqual(['ప్రభుత్వ', 'తెలుగు', 'తెలుగు']);
     } finally { await task.destroy?.(); }
   });
   it('paginates and wraps without dropping the last line or splitting Telugu graphemes', async () => {

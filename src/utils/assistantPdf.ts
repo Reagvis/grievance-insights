@@ -48,7 +48,7 @@ export function layoutAssistantPdf(blocks: Block[], orientation: Orientation, me
   const usable = width - 2 * margin;
   const pages: PdfPage[] = [];
   let page: PdfPage;
-  let y: number;
+  let y = margin;
   const next = () => {
     if (pages.length >= maxPages) throw new Error('This answer exceeds the 100-page PDF limit. Export Word or ask for shorter sections.');
     page = { lines: [], boxes: [] }; pages.push(page); y = margin;
