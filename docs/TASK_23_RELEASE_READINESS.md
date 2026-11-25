@@ -308,6 +308,40 @@ terraform -chdir=infra show -json "$PLAN" |
 
 **Do not apply this plan.** Send the action summary (not the plan file). Only if it shows the expected four non-destructive Lambda code updates, request a separate explicit release decision; preserve all deployed rollback ZIPs and current frontend snapshot. If any unexpected dependencies or unrelated resource actions appear, HOLD. User must still explicitly authorize any AWS change, paid Bedrock verification, or frontend publish.
 
+## Four-Lambda exceptional targeted plan review (2026-11-25)
+
+The operator produced a new **planning-only**, narrowly targeted Terraform plan from the existing release checkout, saved privately at \`/tmp/tmp.YC8FC7NAeu/task23-four-lambda.tfplan\`:
+
+\`\`\`
+Plan: 0 to add, 4 to change, 0 to destroy.
+aws_lambda_function.analysis_api      update
+aws_lambda_function.analysis_worker   update
+aws_lambda_function.datasets_api      update
+aws_lambda_function.extractor         update
+\`\`\`
+
+The authentication Lambda is **absent**. This is the requested plan scope: four Lambda package updates and no additions/deletions or unexpectedly included dependent addresses. Terraform's \`-target\` warning is appropriate; it does not represent complete configuration drift. We **already reviewed the separate full plan** showing only the same four source-hash changes and a redundant unchanged-code authentication filename path drift from a GitHub Actions runner to WSL. Keep both pieces of evidence. **Neither plan has been applied.** [Issue #54](https://github.com/Reagvis/grievance-insights/issues/54#issuecomment-7157494112) records the operator result.
+
+Before any separately approved AWS deployment, ensure this *specific saved four-target plan* uses the exact Node22-rebuilt binaries and no changed keys other than \`filename\`, \`last_modified\`, \`source_code_hash\`. Suggested safe last inspection:
+
+\`\`\`bash
+cd ~/src/grievance-insights-task23-release
+PLAN="/tmp/tmp.YC8FC7NAeu/task23-four-lambda.tfplan"
+terraform -chdir=infra show -json "$PLAN" |
+  jq -r '
+    .resource_changes[]?
+    | select(.change.actions != ["no-op"])
+    | . as $r
+    | ($r.change.before // {}) as $before
+    | ($r.change.after // {}) as $after
+    | ((($before | keys_unsorted) + ($after | keys_unsorted)) | unique
+       | map(select($before[.] != $after[.]))) as $changed
+    | "\($r.address)\n  actions: \($r.change.actions | join(","))\n  changed: \($changed | join(", "))\n  planned SHA: \($after.source_code_hash // "(unset)")"
+  '
+\`\`\`
+
+Only the names of changed fields and new package fingerprints should be shared, not the complete plan or credentials. Compare with locally rehashed Node22 ZIPs (the earlier SHA inventory may predate the Node22 rebuild). If mismatch, re-verify the ZIP locally and replan; **never apply a stale plan to different artifacts**. Prior to any apply, confirm no intervening AWS drift and ask for **separate explicit deployment authorization** covering the specific four Lambdas and subsequent frontend publish/CloudFront invalidation. Preserve the verified old Lambda ZIPs and frontend snapshot. No paid Qwen calls, GitHub Actions, protected data, or eOffice changes are permitted under the readiness gate.
+
 ## Gate D — separately authorized release sequence and focused acceptance
 
 **HOLD; nothing below has been executed or authorized by the present readiness review.** Only after Gates A–C are accepted and the owner explicitly approves deployment:
@@ -329,9 +363,9 @@ terraform -chdir=infra show -json "$PLAN" |
 | Infra code, deploy workflows, dependencies unchanged since historical pilot chat rollout | **GitHub comparison verified** |
 | Runtime-sized Lambda ZIPs, offline OCR packaging self-check | **PASS**: all five ZIP size/CRC/hash audits, offline OCR 94%; Node22 packaging and AWS frontend build success separately confirmed by owner (no fresh raw Node22 log supplied) |
 | Realistic XLSX near-limit finalize latency/memory; browser Telugu fidelity | **PENDING** |
-| Actual AWS code hashes, read-only remote Terraform plan, absence of infrastructure drift | **Live account and 5 Lambda hashes VERIFIED** (1 matches, 4 differ); read-only remote plan/drift review **PENDING Gate B** |
+| Actual AWS code hashes, read-only remote Terraform plan, absence of infrastructure drift | **PASS scope review**: live 5 Lambda hashes, full 0/5/0 package-only plan and exceptional targeted 0/4/0 Lambda-only plan checked; final targeted artifact hash validation and pre-apply AWS drift check **PENDING** |
 | Live rollback binaries and S3 VersionId backups | **PASS**: 5 live Lambda ZIPs SHA/CRC verified; versioned and current HTML byte-identical; 41 static assets captured, 2 direct HTML references verified. No rollback rehearsal or lazy-chunk browser smoke yet |
 | Real-model Qwen chart UX and authentication smoke in pilot | **PENDING separately approved release** |
 | Any actual AWS deployment | **NOT AUTHORIZED / NOT EXECUTED** |
 
-Release decision: **HOLD pending evidence**. The five-ZIP integrity/hash audit and live Lambda/S3 identity inventory are complete. Remaining priorities are the Node22 packaging/build confirmation, a sanitized read-only Terraform plan and verifiable rollback binaries/assets. No paid calls, production uploads, Terraform apply, CloudFront invalidation, GitHub Actions or eOffice changes under this document.
+Release decision: **HOLD pending separate explicit deployment approval**. Node22 operator packaging/build, five-ZIP integrity/hash audit, full Terraform attribute-scope review, exceptional four-Lambda targeted plan address scope, and private live rollback backup acquisition are complete. Before any release, verify the exact targeted plan's final ZIP hashes/changed keys and recheck live drift, then obtain explicit authorization. No paid calls, production uploads, Terraform apply, CloudFront invalidation, GitHub Actions or eOffice changes under this document.
