@@ -18,8 +18,9 @@ function run(r: Run, size = 22, bold = false): string {
   return chunks.map(text => {
     const telugu = /[\u0c00-\u0c7f]/u.test(text);
     return '<w:r><w:rPr>' + fonts + (r.bold || bold ? '<w:b/><w:bCs/>' : '') +
-      (r.italic ? '<w:i/><w:iCs/>' : '') + (telugu ? '<w:cs/><w:lang w:bidi="te-IN"/>' : '') +
-      '<w:sz w:val="' + size + '"/><w:szCs w:val="' + size + '"/></w:rPr><w:t xml:space="preserve">' + escape(text) + '</w:t></w:r>';
+      (r.italic ? '<w:i/><w:iCs/>' : '') +
+      '<w:sz w:val="' + size + '"/><w:szCs w:val="' + size + '"/>' +
+      (telugu ? '<w:cs/><w:lang w:bidi="te-IN"/>' : '') + '</w:rPr><w:t xml:space="preserve">' + escape(text) + '</w:t></w:r>';
   }).join('');
 }
 function paragraph(lines: Run[][], opts: { level?: number; marker?: string; cell?: boolean; header?: boolean } = {}): string {

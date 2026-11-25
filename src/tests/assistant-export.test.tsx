@@ -46,8 +46,9 @@ describe('Task 23D answer formatting and integrity', () => {
     const files = unzipSync(bytes);
     expect(Object.keys(files).sort()).toEqual(['[Content_Types].xml','_rels/.rels','word/_rels/document.xml.rels','word/document.xml','word/styles.xml'].sort());
     const doc = strFromU8(files['word/document.xml']);
-    for (const s of ['Heading1','<w:tbl>','3.  ','•  ','<w:b/>','<w:i/>','ప్రభుత్వ తెలుగు','Noto Sans Telugu','w:orient="landscape"','&lt;script&gt;alert(1)&lt;/script&gt; &amp; &lt;unsafe&gt;']) expect(doc).toContain(s);
+    for (const s of ['Heading1','<w:tbl>','3.  ','•  ','<w:b/>','<w:i/>','ప్రభుత్వ','తెలుగు','Noto Sans Telugu','w:orient="landscape"','&lt;script&gt;alert(1)&lt;/script&gt; &amp; &lt;unsafe&gt;']) expect(doc).toContain(s);
     expect(doc).not.toContain('<script>');
+    expect(doc.replace(/<[^>]+>/g, '')).toContain('ప్రభుత్వ తెలుగు');
     expect(strFromU8(files['word/_rels/document.xml.rels'])).not.toContain('External');
   });
   it('keeps all long Word content', () => {
