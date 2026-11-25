@@ -17,12 +17,15 @@ export async function commitWorkbook(item: Metadata, workbook: ParsedWorkbook, s
   const written: string[] = [];
   try {
     if (!await store.transition(item.id, 'validating', 'validating', patch)) throw new Error('Workbook state changed');
-    for (const sheet of workbook.sheets) {
-      const key = worksheetKey(item.key, sheet.info.index);
-      const bytes = encode(sheet);
-      if (bytes.length > L.sheetBytes) throw new Error('Worksheet index too large');
-      await objects.write(key, bytes);
-      written.push(key);
+    for (let start = 0; start < workbook.sheets.length; start += 4) {
+      const settled = await Promise.allSettled(workbook.sheets.slice(start, start + 4).map(async sheet => {
+        const key = worksheetKey(item.key, sheet.info.index);
+        const bytes = encode(sheet);
+        if (bytes.length > L.sheetBytes) throw new Error('Worksheet index too large');
+        await objects.write!(key, bytes);
+        written.push(key);
+      }));
+      if (settled.some(result => result.status === 'rejected')) throw new Error('Private worksheet write failed');
     }
     written.push(...await writeDatasetIndex(item.key, workbook.records, objects));
     const key = provenanceKey(item.key);
@@ -44,7 +47,7 @@ export async function readWorksheet(item: Metadata, objects: PrivateObjects, ind
   const bytes = await objects.read(worksheetKey(item.key, index));
   if (bytes.length > L.sheetBytes) throw new Error('Worksheet index exceeds bounds');
   const sheet = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as Worksheet;
-  if (sheet.version !== 1 || sheet.info.index !== info.index || sheet.info.name !== info.name || sheet.info.kind !== info.kind || sheet.info.rows !== info.rows || sheet.info.columns !== info.columns ||
+  if (!sheet || !sheet.info || sheet.version !== 1 || sheet.info.index !== info.index || sheet.info.name !== info.name || sheet.info.kind !== info.kind || sheet.info.rows !== info.rows || sheet.info.columns !== info.columns ||
       !Array.isArray(sheet.headers) || sheet.headers.length !== info.columns ||
       !Array.isArray(sheet.data) || sheet.data.length !== info.rows ||
       sheet.data.some((r, i) => r.row !== info.rowNumbers[i] || !Array.isArray(r.cells) || r.cells.length !== info.columns)) throw new Error('Invalid worksheet index');

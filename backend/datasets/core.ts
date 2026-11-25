@@ -83,8 +83,8 @@ export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uin
 const EXTRACTION_TIMEOUT_MESSAGE = 'Extraction did not finish in time. Delete this dataset and upload it again.';
 /** A dataset stuck in `extracting` past its deadline (queue/worker delivery lost) becomes `failed`, wherever it is observed. */
 async function expireIfStuck(store: DatasetStore, item: Metadata, nowSeconds: number): Promise<Metadata> {
-  if (item.status === 'extracting' && item.extractionDeadline !== undefined && item.extractionDeadline < nowSeconds
-    && await store.transition(item.id, 'extracting', 'failed', { error: EXTRACTION_TIMEOUT_MESSAGE })) {
+  if ((item.status === 'extracting' || item.status === 'validating' && item.format === 'xlsx') && item.extractionDeadline !== undefined && item.extractionDeadline < nowSeconds
+    && await store.transition(item.id, item.status, 'failed', { error: EXTRACTION_TIMEOUT_MESSAGE })) {
     return { ...item, status: 'failed', error: EXTRACTION_TIMEOUT_MESSAGE };
   }
   return item;
@@ -132,7 +132,7 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
         const pdf = item.format === 'pdf';
         if (pdf && !queue) throw new ApiError(503, 'PDF processing is not available in this environment.');
         const next = pdf ? 'extracting' : 'validating';
-        if (!await store.transition(id, 'pending_upload', next, pdf ? { extractionDeadline: Math.floor(now() / 1000) + EXTRACTION_DEADLINE_SECONDS } : {})) throw new ApiError(409, 'Upload is already being validated.');
+        if (!await store.transition(id, 'pending_upload', next, pdf ? { extractionDeadline: Math.floor(now() / 1000) + EXTRACTION_DEADLINE_SECONDS } : item.format === 'xlsx' ? { extractionDeadline: Math.floor(now() / 1000) + 120 } : {})) throw new ApiError(409, 'Upload is already being validated.');
         try {
           const bytes = await objects.size(item.key);
           if (bytes === null) throw new ApiError(422, 'Upload is incomplete or missing.');
@@ -166,10 +166,12 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
       }
       if (method === 'GET' && !match[2]) {
         const current = await expireIfStuck(store, item, Math.floor(now() / 1000));
-        if (current.status === 'failed' && item.status === 'extracting') return result(200, { dataset: publicMetadata(current), records: null });
+        if (current.status === 'failed' && (item.status === 'extracting' || item.status === 'validating')) return result(200, { dataset: publicMetadata(current), records: null });
         if (item.status !== 'ready') return result(200, { dataset: publicMetadata(item), records: null });
         const sheetText = event.queryStringParameters?.sheet;
         if (sheetText !== undefined) {
+          const origin = event.headers.origin ?? event.headers.Origin;
+          if (origin !== undefined && origin !== allowedOrigin) throw new ApiError(403, 'Invalid request origin.');
           if (item.format !== 'xlsx' || !/^(0|[1-7])$/.test(sheetText)) throw new ApiError(404, 'Worksheet not found.');
           const sheet = await readWorksheet(item, objects, Number(sheetText));
           if (!sheet) throw new ApiError(404, 'Worksheet not found.');
@@ -194,6 +196,11 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
         const live = await expireIfStuck(store, item, Math.floor(now() / 1000));
         if (live.status === 'validating' && live.format === 'xlsx') throw new ApiError(409, 'Workbook validation is in progress. Try again when it finishes.');
         if (live.status === 'extracting') throw new ApiError(409, 'Extraction is in progress. Try again when it finishes.');
+        // Lock XLSX deletion against concurrent pending -> validating finalization.
+        if (live.format === 'xlsx' && live.status !== 'failed' &&
+            !await store.transition(id, live.status, 'failed', { error: 'Workbook deletion in progress. Retry deletion if needed.' })) {
+          throw new ApiError(409, 'Workbook state changed. Retry deletion.');
+        }
         // Keep metadata until all private objects are removed; a failed delete remains retriable.
         if (item.recordCount > 0) await removeDatasetIndex(item.key, item.recordCount, objects);
         if (item.format === 'xlsx') await removeWorkbook(item, objects);

@@ -159,6 +159,7 @@ function numberStyle(id: number, custom: Map<number, string>): NumberStyle {
     if (/[年月日]|[ydhs]|m{2,}/.test(bare.replace(/\[[^\]]*\]/g, ''))) return { kind: 'date', format: code };
     if (/[$€£₹¥]|\[\$/.test(code)) return { kind: 'currency', format: code };
     if (bare.includes('%')) return { kind: 'percent', format: code };
+    if (/^[0#?,.\-+() ;Ee]+$/.test(code) && /[0#?]/.test(code) && !/,\s*$/.test(code)) return { kind: 'number', format: code };
     // Keep arbitrary formats verbatim; don't sum unknown units or scaling.
     return { kind: 'formatted', format: code };
   }
@@ -180,7 +181,7 @@ function styles(entries: Map<string, string>): NumberStyle[] {
     const code = n.attrs.formatCode;
     if (!code || size(code) > 160 || custom.has(id)) fail();
     // Custom display formats may hide source data (e.g. ;;;).
-    if (/;{2,}/.test(code) || /\\\*|_x[0-9a-f]{4}_/i.test(code)) fail('Unsupported custom number format.');
+    if (code.split(';').some(section => !/[0#?@ymdhs]/i.test(section.replace(/"[^"]*"/g, ''))) || /;{2,}/.test(code) || /\\\*|_x[0-9a-f]{4}_/i.test(code)) fail('Unsupported custom number format.');
     custom.set(id, code);
   }
   return child(one(root, 'cellXfs'), 'xf').map(n => numberStyle(int(n.attrs.numFmtId ?? '0', 65535), custom));
@@ -188,7 +189,7 @@ function styles(entries: Map<string, string>): NumberStyle[] {
 function value(n: Xml, strings: string[], formats: NumberStyle[]): WorkbookCell {
   if (n.children.some(c => c.name !== 'v' && c.name !== 'is')) fail('Formulas and unsupported cell features are not accepted. Paste values into a new workbook.');
   const v = child(n, 'v'), inline = child(n, 'is');
-  if (v.length > 1 || inline.length > 1 || (v.length && inline.length)) fail();
+  if (v.length > 1 || inline.length > 1 || (v.length && inline.length) || v.some(n => n.children.length)) fail();
   const style = formats[int(n.attrs.s ?? '0', formats.length - 1)];
   const type = n.attrs.t ?? 'n', raw = v[0]?.text;
   if (type === 'inlineStr' && inline.length === 1) return { kind: 'text', value: rich(inline[0]) };
@@ -216,15 +217,15 @@ function cellColumn(ref: string | undefined, row: number): number {
 }
 const asText = (c: WorkbookCell): string | null => c.kind === 'blank' ? null : String(c.value);
 function worksheet(root: Xml, name: string, index: number, strings: string[], formats: NumberStyle[], date1904: boolean): Worksheet {
-  if (root.name !== 'worksheet') fail();
+  if (root.name !== 'worksheet' || root.attrs.xmlns !== 'http://schemas.openxmlformats.org/spreadsheetml/2006/main') fail();
   const allowed = new Set(['sheetPr', 'dimension', 'sheetViews', 'sheetFormatPr', 'cols', 'sheetData', 'pageMargins', 'pageSetup', 'printOptions', 'headerFooter']);
   if (root.children.some(n => !allowed.has(n.name))) fail('Unsupported worksheet feature (filters, merged cells, links, drawings or protection). Save plain visible tables.');
   if (child(root, 'sheetFormatPr').some(n => truthy(n.attrs.zeroHeight)) ||
-      child(root, 'cols').flatMap(n => n.children).some(n => truthy(n.attrs.hidden) || n.attrs.width === '0' || truthy(n.attrs.collapsed))) fail('Hidden rows or columns are not accepted.');
+      child(root, 'cols').flatMap(n => n.children).some(n => truthy(n.attrs.hidden) || n.attrs.width !== undefined && Number(n.attrs.width) === 0 || truthy(n.attrs.collapsed))) fail('Hidden rows or columns are not accepted.');
   const rows: WorkbookRow[] = [];
   let width = 0, previous = 0;
   for (const row of one(root, 'sheetData').children) {
-    if (row.name !== 'row' || truthy(row.attrs.hidden) || row.attrs.ht === '0' || truthy(row.attrs.collapsed)) fail('Hidden or unsupported worksheet rows are not accepted.');
+    if (row.name !== 'row' || truthy(row.attrs.hidden) || row.attrs.ht !== undefined && Number(row.attrs.ht) === 0 || truthy(row.attrs.collapsed)) fail('Hidden or unsupported worksheet rows are not accepted.');
     const r = int(row.attrs.r, L.rows + 1, 1);
     if (r <= previous || row.children.some(c => c.name !== 'c')) fail();
     previous = r;
@@ -274,12 +275,14 @@ export function parseWorkbook(bytes: Uint8Array, name: string): ParsedWorkbook {
       }
     }
     const book = required('xl/workbook.xml'), rels = required('xl/_rels/workbook.xml.rels');
-    if (book.name !== 'workbook' || book.children.some(n => !['fileVersion', 'workbookPr', 'bookViews', 'sheets', 'definedNames', 'calcPr'].includes(n.name)) ||
+    if (book.name !== 'workbook' || book.attrs.xmlns !== 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' || book.children.some(n => !['fileVersion', 'workbookPr', 'bookViews', 'sheets', 'definedNames', 'calcPr'].includes(n.name)) ||
         child(book, 'definedNames').some(n => n.children.length)) fail('Unsupported workbook feature. Use a plain workbook with no named ranges or links.');
     const date1904 = child(book, 'workbookPr').some(n => truthy(n.attrs.date1904));
     const sheetNodes = one(book, 'sheets').children;
     if (!sheetNodes.length || sheetNodes.length > L.sheets) limit();
-    const strings = entries.has('xl/sharedStrings.xml') ? child(required('xl/sharedStrings.xml'), 'si').map(rich) : [];
+    const stringTable = entries.has('xl/sharedStrings.xml') ? required('xl/sharedStrings.xml') : undefined;
+    if (stringTable && (stringTable.name !== 'sst' || stringTable.children.some(n => n.name !== 'si'))) fail();
+    const strings = stringTable ? child(stringTable, 'si').map(rich) : [];
     if (strings.length > L.cells) limit();
     const formats = styles(entries);
     const used = new Set<string>(), names = new Set<string>(), records: GrievanceRecord[] = [], provenance: ParsedWorkbook['provenance'] = [];
@@ -305,13 +308,25 @@ export function parseWorkbook(bytes: Uint8Array, name: string): ParsedWorkbook {
     for (const sheet of sheets) {
       if (sheet.info.kind !== 'grievance') continue;
       const keys = sheet.headers.map(c => mapHeader(asText(c) ?? ''));
-      const objects = sheet.data.map(r => Object.fromEntries(keys.flatMap((k, i) => k ? [[k, asText(r.cells[i])]] : [])));
+      const objects = sheet.data.map(r => Object.fromEntries(keys.flatMap((k, i) => {
+        if (!k) return [];
+        const cell = r.cells[i];
+        // Excel date serials remain exact in the sheet. Map only unambiguous
+        // calendar dates to grievance date fields (serial 60 is fictitious).
+        if ((k === 'submittedAt' || k === 'respondedAt') && cell.kind === 'date') {
+          const n = Number(cell.value);
+          const epoch = sheet.date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, n < 60 ? 31 : 30);
+          if (!Number.isInteger(n) || n < 0 || n > 2958465 || !sheet.date1904 && n === 60) return [[k, null]];
+          return [[k, new Date(epoch + n * 86400000).toISOString().slice(0, 10)]];
+        }
+        return [[k, asText(cell)]];
+      })));
       const parsed = parseJsonImport(name, JSON.stringify(objects));
       if (parsed.records.length !== sheet.data.length || parsed.rejectedRows.length || parsed.duplicates.length || parsed.emptyRows) fail('Every grievance worksheet row requires a unique case ID and complaint text.');
       parsed.records.forEach((record, i) => {
         if (ids.has(record.id)) fail('Duplicate grievance IDs across worksheets are not accepted.');
         ids.add(record.id);
-        const mappedRecord = { ...record, originalFileName: name, isSyntheticDemo: false,
+        const mappedRecord: GrievanceRecord = { ...record, sourceType: 'xlsx', originalFileName: name, isSyntheticDemo: false,
           worksheetSource: { sheetIndex: sheet.info.index, sheetName: sheet.info.name, row: sheet.data[i].row } };
         validateRecordBounds(mappedRecord);
         records.push(mappedRecord);

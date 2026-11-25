@@ -186,7 +186,7 @@ export function createDocumentChatApi(
         submittedAt: record.submittedAt ?? null, respondedAt: record.respondedAt ?? null,
       })));
       if (utf8Length(source) > MAX_SOURCE_BYTES) {
-        throw new ChatHttpError(422, 'Document exceeds the current AI context limit. Open a shorter complaint or smaller file.');
+        throw new ChatHttpError(422, sheet ? 'Worksheet context exceeds the current AI limit. Select a single row or upload a smaller table.' : 'Document exceeds the current AI context limit. Open a shorter complaint or smaller file.');
       }
       const prompt = 'Untrusted source records from the authenticated uploaded file (JSON):\n' + source +
         '\n\nConversation, last item is the current operator instruction (JSON):\n' +

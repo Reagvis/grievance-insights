@@ -698,7 +698,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
               <div><strong>Private workbooks</strong>
                 {readyFiles.filter(f => f.format === 'xlsx').map(f => <div key={f.id}>
                   <span>{f.name} — {(f.sheets ?? []).map(s => s.name + ' (' + s.rows + ' rows × ' + s.columns + ' columns, ' + s.kind + ')').join('; ')}</span>
-                  {' '}<button type="button" className="link-button" onClick={() => setAssistantOpen(true)}>Ask Assistant</button>
+                  {' '}<button type="button" className="link-button" onClick={() => setAssistantOpen(true)}>Open Assistant (choose worksheet)</button>
                   {' '}<button type="button" className="link-button" onClick={() => {
                     if (window.confirm('Delete this workbook and all its worksheets and grievance records?')) void removeProblemFiles([f.id]);
                   }}>Delete workbook</button>
@@ -725,7 +725,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
           <main className="main" id="main">
             <div className="main-inner">
               <EmptyState icon={<FileSearch size={28} aria-hidden />} action={<button type="button" className="btn btn-primary" onClick={() => goToPage('upload')}>Upload complaints</button>}>
-                No complaints yet. Upload a file to see its complaints here.
+                No complaints yet. General Excel tables are available in the Assistant and are not counted as complaints.
               </EmptyState>
             </div>
           </main>
