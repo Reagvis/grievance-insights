@@ -218,6 +218,12 @@ echo "Previous frontend entry point archived locally."
 
 If \`GetFunction\` or \`GetObjectVersion\` is denied, **stop** and report only the access-denied operation; do not modify IAM or ask for broad permissions automatically. Do **not** share rollback archives or signed URLs in chat or GitHub. Before actual release, confirm that all old hashed assets referenced by this HTML are still present in S3 (including lazily loaded chunks), keep the local backup directory secure, and document a reviewed restore procedure. An old \`index.html\` by itself is not a full static-site backup. On deployment day, regenerate a **fresh exact Terraform plan** against the chosen artifact paths and review it again rather than applying a stale saved plan.
 
+### Gate C operator recovery verification (2026-11-25)
+
+**Read-only backup acquisition PASSED.** The owner supplied terminal output reporting five `PASS` results for **currently deployed** `auth-api`, `datasets-api`, `analyses-api`, `analyses-worker` and `extractor` ZIPs. The local backup script independently compared each downloaded archive's SHA-256 against previously inventoried **deployed** Lambda `CodeSha256` and verified all ZIP entries. Backups were stored privately under `$HOME/task23-rollback.FdtpquVQ`; the location identifies operator-local material only, not any public artifact. The versioned old `index.html` was retrieved using S3 `VersionId` **`GhD4CoA8agy8Qz89LRLNUrgqp1Yuwdo5`** with returned ETag `"a9885eddf419437e0f64df337abbd320"`, and passed the script's non-empty file check. No AWS resources were changed. Full provenance is recorded on [Issue #54](https://github.com/Reagvis/grievance-insights/issues/54#issuecomment-7157145897).
+
+**Still outstanding before rollback is judged complete:** verify that all old `index.html`-referenced versioned or immutable assets (including dynamic JavaScript chunks, fonts and workers) remain present in the static S3 bucket; keep full backups private; prepare a separately approved, controlled restore sequence and account for pre-release XLSX datasets if a backend downgrade becomes necessary. Confirm that packaging/frontend build actually ran under Node 22, not the previously shown Node 24. Attribute-scope review of Terraform passed, but the needless `auth_api` filename-only update should not be accepted without a release decision. **Release remains HOLD pending fresh exact plan and separate explicit owner approval.**
+
 ## Gate D — separately authorized release sequence and focused acceptance
 
 **HOLD; nothing below has been executed or authorized by the present readiness review.** Only after Gates A–C are accepted and the owner explicitly approves deployment:
@@ -240,7 +246,7 @@ If \`GetFunction\` or \`GetObjectVersion\` is denied, **stop** and report only t
 | Runtime-sized Lambda ZIPs, offline OCR packaging self-check | **PASS**: five ZIP sizes/integrity and SHA-256 values audited; packaged OCR 94% on prior Node 24 run. Node22 compatibility **PENDING confirmation** |
 | Realistic XLSX near-limit finalize latency/memory; browser Telugu fidelity | **PENDING** |
 | Actual AWS code hashes, read-only remote Terraform plan, absence of infrastructure drift | **Live account and 5 Lambda hashes VERIFIED** (1 matches, 4 differ); read-only remote plan/drift review **PENDING Gate B** |
-| Live rollback binaries and S3 VersionId backups | **Current `index.html` VersionId RECORDED**; old Lambda ZIPs and full static assets **PENDING Gate C** |
+| Live rollback binaries and S3 VersionId backups | **PASS**: all five actual deployed Lambda ZIPs backed up and SHA/CRC verified, previous index.html version retrieved; full old hashed/static asset availability and controlled rollback rehearsal **PENDING** |
 | Real-model Qwen chart UX and authentication smoke in pilot | **PENDING separately approved release** |
 | Any actual AWS deployment | **NOT AUTHORIZED / NOT EXECUTED** |
 
