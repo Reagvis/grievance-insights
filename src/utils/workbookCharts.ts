@@ -46,13 +46,14 @@ export function exactText(d: Decimal): string {
   return sign + (d.scale ? digits.slice(0, -d.scale) + '.' + digits.slice(-d.scale) : digits);
 }
 const stringValue = (cell: WorkbookCell | undefined) => !cell || cell.kind === 'blank' ? '' : String(cell.value);
-const labelOf = (s: string) => s.trim().replace(/\s+/gu, ' ').slice(0, 90);
+const labelOf = (s: string) => s.trim().replace(/\s+/gu, ' ');
 type NumericCell = Extract<WorkbookCell, { format: string }>;
 const isNumeric = (cell: WorkbookCell | undefined): cell is NumericCell =>
   !!cell && (cell.kind === 'number' || cell.kind === 'currency' || cell.kind === 'percent');
 const identifier = /(?:^|[\s_-])(id|code|identifier|reference|ref|phone|zip|pin|serial)(?:$|[\s_-])/i;
 const temporal = /\b(month|date|period|year|quarter|week)\b/i;
 const metricName = /\b(amount|total|spend|sales|revenue|budget|cost|expense|quantity|count|value|volume|income|price|rate)\b/i;
+const categoryName = /\b(category|categories|district|department|status|type|region|area|group|team|product|sector|location|division|service|class)\b/i;
 const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function timeValue(cell: WorkbookCell | undefined, heading: string, date1904: boolean): { label: string; order: number } | null {
@@ -63,7 +64,14 @@ function timeValue(cell: WorkbookCell | undefined, heading: string, date1904: bo
     if (month >= 0) return { label: months[month], order: month };
     if (/^\d{4}-\d{2}(?:-\d{2})?$/.test(input)) {
       const year = Number(input.slice(0,4)), mo = Number(input.slice(5,7));
-      if (year >= 1900 && year < 10000 && mo >= 1 && mo <= 12) return { label: input.slice(0,7), order: year * 12 + mo };
+      if (year >= 1900 && year < 10000 && mo >= 1 && mo <= 12) {
+        if (input.length === 10) {
+          const day = Number(input.slice(8,10));
+          const test = new Date(Date.UTC(year,mo-1,day));
+          if (test.getUTCFullYear() !== year || test.getUTCMonth() !== mo-1 || test.getUTCDate() !== day) return null;
+        }
+        return { label: input.slice(0,7), order: year * 12 + mo };
+      }
     }
   }
   if (cell.kind === 'number' && /\byear\b/i.test(heading) && /^\d{4}$/.test(cell.value)) {
@@ -103,7 +111,11 @@ export function buildWorkbookChart(sheet: Worksheet, question: string): ChartDec
   const dates = columns.filter(c => temporal.test(c.name) &&
     sheet.data.some(r => timeValue(r.cells[c.index],c.name,sheet.date1904) !== null));
   const categories = columns.filter(c => !identifier.test(c.name) &&
-    sheet.data.some(r => ['text','boolean','iso-date'].includes(r.cells[c.index]?.kind ?? 'blank')));
+    sheet.data.some(r => ['text','boolean','iso-date'].includes(r.cells[c.index]?.kind ?? 'blank')) &&
+    (categoryName.test(c.name) || (() => {
+      const values = sheet.data.map(r => labelOf(stringValue(r.cells[c.index]))).filter(Boolean);
+      return values.length > 1 && new Set(values).size < values.length && new Set(values).size <= 12;
+    })()));
   const wantTrend = /\b(trend|monthly|timeline|over time|by month|by date|line|yearly)\b/i.test(question) || /నెలవారీ/u.test(question);
   const wantCategory = /\b(category|categories|compare|comparison|distribution|share|pie|donut)\b/i.test(question);
   const wantShare = /\b(pie|donut|share|distribution|proportion)\b/i.test(question);
@@ -126,6 +138,7 @@ export function buildWorkbookChart(sheet: Worksheet, question: string): ChartDec
     const time = isTime ? timeValue(dimensionCell, dimension.name, sheet.date1904) : null;
     const label = isTime ? time?.label ?? '' : labelOf(stringValue(dimensionCell));
     if (!label) { excluded++; continue; }
+    if (label.length > 90) return { reason: 'Category labels longer than 90 characters cannot be safely charted without losing distinctions.' };
     let amount: Decimal = {units:1n,scale:0};
     if (metric) {
       const cell = row.cells[metric.index];
@@ -158,7 +171,7 @@ export function buildWorkbookChart(sheet: Worksheet, question: string): ChartDec
   const unit = !metric ? 'source rows (count)' : format?.startsWith('currency:') ?
     'currency; Excel format ' + format.slice(9) : format?.startsWith('percent:') ?
     'percent (%)' : 'numeric source values; Excel format ' + (format?.slice(7) ?? 'General');
-  const kind: ChartKind = isTime ? 'line' : wantShare && ordered.length<=6 && values.every(n=>n>0) ? 'pie' : 'bar';
+  const kind: ChartKind = isTime ? 'line' : wantShare && !format?.startsWith('percent:') && ordered.length<=6 && values.every(n=>n>0) ? 'pie' : 'bar';
   const measure = metric?.name ?? 'Row count';
   return {chart:{
     kind, title:(kind==='line'?'Trend of ':kind==='pie'?'Share of ':'Comparison of ')+measure+' by '+dimension.name,
