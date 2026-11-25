@@ -301,7 +301,7 @@ function ChatConversation({ store, service, scopes, scope, onScopeChange, onRowC
                       )}
                     </div>
                   )}
-                  {t.status === 'done' && t.content && scope.scope.kind === 'document' && scope.scope.sheetIndex !== undefined && (
+                  {t.status === 'done' && t.content && service.kind === 'ai' && !disabled && scope.scope.kind === 'document' && scope.scope.sheetIndex !== undefined && (
                     <WorksheetChartForTurn key={JSON.stringify([active.id,t.id,scope.scope,'chart'])}
                       scope={scope.scope}
                       question={active.turns[index - 1]?.role === 'user' ? active.turns[index - 1].content : ''}/>

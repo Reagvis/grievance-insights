@@ -145,7 +145,7 @@ describe('Task 23C exact, source-grounded worksheet charts',()=>{
   });
   it('requires the private owner-checked worksheet API, rejects cross-user 404 and mismatched sheet identity',async()=>{
     const sheet = worksheet(['Category','Value'],[[textCell('A'),number('4')],[textCell('B'),number('5')]]);
-    const unauthorized = vi.fn(async () => new Response(JSON.stringify({error:'Worksheet not found.'}),{status:404}));
+    const unauthorized = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({error:'Worksheet not found.'}),{status:404}));
     vi.stubGlobal('fetch',unauthorized);
     const ac = new AbortController();
     await expect(loadAuthorizedChart('private-A',0,'Compare categories',ac.signal)).rejects.toThrow('Worksheet not found');
