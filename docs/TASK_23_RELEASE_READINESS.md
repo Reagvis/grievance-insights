@@ -138,6 +138,22 @@ terraform -chdir=infra show -json "$PLAN" |
 
 Send only its output. The plan file itself is sensitive; retain it privately and do not commit it. Gate B action summary and the unexpected auth update were also recorded in [Issue #54](https://github.com/Reagvis/grievance-insights/issues/54#issuecomment-7156996403). **Release remains HOLD**, with actual deployed Lambda rollback ZIPs, full frontend static assets and Node.js 22 packaging/build confirmation still outstanding.
 
+## Gate B attribute-level verdict (2026-11-25): code-package updates only
+
+The operator inspected the saved Terraform plan, without applying it. **Exactly five Lambda resources update; zero adds/deletions/replacements**. Their changed attribute keys are:
+
+| Lambda | Changed Terraform fields | Proposed source-code hash |
+|---|---|---|
+| analysis_api | filename, last_modified, source_code_hash | different; matches audited new artifact |
+| analysis_worker | filename, last_modified, source_code_hash | different; matches audited new artifact |
+| auth_api | **filename, last_modified only** | **unchanged**, identical to live CodeSha256 |
+| datasets_api | filename, last_modified, source_code_hash | different; matches audited new artifact |
+| extractor | filename, last_modified, source_code_hash | different; matches audited new artifact |
+
+**Interpretation:** \`filename\` is a **local deployment ZIP path**, \`source_code_hash\` is the provider-tracked package fingerprint, and \`last_modified\` is a derived timestamp. The unchanged authentication code hash demonstrates **no proposed auth code change**; the metadata-only filename difference explains why Terraform plans an auth update. Its exact before/after path strings were not inspected, so do not assert exactly what caused the drift. **Terraform could still submit a redundant identical authentication ZIP**. The absence of runtime/configuration/IAM/route changes clears the **attribute-scope review**, but does not prove safety of an auth republish, eliminate deployment risk or authorize applying the current plan.
+
+Review decision: **GO to rollback-binary preparation; HOLD release**. Confirm runtime packaging/build against Node 22 (last explicitly logged Node version 24), secure exact **currently deployed** ZIPs and old frontend versions, decide explicitly how to handle the auth filename-only update (prefer avoiding needless republish via a separately reviewed strategy; never use state surgery or blanket ignores), and only then generate/review a fresh final plan. [Issue #54](https://github.com/Reagvis/grievance-insights/issues/54#issuecomment-7157048431) has the full exact digest and changed-attribute evidence.
+
 ## Gate C — rollback materials to prepare **before** an authorized deployment
 
 - Record exact deployment identity: selected `main` SHA, five artifact SHA-256 values, current AWS Lambda `CodeSha256`, function version/LastModified and current S3 `index.html` `VersionId`. The frontend bucket has versioning enabled and noncurrent versions are retained under the currently configured lifecycle (nominally 30 days).
