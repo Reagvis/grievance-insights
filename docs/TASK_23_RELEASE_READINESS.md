@@ -1,6 +1,22 @@
 # Task 23 — Pilot release readiness and rollback runbook
 
-Status: **Gate A PASSED** (Node 22 packaging/build operator-confirmed; five ZIP integrity/size/hash checks passed); **Gate B attribute-scope review PASSED** (0 create, 5 package-only Lambda updates, 0 destroy; redundant auth republish needs release decision); **Gate C backup acquisition and direct-entry-point consistency PASSED** (all five live Lambda ZIPs, versioned HTML and 41 static assets saved; 2 direct references verified). **Release on HOLD pending auth filename-path resolution, fresh exact plan and separate explicit deployment approval**. Updated 2026-11-25. Scope: live Grievance Insights pilot `https://telangana-gov-pilot.reagvis.com`; not eOffice. The currently operating Qwen pilot is not to be interrupted.
+Status: **DEPLOYED 2026-11-25 (operator-confirmed CLI)**: verified four-Lambda targeted Terraform apply (0 add/4 update/0 destroy), authentication unchanged, asset-first frontend S3 publish and CloudFront invalidation completed. **Live functional/browser smoke PENDING**; preserve rollback backups. Gate A/B/C passed before deployment. Updated 2026-11-25. Scope: live Grievance Insights pilot `https://telangana-gov-pilot.reagvis.com`; not eOffice. The currently operating Qwen pilot is not to be interrupted.
+
+## Task 23 live rollout (2026-11-25): completed per operator terminal
+
+User explicitly approved `Deploy task 23 now`. Owner ran the reviewed saved four-resource targeted Terraform plan in WSL; reported:
+
+```
+Apply complete! Resources: 0 added, 4 changed, 0 destroyed.
+PASS: All four Lambdas deployed; authentication unchanged
+PASS: Frontend published
+CloudFront invalidation: IAQ5G23F2RE35SB247G1I54HNQ
+SUCCESS: Task 23 deployment commands completed.
+```
+
+Targets: `aws_lambda_function.analysis_api`, `analysis_worker`, `datasets_api`, `extractor`. Exact Node22 ZIP artifacts were matched to plan digest before deploy, and the owner-reported script verified their expected AWS `CodeSha256` after apply. `auth_api` had no targeted change and remained hash-identical to earlier live baseline. Frontend static assets were uploaded asset-first, `index.html` last, CloudFront invalidation confirmed complete by the shell. No GitHub Actions, paid Bedrock inference, IAM, eOffice or unrelated AWS infrastructure changes were included. [Issue #54 deployment record](https://github.com/Reagvis/grievance-insights/issues/54#issuecomment-7157746928).
+
+**DO NOT treat deployment as functional acceptance.** Browser and synthetic XLSX smoke remain open: legacy PDF/CSV upload and Qwen chat, authentication/logout and owner isolation, two-sheet XLSX ingestion/selector/row selection, numeric chart fidelity and accessible table, Telugu labels, long-answer PDF/DOCX exports, error handling. Use synthetic records and avoid real government data. Any live paid-model inference requires separate permission/cost acceptance. Retain privately verified rollback archives (`$HOME/task23-rollback.FdtpquVQ`) and prior S3 `index.html` VersionId `GhD4CoA8agy8Qz89LRLNUrgqp1Yuwdo5` until the live pilot is accepted. Do not repeat Terraform apply for new smoke issues.
 
 ## Reviewed baseline and actual software delta
 
@@ -366,6 +382,6 @@ Only the names of changed fields and new package fingerprints should be shared, 
 | Actual AWS code hashes, read-only remote Terraform plan, absence of infrastructure drift | **PASS scope review**: live 5 Lambda hashes, full 0/5/0 package-only plan and exceptional targeted 0/4/0 Lambda-only plan checked; final targeted artifact hash validation and pre-apply AWS drift check **PENDING** |
 | Live rollback binaries and S3 VersionId backups | **PASS**: 5 live Lambda ZIPs SHA/CRC verified; versioned and current HTML byte-identical; 41 static assets captured, 2 direct HTML references verified. No rollback rehearsal or lazy-chunk browser smoke yet |
 | Real-model Qwen chart UX and authentication smoke in pilot | **PENDING separately approved release** |
-| Any actual AWS deployment | **NOT AUTHORIZED / NOT EXECUTED** |
+| Any actual AWS deployment | **DONE (operator terminal)**: 4 Lambda code updates, frontend published, CloudFront invalidation IAQ5G23F2RE35SB247G1I54HNQ; functional smoke PENDING |
 
-Release decision: **HOLD pending separate explicit deployment approval**. Node22 operator packaging/build, five-ZIP integrity/hash audit, full Terraform attribute-scope review, exceptional four-Lambda targeted plan address scope, and private live rollback backup acquisition are complete. Before any release, verify the exact targeted plan's final ZIP hashes/changed keys and recheck live drift, then obtain explicit authorization. No paid calls, production uploads, Terraform apply, CloudFront invalidation, GitHub Actions or eOffice changes under this document.
+Release decision: **DEPLOYMENT COMPLETED, LIVE ACCEPTANCE PENDING**. Verified four-Lambda code plan deployed and frontend published on 2026-11-25 per operator terminal output. Keep live rollback archives and older static assets until authentication, XLSX, chart, English/Telugu PDF/DOCX and legacy Qwen smoke pass. Do not reapply Terraform without a new reviewed plan. No paid calls, production uploads, Terraform apply, CloudFront invalidation, GitHub Actions or eOffice changes under this document.
