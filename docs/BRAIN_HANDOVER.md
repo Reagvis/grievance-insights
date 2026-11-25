@@ -2,6 +2,13 @@
 
 **Last updated:** 2026-11-24 (Asia/Kolkata)
 
+## FOCUSED WSL GATE — 2026-11-25: Task 23C 32/32 tests pass, build-only correction committed
+
+- Owner WSL on exact 23C source head `0c9dba2c6af6d309c58addb98cce4a148d69ab79` verified **4/4 test files and 32/32 focused tests passing** (`src/tests/workbook-charts.test.tsx` 14, `backend/datasets/workbook.test.ts` 6, `src/tests/workbook-chat.test.tsx` 4, `src/tests/assistant-export.test.tsx` 8). `npm ci --include=dev` reported 0 vulnerabilities. `npm run build:aws` failed solely at `src/utils/workbookCharts.ts:23` (`TS6133`: unused `MAX_POINTS`); no Vite bundle was produced in that run. The existing Rolldown invalid `@__PURE__` and Vite native-import warnings are nonfatal. This is operator-supplied test evidence, not independently reproduced by Brain.
+- Brain used authenticated GitHub connector to make a **single-line correction** in existing [draft PR #53](https://github.com/Reagvis/grievance-insights/pull/53): chart cardinality check now uses `groups.size > MAX_POINTS` instead of magic `12`, preserving behavior. Commit SHA **`40b768dfaa59a851fb6a1de7fd54a29dfae9c0b5`**, message `fix(charts): use named cardinality limit in aggregation guard [skip ci]`. Verified updated source file and PR head; PR stays draft/unmerged and live pilot unchanged.
+- **Next minimum operator check** in `~/src/grievance-insights-23c-review`: `git fetch origin feature/pilot-worksheet-charts-23c`; `git switch --detach 40b768dfaa59a851fb6a1de7fd54a29dfae9c0b5`; `git rev-parse HEAD`; `npm run build:aws`. No need repeat the 32 passing tests, full suite, backend typecheck, CI or browser harness because the correction only replaces an equivalent constant. If build passes, assess code-only merge approval separately. No AWS deploy, Actions dispatch, paid Bedrock inference or eOffice changes.
+
+---
 ## DELIVERY MILESTONE — 2026-11-25: Task 23C deterministic charts draft PR #53
 
 - **Owner's “proceed” instruction** after code-only Task 23D merge initiated Task **23C** in the same live Grievance Insights pilot (not eOffice). Read the complete [master Issue #45](https://github.com/Reagvis/grievance-insights/issues/45); opened [Issue #52 — deterministic worksheet charts](https://github.com/Reagvis/grievance-insights/issues/52) and implemented in separate branch `feature/pilot-worksheet-charts-23c` from merged `main` `e286d9499356a091addeb78fd4c9d673af84fd42`. Created [**draft PR #53**](https://github.com/Reagvis/grievance-insights/pull/53), source head **`0c9dba2c6af6d309c58addb98cce4a148d69ab79`**. All implementation commits include `[skip ci]`; PR is unmerged/undeployed and requires owner code-only merge permission later.
