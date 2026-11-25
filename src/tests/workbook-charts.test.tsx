@@ -119,6 +119,28 @@ describe('Task 23C exact, source-grounded worksheet charts',()=>{
     ]);
     expect(buildWorkbookChart(sheet,'Compare rates').reason).toMatch(/Repeated percentages/);
   });
+  it('does not add independent percentages without a common denominator',()=>{
+    const percent = (n: string): WorkbookCell => ({kind:'percent',value:n,format:'builtin:9'});
+    const sheet = worksheet(['Category','Rate'],[
+      [textCell('A'),percent('0.25')],[textCell('B'),percent('0.40')]
+    ]);
+    const chart = get(sheet,'Show share by category');
+    expect(chart.kind).toBe('bar');
+    expect(chart.points.map(p=>p.exact)).toEqual(['25.00','40.00']);
+    expect(chart.total).toBe('not additive');
+    expect(chart.note).toContain('common denominator');
+  });
+  it('rejects impossible calendar days rather than charting them as actual dates',()=>{
+    const sheet = worksheet(['Date','Amount'],[
+      [textCell('2026-01-15'),number('1')],
+      [textCell('2026-02-30'),number('80')],
+      [textCell('2026-03-02'),number('4')]
+    ]);
+    const chart = get(sheet,'Show monthly trend');
+    expect(chart.points.map(p=>p.label)).toEqual(['2026-01','2026-03']);
+    expect(chart.total).toBe('5');
+    expect(chart.excludedRows).toBe(1);
+  });
   it('renders safe SVG and accessible exact-value table with privacy source and export omission notice',()=>{
     const chart = get(worksheet(['Category','Count'],[
       [textCell('<script>alert(1)</script>'),number('7')],[textCell('తెలుగు'),number('11')]
