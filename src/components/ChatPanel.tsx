@@ -2,6 +2,7 @@ import { Bot, LoaderCircle, MessageSquarePlus, RotateCcw, Send, Square, Triangle
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { ChatScope, ChatService, Citation } from '../services/chat';
 import { AssistantAnswer, AssistantAnswerActions } from './AssistantAnswer';
+import { WorksheetChartForTurn } from './WorksheetChart';
 
 /* ───────────── Conversation state (memory only: real complaint text is never persisted in the browser) ───────────── */
 
@@ -299,6 +300,11 @@ function ChatConversation({ store, service, scopes, scope, onScopeChange, onRowC
                         ),
                       )}
                     </div>
+                  )}
+                  {t.status === 'done' && t.content && scope.scope.kind === 'document' && scope.scope.sheetIndex !== undefined && (
+                    <WorksheetChartForTurn key={JSON.stringify([active.id,t.id,scope.scope,'chart'])}
+                      scope={scope.scope}
+                      question={active.turns[index - 1]?.role === 'user' ? active.turns[index - 1].content : ''}/>
                   )}
                   <AssistantAnswerActions key={JSON.stringify([active.id, t.id, scope.scope])}
                     turn={t} question={active.turns[index - 1]?.role === 'user' ? active.turns[index - 1].content : ''}
