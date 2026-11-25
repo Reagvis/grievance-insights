@@ -277,6 +277,37 @@ The versioned old `live-index.html` and the full static S3 snapshot's `live-fron
 
 **Next non-deploy step:** inspect the redundant authentication Lambda `filename` old/new values in the *saved*, unapplied Terraform plan. This source uses `abspath(...)` around each ZIP path, suggesting checkout location drift, but do not claim root cause until the stored path values are observed. The auth `source_code_hash` remains identical; there is no auth code/config change in the plan. Decide whether to avoid a needless auth re-publish under a separately reviewed, safe deployment approach, or explicitly accept the minor republish risk with verified rollback. A fresh exact plan and **explicit owner deployment approval** are necessary before any apply or frontend publish. No real data or paid inference is required at this gate.
 
+## Auth filename drift explained and exceptional four-Lambda plan gate (2026-11-25)
+
+The operator inspected the private saved Terraform plan's *authentication Lambda filename* values:
+
+```
+before: /home/runner/work/grievance-insights/grievance-insights/artifacts/auth-lambda.zip
+after:  /home/vatjksre/src/grievance-insights-task23-release/artifacts/auth-lambda.zip
+```
+
+The earlier GitHub Actions runner path is now compared with a different local WSL worktree. This **fully explains the `filename` diff**, and `last_modified` is provider-computed. Authentication code `source_code_hash` remains unchanged and matches live `CodeSha256`. This is **deployment path drift, not changed auth code or configuration**. Do not republish the working auth function merely to reconcile the absolute ZIP path. Documented on [Issue #54](https://github.com/Reagvis/grievance-insights/issues/54#issuecomment-7157417646).
+
+The safe next *planning-only* experiment is an exceptional **targeted read-only Terraform plan** for the four actual changed-code Lambdas, with the full un-targeted 0/5/0 plan retained as drift context. Terraform recommends resource targeting only in exceptional situations because dependencies may be included and unrelated actions excluded; therefore inspect **all** planned addresses/attributes and never apply without fresh exact owner authorization. This approach does not fix the persistent path drift in full plans; a longer-term path strategy should receive a separate infrastructure review, not state surgery or blanket ignoring. No Terraform files are changed by this review.
+
+```bash
+cd ~/src/grievance-insights-task23-release
+PLAN_DIR="$(mktemp -d)"
+chmod 700 "$PLAN_DIR"
+PLAN="$PLAN_DIR/task23-four-lambda.tfplan"
+terraform -chdir=infra plan -input=false \
+  -target=aws_lambda_function.datasets_api \
+  -target=aws_lambda_function.analysis_api \
+  -target=aws_lambda_function.analysis_worker \
+  -target=aws_lambda_function.extractor \
+  -out="$PLAN"
+terraform -chdir=infra show -json "$PLAN" |
+  jq -r '.resource_changes[]? | select(.change.actions != ["no-op"]) |
+  "\(.address)  \(.change.actions | join(","))"'
+```
+
+**Do not apply this plan.** Send the action summary (not the plan file). Only if it shows the expected four non-destructive Lambda code updates, request a separate explicit release decision; preserve all deployed rollback ZIPs and current frontend snapshot. If any unexpected dependencies or unrelated resource actions appear, HOLD. User must still explicitly authorize any AWS change, paid Bedrock verification, or frontend publish.
+
 ## Gate D — separately authorized release sequence and focused acceptance
 
 **HOLD; nothing below has been executed or authorized by the present readiness review.** Only after Gates A–C are accepted and the owner explicitly approves deployment:
