@@ -71,7 +71,7 @@ export function WorksheetChart({ chart }: { chart: ChartSpec }) {
         <td className="worksheet-chart-number">{p.exact}</td>
         <td><details><summary>{p.rows.length+' row(s)'}</summary><span>{p.rows.join(', ')}</span></details></td>
       </tr>)}</tbody>
-      <tfoot><tr><th scope="row">Total included</th><td className="worksheet-chart-number">{chart.total}</td><td>{chart.coveredRows+' rows'}</td></tr></tfoot>
+      <tfoot><tr><th scope="row">{chart.total === 'not additive' ? 'Total not applicable' : 'Total included'}</th><td className="worksheet-chart-number">{chart.total}</td><td>{chart.coveredRows+' rows'}</td></tr></tfoot>
     </table></div>
     <p className="worksheet-chart-note">{chart.note}</p>
     <p className="worksheet-chart-export-warning">PDF and Word downloads include the written Assistant answer only; this chart is not included.</p>

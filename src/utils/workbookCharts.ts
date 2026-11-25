@@ -171,15 +171,16 @@ export function buildWorkbookChart(sheet: Worksheet, question: string): ChartDec
   const unit = !metric ? 'source rows (count)' : format?.startsWith('currency:') ?
     'currency; Excel format ' + format.slice(9) : format?.startsWith('percent:') ?
     'percent (%)' : 'numeric source values; Excel format ' + (format?.slice(7) ?? 'General');
-  const kind: ChartKind = isTime ? 'line' : wantShare && !format?.startsWith('percent:') && ordered.length<=6 && values.every(n=>n>0) ? 'pie' : 'bar';
+  const percentMeasure = format?.startsWith('percent:') ?? false;
+  const kind: ChartKind = isTime ? 'line' : wantShare && !percentMeasure && ordered.length<=6 && values.every(n=>n>0) ? 'pie' : 'bar';
   const measure = metric?.name ?? 'Row count';
   return {chart:{
     kind, title:(kind==='line'?'Trend of ':kind==='pie'?'Share of ':'Comparison of ')+measure+' by '+dimension.name,
     sheetIndex:sheet.info.index,sheetName:sheet.info.name,dimension:dimension.name,measure,unit,
     points:ordered.map(g=>({label:g.label,exact:exactText(g.sum),rows:g.rows})),
-    total:exactText(total),coveredRows:covered,sourceRows:sheet.info.rows,excludedRows:excluded,
+    total:percentMeasure ? 'not additive' : exactText(total),coveredRows:covered,sourceRows:sheet.info.rows,excludedRows:excluded,
     note:'Calculated from exact typed worksheet values, independent of the Assistant model. '+
       (excluded ? excluded+' row(s) excluded (missing/incompatible labels or values). ':'All data rows included. ')+
-      (kind==='pie'?'Share denominator is the sum of all included positive values.':'SVG geometry is approximate; the data table contains exact values.')
+      (kind==='pie'?'Share denominator is the sum of all included positive values.': percentMeasure ? 'Percentage values cannot be summed across categories without a common denominator.' : 'SVG geometry is approximate; the data table contains exact values.')
   }};
 }
