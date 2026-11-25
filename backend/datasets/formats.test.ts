@@ -279,7 +279,7 @@ describe('extraction failure, retry and recovery', () => {
 describe('validation, limits and security across formats', () => {
   it('rejects unsupported types and per-format oversize at upload time', async () => {
     const s = service();
-    expect((await s.upload('x.xlsx', enc('x'))).statusCode).toBe(400);
+    expect((await s.upload('x.xls', enc('x'))).statusCode).toBe(400);
     expect((await s.upload('x.exe', enc('x'))).statusCode).toBe(400);
     expect((await s.upload('x.txt', enc('x'), LIMITS.bytes.txt + 1)).statusCode).toBe(413);
     expect((await s.upload('x.docx', enc('x'), LIMITS.bytes.docx + 1)).statusCode).toBe(413);

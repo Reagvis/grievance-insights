@@ -265,7 +265,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
   const chatFile = AWS_AUTH_ENABLED && all
     ? (selectedId && all.sourceOf.get(selectedId)
       ? readyFiles.find(f => f.id === all.sourceOf.get(selectedId)!.datasetId)
-      : undefined) ?? readyFiles.find(f => all.recordsByDataset.has(f.id))
+      : undefined) ?? readyFiles.find(f => all.recordsByDataset.has(f.id) && (f.format !== 'xlsx' || f.sheets?.length))
     : undefined;
   const chatFileRecords = chatFile && all?.recordsByDataset.get(chatFile.id);
   const selectedOriginalIndex = chatFileRecords && selectedId && all
@@ -300,13 +300,23 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
         // File keys identify the actual dataset, regardless of navigation.
         for (const file of readyFiles) {
           if (!all?.recordsByDataset.has(file.id)) continue;
+          if (file.format === 'xlsx') {
+            for (const sheet of file.sheets ?? []) list.push({
+              key: `file:${file.id}:sheet:${sheet.index}`,
+              label: `${file.name} / ${sheet.name} (${sheet.rows} rows × ${sheet.columns} columns; ${sheet.kind === 'table' ? 'table' : 'grievances'})`,
+              scope: { kind: 'document', datasetId: file.id, sheetIndex: sheet.index },
+              rowNumbers: sheet.rowNumbers,
+            });
+            continue;
+          }
           list.push({
             key: `file:${file.id}`,
             label: `File: ${file.name} (${formatCount(file.recordCount)} ${file.recordCount === 1 ? 'complaint' : 'complaints'})`,
             scope: { kind: 'document', datasetId: file.id },
           });
         }
-      } else {
+      }
+      if (!list.length) {
         // Chat is explicitly disabled until a readable file is available.
         list.push({ key: 'file', label: 'No document selected', scope: { kind: 'document', datasetId: '' } });
       }
@@ -519,7 +529,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
     await reloadAll();
     if (files > 0) {
       resetForDataset();
-      notify('success', `Added ${formatCount(records)} ${records === 1 ? 'complaint' : 'complaints'} from ${files} ${files === 1 ? 'file' : 'files'}`);
+      notify('success', `Uploaded ${files} ${files === 1 ? 'file' : 'files'}; ${formatCount(records)} grievance records added. Workbooks are available in the Assistant.`);
     }
     if (failed === 0 && files > 0) navigate({ page: 'complaints', noteId: null });
   };
@@ -684,6 +694,17 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
 
         {AWS_AUTH_ENABLED && pagesReady && route.page === 'complaints' && all && (
           <div className="file-banners">
+            {readyFiles.some(f => f.format === 'xlsx') && <section className="file-banner" aria-label="Private workbooks">
+              <div><strong>Private workbooks</strong>
+                {readyFiles.filter(f => f.format === 'xlsx').map(f => <div key={f.id}>
+                  <span>{f.name} — {(f.sheets ?? []).map(s => s.name + ' (' + s.rows + ' rows × ' + s.columns + ' columns, ' + s.kind + ')').join('; ')}</span>
+                  {' '}<button type="button" className="link-button" onClick={() => setAssistantOpen(true)}>Ask Assistant</button>
+                  {' '}<button type="button" className="link-button" onClick={() => {
+                    if (window.confirm('Delete this workbook and all its worksheets and grievance records?')) void removeProblemFiles([f.id]);
+                  }}>Delete workbook</button>
+                </div>)}
+              </div>
+            </section>}
             <FileProblems files={all.files.filter((f) => f.status === 'failed' || f.status === 'pending_upload')} onRemove={(ids) => void removeProblemFiles(ids)} />
             {all.files.some((f) => f.status === 'extracting' || f.status === 'validating') && (
               <div className="file-banner file-banner--working" role="status">
@@ -753,7 +774,7 @@ export default function App({ summaryService: summaryOverride, authUser, onLogou
                 filter={summaryFilter}
                 onChange={setSummaryFilter}
                 includedCount={included.length}
-                files={AWS_AUTH_ENABLED ? readyFiles.map((f) => ({ id: f.id, name: f.name, count: f.recordCount })) : undefined}
+                files={AWS_AUTH_ENABLED ? readyFiles.filter(f => f.recordCount > 0).map((f) => ({ id: f.id, name: f.name, count: f.recordCount })) : undefined}
                 fileIdOf={AWS_AUTH_ENABLED ? fileIdOf : undefined}
               />
               <div id="deterministic-report">

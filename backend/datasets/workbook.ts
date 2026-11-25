@@ -44,7 +44,7 @@ export async function readWorksheet(item: Metadata, objects: PrivateObjects, ind
   const bytes = await objects.read(worksheetKey(item.key, index));
   if (bytes.length > L.sheetBytes) throw new Error('Worksheet index exceeds bounds');
   const sheet = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as Worksheet;
-  if (sheet.version !== 1 || JSON.stringify(sheet.info) !== JSON.stringify(info) ||
+  if (sheet.version !== 1 || sheet.info.index !== info.index || sheet.info.name !== info.name || sheet.info.kind !== info.kind || sheet.info.rows !== info.rows || sheet.info.columns !== info.columns ||
       !Array.isArray(sheet.headers) || sheet.headers.length !== info.columns ||
       !Array.isArray(sheet.data) || sheet.data.length !== info.rows ||
       sheet.data.some((r, i) => r.row !== info.rowNumbers[i] || !Array.isArray(r.cells) || r.cells.length !== info.columns)) throw new Error('Invalid worksheet index');

@@ -171,7 +171,7 @@ import { ingestDocument, type IngestResult } from './index';
  */
 export async function ingestWithOcr(input: { name: string; bytes: Uint8Array; engine: () => Promise<OcrEngine>; pdfjs?: PdfJs; deadlineMs?: number }): Promise<IngestResult> {
   const first = await ingestDocument({ name: input.name, bytes: input.bytes, pdfjs: input.pdfjs });
-  if (first.kind === 'complete') return first;
+  if (first.kind !== 'needs_ocr') return first;
   const engine = await input.engine();
   try {
     const ocr = await ocrPdfPages(input.bytes, first.ocrPages, engine, input.pdfjs, input.deadlineMs);

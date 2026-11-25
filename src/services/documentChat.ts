@@ -28,6 +28,8 @@ export class DocumentChatService implements ChatService {
         messages: req.messages,
         ...(scope.recordId ? { recordId: scope.recordId } : {}),
         ...(scope.recordIndex !== undefined ? { recordIndex: scope.recordIndex } : {}),
+        ...(scope.sheetIndex !== undefined ? { sheetIndex: scope.sheetIndex } : {}),
+        ...(scope.row !== undefined ? { row: scope.row } : {}),
       }),
       signal: req.signal,
     });

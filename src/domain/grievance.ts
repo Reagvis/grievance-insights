@@ -36,6 +36,8 @@ export type GrievanceRecord = {
   status: CaseStatus;
   originalFileName?: string | null;
   sourceType: SourceType;
+  /** Physical source coordinates for mapped XLSX grievance rows. */
+  worksheetSource?: { sheetIndex: number; sheetName: string; row: number };
   isSyntheticDemo: boolean;
 };
 

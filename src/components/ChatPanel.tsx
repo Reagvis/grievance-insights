@@ -94,7 +94,7 @@ function RichText({ text }: { text: string }) {
 
 /* ───────────── Panel ───────────── */
 
-export type ScopeOption = { key: 'all' | 'filtered' | 'note' | 'file' | `file:${string}`; label: string; scope: ChatScope };
+export type ScopeOption = { key: 'all' | 'filtered' | 'note' | 'file' | `file:${string}`; label: string; scope: ChatScope; rowNumbers?: number[] };
 
 type Props = {
   store: ChatStore;
@@ -120,17 +120,25 @@ const AI_SUGGESTIONS: Partial<Record<keyof typeof SUGGESTIONS, string[]>> = {
   file: ['Summarise this document', 'Draft an email based on this file', 'Extract the key points'],
 };
 
-type ConversationProps = Props & { scope: ScopeOption; onScopeChange: (key: ScopeOption['key']) => void };
+type ConversationProps = Props & { scope: ScopeOption; onScopeChange: (key: ScopeOption['key']) => void; onRowChange?: (row: number | undefined) => void };
 
 export function ChatPanel(props: Props) {
   const [scopeKey, setScopeKey] = useState<ScopeOption['key']>(props.scopes[0].key);
-  const scope = props.scopes.find(s => s.key === scopeKey) ?? props.scopes[0];
+  const selected = props.scopes.find(s => s.key === scopeKey) ?? props.scopes[0];
+  const [rowSelection, setRowSelection] = useState<{ key: string; row: number } | undefined>();
+  const row = rowSelection?.key === selected.key && selected.rowNumbers?.includes(rowSelection.row) ? rowSelection.row : undefined;
+  const scope: ScopeOption = selected.scope.kind === 'document' && selected.scope.sheetIndex !== undefined
+    ? { ...selected, scope: { ...selected.scope, row }, label: selected.label + (row !== undefined ? ' · row ' + row : '') }
+    : selected;
   // Key by the actual selector, not its display key or label. A disappearing
   // file, record change, disabled document or switch back must start fresh.
-  const conversationProps = { ...props, scope, onScopeChange: setScopeKey };
+  const conversationProps = { ...props, scope,
+    onScopeChange: (key: ScopeOption['key']) => { setRowSelection(undefined); setScopeKey(key); },
+    onRowChange: (row: number | undefined) => setRowSelection(row === undefined ? undefined : { key: selected.key, row }),
+  };
   if (scope.scope.kind === 'document') {
-    const { datasetId, recordId, recordIndex } = scope.scope;
-    const key = JSON.stringify([datasetId, recordId, recordIndex, props.unavailableReason]);
+    const { datasetId, recordId, recordIndex, sheetIndex, row } = scope.scope;
+    const key = JSON.stringify([datasetId, recordId, recordIndex, sheetIndex, row, props.unavailableReason]);
     return <DocumentConversation key={key} {...conversationProps} />;
   }
   return <ChatConversation {...conversationProps} />;
@@ -143,7 +151,7 @@ function DocumentConversation(props: ConversationProps) {
   return <ChatConversation {...props} store={store} />;
 }
 
-function ChatConversation({ store, service, scopes, scope, onScopeChange, knownIds, unavailableReason, onOpenRecord, onClose }: ConversationProps) {
+function ChatConversation({ store, service, scopes, scope, onScopeChange, onRowChange, knownIds, unavailableReason, onOpenRecord, onClose }: ConversationProps) {
   const { chats, active, setActiveId, newChat, patchTurn, addTurns, dropTurnsFrom, turnId } = store;
   const [draft, setDraft] = useState('');
   const controller = useRef<AbortController | null>(null);
@@ -222,7 +230,7 @@ function ChatConversation({ store, service, scopes, scope, onScopeChange, knownI
   };
 
   const suggestionKey = (scope.key.startsWith('file:') ? 'file' : scope.key) as keyof typeof SUGGESTIONS;
-  const suggestions = useMemo(() => service.kind === 'ai' ? (AI_SUGGESTIONS[suggestionKey] ?? SUGGESTIONS[suggestionKey]) : SUGGESTIONS[suggestionKey], [suggestionKey, service.kind]);
+  const suggestions = useMemo(() => scope.scope.kind === 'document' && scope.scope.sheetIndex !== undefined ? ['Summarise this worksheet', 'Explain the numeric columns', 'What information is available?'] : service.kind === 'ai' ? (AI_SUGGESTIONS[suggestionKey] ?? SUGGESTIONS[suggestionKey]) : SUGGESTIONS[suggestionKey], [suggestionKey, service.kind, scope.scope]);
 
   return (
     <aside className="chat-panel" aria-label="Assistant">
@@ -356,6 +364,15 @@ function ChatConversation({ store, service, scopes, scope, onScopeChange, knownI
                       {s.label}
                     </option>
                   ))}
+                </select>
+              </div>
+            )}
+            {scope.scope.kind === 'document' && scope.scope.sheetIndex !== undefined && scope.rowNumbers && (
+              <div className="chat-scope">
+                <label htmlFor="chat-sheet-row">Worksheet row</label>
+                <select id="chat-sheet-row" className="select" value={scope.scope.row ?? ''} onChange={e => onRowChange?.(e.target.value ? Number(e.target.value) : undefined)}>
+                  <option value="">Whole worksheet (bounded summary)</option>
+                  {scope.rowNumbers.map(row => <option key={row} value={row}>Row {row}</option>)}
                 </select>
               </div>
             )}

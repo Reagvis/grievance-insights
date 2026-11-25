@@ -33,7 +33,7 @@ export function UploadPage({ onBatchDone, onViewAll }: { onBatchDone: (result: B
         const dataset = await uploadDataset(chosen[n], (step) => patch(key, { step }));
         records += dataset.recordCount;
         done++;
-        patch(key, { state: 'done', step: dataset.recordCount + (dataset.recordCount === 1 ? ' complaint added' : ' complaints added'), records: dataset.recordCount });
+        patch(key, { state: 'done', step: dataset.sheets ? dataset.sheets.length + ' worksheet(s) ready: ' + dataset.sheets.map(s => s.name + ' (' + s.rows + ' rows × ' + s.columns + ' columns)').join('; ') : dataset.recordCount + (dataset.recordCount === 1 ? ' complaint added' : ' complaints added'), records: dataset.recordCount });
       } catch (error) {
         failed++;
         patch(key, { state: 'failed', step: error instanceof Error ? error.message : 'Upload failed.' });
@@ -49,8 +49,8 @@ export function UploadPage({ onBatchDone, onViewAll }: { onBatchDone: (result: B
     <main className="main" id="main">
       <div className="main-inner upload-page">
         <div className="intro">
-          <h1>Upload complaints</h1>
-          <p>Add files and they are read, checked and added to <strong>All Complaints</strong> automatically.</p>
+          <h1>Upload complaints and workbooks</h1>
+          <p>Grievance files are added to <strong>All Complaints</strong>. Excel worksheets are available in the Assistant; general tables are not counted as complaints.</p>
         </div>
 
         <label
@@ -78,7 +78,7 @@ export function UploadPage({ onBatchDone, onViewAll }: { onBatchDone: (result: B
 
         <p className="upload-formats">
           <strong>One complaint per file:</strong> TXT, MD, DOCX, PDF (scanned PDFs are read by OCR). <strong>Many per file:</strong> CSV, JSON, JSONL, up to 2,000 complaints.
-          Limits: PDF 10 MiB and 50 pages, DOCX 5 MiB, TXT/MD 1 MiB, CSV/JSON/JSONL 20 MiB. Files are stored privately in AWS.
+          <strong>Excel:</strong> XLSX (2 MiB, up to 8 visible sheets, 1,000 data rows per sheet and 32 columns; values only). Limits: PDF 10 MiB and 50 pages, DOCX 5 MiB, TXT/MD 1 MiB, CSV/JSON/JSONL 20 MiB. Files are stored privately in AWS.
         </p>
         {notice && <p role="status" className="datasets-progress">{notice}</p>}
 

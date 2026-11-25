@@ -311,8 +311,10 @@ export function parseWorkbook(bytes: Uint8Array, name: string): ParsedWorkbook {
       parsed.records.forEach((record, i) => {
         if (ids.has(record.id)) fail('Duplicate grievance IDs across worksheets are not accepted.');
         ids.add(record.id);
-        validateRecordBounds(record);
-        records.push({ ...record, originalFileName: name, isSyntheticDemo: false });
+        const mappedRecord = { ...record, originalFileName: name, isSyntheticDemo: false,
+          worksheetSource: { sheetIndex: sheet.info.index, sheetName: sheet.info.name, row: sheet.data[i].row } };
+        validateRecordBounds(mappedRecord);
+        records.push(mappedRecord);
         provenance.push({ recordId: record.id, sheetIndex: sheet.info.index, row: sheet.data[i].row });
       });
     }
