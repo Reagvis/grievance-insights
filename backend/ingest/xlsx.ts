@@ -311,6 +311,13 @@ export function parseWorkbook(bytes: Uint8Array, name: string): ParsedWorkbook {
       const objects = sheet.data.map(r => Object.fromEntries(keys.flatMap((k, i) => {
         if (!k) return [];
         const cell = r.cells[i];
+        // Case identifiers must not depend on Excel display formatting.
+        // Only plain, exact integer IDs are safe to map from numeric cells.
+        if (k === 'id' && cell.kind !== 'text' && cell.kind !== 'blank' &&
+            !(cell.kind === 'number' && ['builtin:0', 'builtin:1', '0'].includes(cell.format) &&
+              /^(?:0|[1-9]\d{0,14})$/.test(cell.value))) {
+          fail('Ambiguous Excel case ID. Store the full case identifier as text, including any leading zeros, and upload again.');
+        }
         // Excel date serials remain exact in the sheet. Map only unambiguous
         // calendar dates to grievance date fields (serial 60 is fictitious).
         if ((k === 'submittedAt' || k === 'respondedAt') && cell.kind === 'date') {

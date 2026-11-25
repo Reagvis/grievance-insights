@@ -4,11 +4,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { createDatasetHandler, type DatasetStore, type Metadata, type PrivateObjects } from './core';
 import { createDocumentChatApi } from '../analysis/chat';
 import { worksheetKey } from './workbook';
-import { mixedWorkbook, numCell, row, sheetXml, simple, textCell, workbookParts, zipParts } from '../ingest/xlsx-fixtures';
+import { mixedWorkbook, row, sheetXml, simple, textCell, workbookParts, zipParts } from '../ingest/xlsx-fixtures';
 
 const origin = 'https://pilot.invalid';
 const now = 1800000000000;
-const ids = ['12345678-abcd-4f12-9abc-123456789abc', 'abcdef12-abcd-4f12-9abc-123456789abc'];
+const ids = ['12345678-abcd-4f12-9abc-123456789abc', 'abcdef12-abcd-4f12-9abc-123456789abc'] as const;
 const tokens = ['A'.repeat(43), 'B'.repeat(43)];
 const hash = (t: string) => createHash('sha256').update(t).digest('hex');
 const user = (i: number) => 'synthetic-user-' + i;
@@ -37,7 +37,11 @@ function fixture() {
     write: vi.fn(async (key, bytes) => { if (storage.has(key)) throw new Error('Immutable'); storage.set(key, bytes); }),
     remove: async key => { storage.delete(key); },
   };
-  const api = createDatasetHandler(store, objects, origin, () => now, () => ids[next++]);
+  const api = createDatasetHandler(store, objects, origin, () => now, () => {
+    const id = ids[next++];
+    if (!id) throw new Error('Synthetic UUID fixtures exhausted');
+    return id;
+  });
   const model = vi.fn(async (_system: string, _prompt: string, _timeout: number) => 'Synthetic model answer');
   const chat = createDocumentChatApi(store, objects, model, origin, () => now);
   async function upload(i: number, bytes: Uint8Array, name = 'synthetic.xlsx') {

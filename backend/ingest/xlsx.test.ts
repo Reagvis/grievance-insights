@@ -59,6 +59,28 @@ describe('bounded XLSX parsing and typed worksheet context', () => {
     expect(result.records).toEqual([]);
     expect(result.sheets[0].info.kind).toBe('table');
   });
+  it('preserves text case IDs with leading zeros and unambiguous plain integer IDs', () => {
+    const xml = sheetXml(row(1, textCell('A1', 'Case ID') + textCell('B1', 'Complaint')) +
+      row(2, textCell('A2', '000001') + textCell('B2', 'First complaint')) +
+      row(3, numCell('A3', '1') + textCell('B3', 'Second complaint')));
+    const result = parseWorkbook(zipParts(workbookParts([{ name: 'Cases', xml }])), 'x.xlsx');
+    expect(result.records.map(r => r.id)).toEqual(['000001', '1']);
+    expect(result.provenance.map(p => p.recordId)).toEqual(['000001', '1']);
+  });
+  it('rejects numeric case IDs displayed with leading zeros rather than silently rewriting them', () => {
+    const xml = sheetXml(row(1, textCell('A1', 'Case ID') + textCell('B1', 'Complaint')) +
+      row(2, numCell('A2', '1', 1) + textCell('B2', 'Synthetic complaint')));
+    const parts = workbookParts([{ name: 'Cases', xml }]);
+    parts['xl/styles.xml'] = parts['xl/styles.xml']
+      .replace('<cellXfs', '<numFmts count="1"><numFmt numFmtId="164" formatCode="000000"/></numFmts><cellXfs')
+      .replace('numFmtId="5"', 'numFmtId="164"');
+    expect(() => parseWorkbook(zipParts(parts), 'x.xlsx')).toThrow(/Ambiguous Excel case ID/);
+    // The same formatted numeric cell remains available in a general table.
+    parts['xl/worksheets/sheet1.xml'] = xml.replace('Complaint</t>', 'Description</t>');
+    const table = parseWorkbook(zipParts(parts), 'x.xlsx');
+    expect(table.records).toEqual([]);
+    expect(table.sheets[0].data[0].cells[0]).toEqual({ kind: 'number', value: '1', format: '000000' });
+  });
   it('rejects missing grievance text and duplicate IDs across sheets rather than dropping rows', () => {
     const missing = sheetXml(row(1, textCell('A1', 'id') + textCell('B1', 'complaint')) + row(2, textCell('A2', 'SYN')));
     expect(() => parseWorkbook(zipParts(workbookParts([{ name: 'Cases', xml: missing }])), 'x.xlsx')).toThrow(/unique case ID/);
