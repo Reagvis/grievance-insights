@@ -97,6 +97,22 @@ NOTE: `-chdir=infra` changes Terraform's working directory, not the shell's; the
 
 A `terraform plan` is **not** a deployment approval; save a sanitized resource/action summary for independent review. Do not run GitHub Actions or `terraform apply`.
 
+## Gate B actual live AWS inventory (2026-11-25)
+
+**Operator AWS read-only inventory PASS, remote Terraform plan STILL PENDING.** Identity returned expected AWS account `134857759074`; all five deployed functions are `nodejs22.x` with configured memory and timeout from `infra/*.tf`. The exact current-vs-new `CodeSha256` Base64 digests were recorded in [release Issue #54](https://github.com/Reagvis/grievance-insights/issues/54#issuecomment-7156896136). Brief summary:
+
+| Lambda | Deployed-vs-artifact hash | Runtime memory / timeout | Required decision |
+|---|---|---|---|
+| auth-api | **MATCH** | 256 MiB / 10 s | Leave code unchanged unless plan shows justified config drift |
+| datasets-api | **DIFFERENT** | 512 MiB / 20 s | In-place code candidate for XLSX ingestion; review plan and package under Node22 |
+| analyses-api | **DIFFERENT** | 256 MiB / 25 s | In-place code candidate for worksheet chat; review plan and package under Node22 |
+| analyses-worker | **DIFFERENT** | 512 MiB / 600 s | Identify dependency/rebuild delta; don't update blindly |
+| extractor | **DIFFERENT** | 3008 MiB / 300 s | Shared ingestion module changed; confirm package delta and rollout necessity |
+
+**Actual live frontend rollback reference:** `s3://grievance-insights-pilot-134857759074-frontend/index.html`, **VersionId `GhD4CoA8agy8Qz89LRLNUrgqp1Yuwdo5`**, last modified **2026-11-23 08:32:05 UTC**, ETag `"a9885eddf419437e0f64df337abbd320"`. This proves the old entry point is versioned; it does not prove the full old frontend or Lambda binaries can be restored. Verify version availability and retain the exact deployed Lambda packages before any deployment.
+
+**Remaining Gate B:** The owner should confirm final Node22 local package + frontend build success, then execute the **non-applying** Terraform plan and provide only sanitized resource address/action summary from the commands above. A plan which changes anything besides reviewed Lambda code (or requires new IAM, API routes, S3/Cognito, eOffice, replacement, create/delete) is a release blocker and must not be applied. Even an acceptable plan does not authorize deployment.
+
 ## Gate C — rollback materials to prepare **before** an authorized deployment
 
 - Record exact deployment identity: selected `main` SHA, five artifact SHA-256 values, current AWS Lambda `CodeSha256`, function version/LastModified and current S3 `index.html` `VersionId`. The frontend bucket has versioning enabled and noncurrent versions are retained under the currently configured lifecycle (nominally 30 days).
@@ -125,9 +141,9 @@ A `terraform plan` is **not** a deployment approval; save a sanitized resource/a
 | Infra code, deploy workflows, dependencies unchanged since historical pilot chat rollout | **GitHub comparison verified** |
 | Runtime-sized Lambda ZIPs, offline OCR packaging self-check | **PASS**: five ZIP sizes/integrity and SHA-256 values audited; packaged OCR 94% on prior Node 24 run. Node22 compatibility **PENDING confirmation** |
 | Realistic XLSX near-limit finalize latency/memory; browser Telugu fidelity | **PENDING** |
-| Actual AWS code hashes, read-only remote Terraform plan, absence of infrastructure drift | **PENDING Gate B** |
-| Live rollback binaries and S3 VersionId backups | **PENDING Gate C** |
+| Actual AWS code hashes, read-only remote Terraform plan, absence of infrastructure drift | **Live account and 5 Lambda hashes VERIFIED** (1 matches, 4 differ); read-only remote plan/drift review **PENDING Gate B** |
+| Live rollback binaries and S3 VersionId backups | **Current `index.html` VersionId RECORDED**; old Lambda ZIPs and full static assets **PENDING Gate C** |
 | Real-model Qwen chart UX and authentication smoke in pilot | **PENDING separately approved release** |
 | Any actual AWS deployment | **NOT AUTHORIZED / NOT EXECUTED** |
 
-Release decision: **HOLD pending evidence**. The minimum next action is local packaging and size reporting, then review a sanitized Terraform resource/action plan and rollback inventory. No paid calls, production uploads, Terraform apply, CloudFront invalidation, GitHub Actions or eOffice changes under this document.
+Release decision: **HOLD pending evidence**. The five-ZIP integrity/hash audit and live Lambda/S3 identity inventory are complete. Remaining priorities are the Node22 packaging/build confirmation, a sanitized read-only Terraform plan and verifiable rollback binaries/assets. No paid calls, production uploads, Terraform apply, CloudFront invalidation, GitHub Actions or eOffice changes under this document.
