@@ -1,6 +1,6 @@
 # Task 23 — Pilot release readiness and rollback runbook
 
-Status: **assessment prepared; release on HOLD pending local packaging, remote-state plan review and separate explicit deployment approval**. Updated 2026-11-25. Scope: live Grievance Insights pilot `https://telangana-gov-pilot.reagvis.com`; not eOffice. The currently operating Qwen pilot is not to be interrupted.
+Status: **Gate A packaging and frontend build provisionally passed under WSL Node 24; release on HOLD pending Node 22 repeat, full ZIP digest audit, remote-state plan review and separate explicit deployment approval**. Updated 2026-11-25. Scope: live Grievance Insights pilot `https://telangana-gov-pilot.reagvis.com`; not eOffice. The currently operating Qwen pilot is not to be interrupted.
 
 ## Reviewed baseline and actual software delta
 
@@ -55,6 +55,12 @@ PY
 
 These **conservative local budgets** (45 MiB compressed, 200 MiB expanded) retain headroom below Lambda's 50 MiB direct upload and 250 MiB aggregate unzipped limits. They are not a performance or cold-start guarantee. If package or OCR verification fails, stop. No need for another full regression/browser test run when the existing reviewed Task 23 source is unchanged. If a code defect is found, fix in a separate focused reviewed PR before release.
 
+## Gate A actual operator result (2026-11-25)
+
+The owner fetched `main` and checked out commit `74eaf5c6843091964b56701acd98d87804aebf9b` in the detached `grievance-insights-task23-release` WSL worktree. Installed 107 locked packages (0 reported vulnerabilities). Under **Node.js v24.17.0**, `npm run backend:package` generated all five Lambda ZIPs and the packaged offline OCR fixture self-check **passed at 94% confidence**. Compressed sizes from `ls -lh`: auth ~275 KiB, datasets ~1,016 KiB, analysis API ~256 KiB, analysis worker ~250 KiB, extractor ~23 MiB. The extractor packager measured exactly **22.3 MiB zipped and 59.0 MiB expanded**, SHA-256 hex prefix `e55e0e4c0f05d991`. `npm run build:aws` passed TypeScript/Vite 8.3.5 and transformed 2,117 modules; the Rolldown `@__PURE__` and Vite native-loader messages are existing nonfatal warnings.
+
+**Compatibility qualification:** The project deploys Node.js 22 Lambdas, but the local packaging health/OCR smoke ran under **Node 24**, so this evidence does **not** yet close the required Node 22 runtime test. Next, switch this existing WSL worktree to Node.js 22 and rerun `npm run backend:package` and `npm run build:aws` (no reinstall or global test rerun), then run the five-ZIP decompressed size/CRC/SHA-256 script above. AWS Lambda `CodeSha256` uses base64 SHA-256; record that encoding or convert hex to base64 before comparing with the live inventory. **No AWS code revision, remote Terraform plan, S3 VersionId, cold-start, near-limit XLSX latency/memory or backup has been verified yet.** Gate A remains provisional and deployment remains **HOLD**.
+
 ## Gate B — live environment inventory and remote Terraform plan (read-only with respect to infrastructure)
 
 **Not executed by Brain.** Requires the operator's existing permitted AWS identity and remote Terraform state access. Verify the account and region first; do not copy credentials, tokens, remote state, plan JSON or private user data into chat. The Terraform plan can acquire and release a short-lived backend state lock; it must not be applied under this gate.
@@ -105,7 +111,7 @@ A `terraform plan` is **not** a deployment approval; save a sanitized resource/a
 | Prior operator Task 23 focused tests | **Reported passed** (32/32 23C combined; separate 23B/23D gates) |
 | Task 23 AWS frontend build | **Operator reported passed** after targeted corrections |
 | Infra code, deploy workflows, dependencies unchanged since historical pilot chat rollout | **GitHub comparison verified** |
-| Runtime-sized Lambda ZIPs, offline OCR packaging self-check | **PENDING Gate A** |
+| Runtime-sized Lambda ZIPs, offline OCR packaging self-check | **PROVISIONAL PASS on Node 24** (five archives, extractor 22.3 MiB / 59.0 MiB, real OCR 94%); Node 22 compatibility and full five-ZIP size/hash audit still **PENDING Gate A** |
 | Realistic XLSX near-limit finalize latency/memory; browser Telugu fidelity | **PENDING** |
 | Actual AWS code hashes, read-only remote Terraform plan, absence of infrastructure drift | **PENDING Gate B** |
 | Live rollback binaries and S3 VersionId backups | **PENDING Gate C** |
