@@ -157,7 +157,7 @@ export function buildWorkbookChart(sheet: Worksheet, question: string): ChartDec
     group.rows.push(row.row);
     groups.set(label,group);
     covered++;
-    if (groups.size > 12) return {reason:'More than 12 distinct categories or periods were found. A chart would hide values; narrow the worksheet first.'};
+    if (groups.size > MAX_POINTS) return {reason:'More than 12 distinct categories or periods were found. A chart would hide values; narrow the worksheet first.'};
   }
   if (groups.size < 2) return {reason:'Fewer than two comparable nonblank groups were found.'};
   const ordered = [...groups.values()];
