@@ -1,6 +1,7 @@
-import { Bot, Copy, LoaderCircle, MessageSquarePlus, RotateCcw, Send, Square, TriangleAlert, X } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Bot, LoaderCircle, MessageSquarePlus, RotateCcw, Send, Square, TriangleAlert, X } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { ChatScope, ChatService, Citation } from '../services/chat';
+import { AssistantAnswer, AssistantAnswerActions } from './AssistantAnswer';
 
 /* ───────────── Conversation state (memory only: real complaint text is never persisted in the browser) ───────────── */
 
@@ -57,40 +58,6 @@ export function useChatStore() {
   return { chats, active, activeId: active.id, setActiveId, newChat, patchTurn, addTurns, dropTurnsFrom, turnId, reset };
 }
 export type ChatStore = ReturnType<typeof useChatStore>;
-
-/* ───────────── Safe text rendering (no HTML is ever injected) ───────────── */
-
-function inline(text: string, key: string): ReactNode {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith('**') && part.endsWith('**') && part.length > 4 ? <strong key={`${key}${i}`}>{part.slice(2, -2)}</strong> : <Fragment key={`${key}${i}`}>{part}</Fragment>,
-  );
-}
-
-function RichText({ text }: { text: string }) {
-  const blocks = text.replace(/\r\n/g, '\n').split(/\n{2,}/);
-  return (
-    <>
-      {blocks.map((block, bi) => {
-        const lines = block.split('\n').filter((l) => l.trim() !== '');
-        if (lines.length > 0 && lines.every((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l))) {
-          const ordered = /^\s*\d+[.)]\s+/.test(lines[0]);
-          const items = lines.map((l, li) => <li key={li}>{inline(l.replace(/^\s*([-*•]|\d+[.)])\s+/, ''), `${bi}-${li}-`)}</li>);
-          return ordered ? <ol key={bi}>{items}</ol> : <ul key={bi}>{items}</ul>;
-        }
-        return (
-          <p key={bi}>
-            {lines.map((l, li) => (
-              <Fragment key={li}>
-                {li > 0 && <br />}
-                {inline(l, `${bi}-${li}-`)}
-              </Fragment>
-            ))}
-          </p>
-        );
-      })}
-    </>
-  );
-}
 
 /* ───────────── Panel ───────────── */
 
@@ -283,7 +250,7 @@ function ChatConversation({ store, service, scopes, scope, onScopeChange, knownI
             )}
           </div>
         ) : (
-          active.turns.map((t) => (
+          active.turns.map((t, index) => (
             <div key={t.id} className={`chat-turn chat-turn--${t.role}`}>
               {t.role === 'user' ? (
                 <>
@@ -297,7 +264,7 @@ function ChatConversation({ store, service, scopes, scope, onScopeChange, knownI
                       <LoaderCircle size={14} className="spin" aria-hidden /> {service.kind === 'ai' ? 'Generating document answer…' : 'Reading the records…'}
                     </span>
                   )}
-                  {t.content && <RichText text={t.content} />}
+                  {t.content && <AssistantAnswer text={t.content} />}
                   {t.status === 'stopped' && <p className="chat-note">Stopped before finishing.</p>}
                   {t.status === 'error' && (
                     <div className="chat-error" role="alert">
@@ -325,11 +292,9 @@ function ChatConversation({ store, service, scopes, scope, onScopeChange, knownI
                       )}
                     </div>
                   )}
-                  {t.status === 'done' && t.content && (
-                    <button type="button" className="chat-copy" onClick={() => void navigator.clipboard?.writeText(t.content)} aria-label="Copy answer">
-                      <Copy size={12} aria-hidden /> Copy
-                    </button>
-                  )}
+                  <AssistantAnswerActions key={JSON.stringify([active.id, t.id, scope.scope])}
+                    turn={t} question={active.turns[index - 1]?.role === 'user' ? active.turns[index - 1].content : ''}
+                    disabled={disabled} />
                 </div>
               )}
             </div>
