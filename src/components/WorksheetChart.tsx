@@ -79,11 +79,11 @@ export function WorksheetChart({ chart }: { chart: ChartSpec }) {
 }
 
 type State = { key: string; status: 'loading'|'ready'|'error'; decision?: ChartDecision };
-export function WorksheetChartForTurn({ scope, question }: { scope: ChatScope; question: string }) {
+export function WorksheetChartForTurn({ scope, question, answer }: { scope: ChatScope; question: string; answer?: string }) {
   const id = scope.kind === 'document' ? scope.datasetId : '';
   const sheetIndex = scope.kind === 'document' ? scope.sheetIndex : undefined;
   const row = scope.kind === 'document' ? scope.row : undefined;
-  const wanted = sheetIndex !== undefined && chartRequested(question);
+  const wanted = sheetIndex !== undefined && chartRequested(question,answer);
   const key = id+':'+sheetIndex+':'+row+':'+question;
   const [state,setState] = useState<State | null>(null);
   useEffect(()=>{

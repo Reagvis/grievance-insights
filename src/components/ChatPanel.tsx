@@ -303,7 +303,7 @@ function ChatConversation({ store, service, scopes, scope, onScopeChange, onRowC
                   )}
                   {t.status === 'done' && t.content && service.kind === 'ai' && !disabled && scope.scope.kind === 'document' && scope.scope.sheetIndex !== undefined && (
                     <WorksheetChartForTurn key={JSON.stringify([active.id,t.id,scope.scope,'chart'])}
-                      scope={scope.scope}
+                      scope={scope.scope} answer={t.content}
                       question={active.turns[index - 1]?.role === 'user' ? active.turns[index - 1].content : ''}/>
                   )}
                   <AssistantAnswerActions key={JSON.stringify([active.id, t.id, scope.scope])}

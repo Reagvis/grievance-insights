@@ -89,7 +89,8 @@ function timeValue(cell: WorkbookCell | undefined, heading: string, date1904: bo
   }
   return null;
 }
-export function chartRequested(question: string): boolean {
+export function chartRequested(question: string, answer?: string): boolean {
+  if (answer?.trim() === 'I can help with the selected document or this conversation about it. Please ask a related question.') return false;
   return /\b(chart|graph|plot|trend|monthly|compare|comparison|categories|category|distribution|shares?|breakdown|summari[sz]e|overview)\b/i.test(question) ||
     /(చార్ట్|గ్రాఫ్|సారాంశ|నెలవారీ|పోల్చు|వర్గాల)/u.test(question);
 }

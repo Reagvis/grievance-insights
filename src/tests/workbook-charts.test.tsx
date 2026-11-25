@@ -159,6 +159,7 @@ describe('Task 23C exact, source-grounded worksheet charts',()=>{
   it('supports Telugu chart requests, and only shows per-turn chart inside a selected worksheet',()=>{
     expect(chartRequested('నెలవారీ చార్ట్ చూపించు')).toBe(true);
     expect(chartRequested('Draft a government letter')).toBe(false);
+    expect(chartRequested('Show a chart', 'I can help with the selected document or this conversation about it. Please ask a related question.')).toBe(false);
     const scoped = renderToStaticMarkup(<WorksheetChartForTurn scope={{kind:'document',datasetId:'file-a',sheetIndex:0}} question="Show a chart"/>);
     expect(scoped).toContain('Calculating chart');
     expect(renderToStaticMarkup(<WorksheetChartForTurn scope={{kind:'document',datasetId:'file-a',sheetIndex:0,row:2}} question="Show a chart"/>)).toContain('Whole worksheet');
