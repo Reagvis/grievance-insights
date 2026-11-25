@@ -37,8 +37,18 @@ export async function openDataset(id: string) {
   if (!dataset || records.length !== dataset.recordCount) throw new Error('Incomplete dataset retrieval.');
   return { dataset, records };
 }
-export async function openWorksheet(id: string, sheetIndex: number) {
-  return api<{ dataset: RemoteDataset; worksheet: Worksheet }>('/api/datasets/' + encodeURIComponent(id) + '?sheet=' + sheetIndex);
+export async function openWorksheet(id: string, sheetIndex: number, signal?: AbortSignal) {
+  if (!id || !Number.isInteger(sheetIndex) || sheetIndex < 0 || sheetIndex >= 8) throw new Error('Invalid worksheet selection.');
+  const result = await api<{ dataset: RemoteDataset; worksheet: Worksheet }>(
+    '/api/datasets/' + encodeURIComponent(id) + '?sheet=' + sheetIndex, { signal },
+  );
+  signal?.throwIfAborted();
+  const expected = result.dataset.sheets?.find(s => s.index === sheetIndex);
+  if (result.dataset.id !== id || result.dataset.format !== 'xlsx' || result.dataset.status !== 'ready' ||
+      !expected || result.worksheet.version !== 1 || result.worksheet.info.index !== sheetIndex ||
+      result.worksheet.info.name !== expected.name || result.worksheet.info.rows !== expected.rows ||
+      result.worksheet.info.columns !== expected.columns) throw new Error('Worksheet changed during retrieval.');
+  return result;
 }
 export async function removeDataset(id: string) { await api('/api/datasets/' + encodeURIComponent(id), { method: 'DELETE', headers: { Origin: window.location.origin } }); }
 /** PDFs are extracted asynchronously (text layer + OCR). The browser polls until the dataset is ready or failed. */
