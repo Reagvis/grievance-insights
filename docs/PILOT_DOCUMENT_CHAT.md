@@ -51,3 +51,7 @@ Verification status: source authored via authenticated GitHub connector only; te
     npm run build:aws
 
 Focused tests use synthetic text, a one-pixel JPEG fixture for PDF serialization and pdfjs text extraction, OOXML inspection, action eligibility and cancellation. They do not execute actual browser canvas/font shaping. Before merge independently inspect generated Telugu/English PDFs and DOCX in common readers, default and landscape layouts, long answers, and scope-switch cancellation; no production inference needed. No merge/deploy/CI authorization.
+
+## Task 23C charts and per-answer exports (draft; not deployed)
+
+The Assistant can present a deterministic, source-backed worksheet chart beside a completed answer. The chart is not part of the textual answer and is **not** included in the current PDF or Word exports. The chart card displays this omission explicitly next to the answer. Download buttons continue exporting only the exact written answer; no source data or numbers are injected into its text by the chart generator. Any future chart-aware export should receive the same authorized per-turn chart data and apply PDF/DOCX fidelity tests before release.
