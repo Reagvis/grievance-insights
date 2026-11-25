@@ -72,6 +72,7 @@ export function createAnalysisApi(datasets: DatasetStore, files: PrivateObjects,
       if (!dataset || dataset.ownerId !== session.userId) throw new HttpError(404, 'Analysis not found.');
       if (datasetRoute?.[2] === 'analyze' && method === 'POST') {
         if (dataset.status !== 'ready') throw new HttpError(409, 'Dataset must be ready.');
+        if (dataset.format === 'xlsx' && dataset.recordCount === 0) throw new HttpError(422, 'This workbook contains tabular data, not grievances. Use worksheet chat.');
         let total: number;
         try { total = dataset.indexVersion === 1 ? dataset.recordCount : (await readDataset(dataset, files)).length; }
         catch (error) { if (error instanceof ApiError) throw new HttpError(422, error.message); throw error; }

@@ -109,7 +109,7 @@ export class DynamoDatasets implements DatasetStore {
     const values: Record<string, unknown> = { ':from': from, ':to': to };
     let expression = 'SET #status = :to';
     for (const [key, value] of Object.entries(patch)) {
-      if (!['recordCount', 'indexVersion', 'error', 'extractionDeadline'].includes(key)) throw new Error('Invalid metadata patch');
+      if (!['recordCount', 'indexVersion', 'error', 'extractionDeadline', 'sheets'].includes(key)) throw new Error('Invalid metadata patch');
       names['#' + key] = key;
       values[':' + key] = value;
       expression += ', #' + key + ' = :' + key;

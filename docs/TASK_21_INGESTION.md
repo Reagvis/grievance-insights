@@ -84,3 +84,7 @@ Locally / CI: unit and integration tests for every format through the real handl
 ## Known limitations
 
 One document per dataset; DOCX headers/footers/comments/images are ignored; text-layer PDFs from some producers can have imperfect word spacing that cannot be detected (provenance records the method); scans must be single full-page images; OCR accuracy was verified only on synthetic printed Telugu (0–1.3 % character error with skew/blur/low-resolution) — real government scans, stamps and handwriting are untested.
+
+## Task 23B — XLSX extension (draft; not deployed)
+
+See [PILOT_WORKBOOK_CHAT.md](PILOT_WORKBOOK_CHAT.md) for the additional format, exact typed worksheet model, strict supported OOXML subset, private immutable storage, limits, and verification. The earlier seven-format pipeline remains unchanged for legacy files. General tables never become grievance records.

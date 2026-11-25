@@ -9,7 +9,7 @@
 
 export type CaseStatus = 'resolved' | 'pending' | 'in_progress' | 'unknown';
 export type RecordLanguage = 'te' | 'en' | 'mixed' | 'unknown';
-export type SourceType = 'note' | 'json' | 'csv' | 'document';
+export type SourceType = 'note' | 'json' | 'csv' | 'document' | 'xlsx';
 
 export type GrievanceRecord = {
   /** Stable unique ID, e.g. GRV-000001. */
@@ -36,6 +36,8 @@ export type GrievanceRecord = {
   status: CaseStatus;
   originalFileName?: string | null;
   sourceType: SourceType;
+  /** Physical source coordinates for mapped XLSX grievance rows. */
+  worksheetSource?: { sheetIndex: number; sheetName: string; row: number };
   isSyntheticDemo: boolean;
 };
 

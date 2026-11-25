@@ -4,6 +4,8 @@ import type { GrievanceRecord } from '../../src/domain/grievance';
 import { decodeUtf8, parseCsvImport, parseJsonImport } from '../../src/utils/importer';
 import { validateRecordBounds } from './bounds';
 import { readIndexedRange, removeDatasetIndex, INDEX_CHUNK_RECORDS } from './index';
+import type { SheetInfo } from '../../src/domain/workbook';
+import { commitWorkbook, readWorksheet, removeWorkbook } from './workbook';
 import { commitDataset, provenanceKey } from './commit';
 import { formatFromName, ingestDocument, IngestError, LIMITS as INGEST_LIMITS, SOURCE_FORMATS, type SourceFormat } from '../ingest';
 
@@ -17,7 +19,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 export type Status = 'pending_upload' | 'validating' | 'extracting' | 'ready' | 'failed';
 /** How long a PDF may stay `extracting` (seconds). Lambda timeout is 300 s and the queue retries 3 times; this is the lazy safety net. */
 export const EXTRACTION_DEADLINE_SECONDS = 3600;
-export type Metadata = { id: string; key: string; name: string; format: SourceFormat; status: Status; createdAt: string; bytes: number; recordCount: number; indexVersion?: number; extractionDeadline?: number; error?: string; ownerId: string; uploadExpiresAt: number };
+export type Metadata = { id: string; key: string; name: string; format: SourceFormat; status: Status; createdAt: string; bytes: number; recordCount: number; indexVersion?: number; sheets?: SheetInfo[]; extractionDeadline?: number; error?: string; ownerId: string; uploadExpiresAt: number };
 export type Session = { userId: string; expiresAt: number };
 export interface DatasetStore {
   session(hash: string): Promise<Session | undefined>;
@@ -81,8 +83,8 @@ export function validateDataset(name: string, format: 'csv' | 'json', bytes: Uin
 const EXTRACTION_TIMEOUT_MESSAGE = 'Extraction did not finish in time. Delete this dataset and upload it again.';
 /** A dataset stuck in `extracting` past its deadline (queue/worker delivery lost) becomes `failed`, wherever it is observed. */
 async function expireIfStuck(store: DatasetStore, item: Metadata, nowSeconds: number): Promise<Metadata> {
-  if (item.status === 'extracting' && item.extractionDeadline !== undefined && item.extractionDeadline < nowSeconds
-    && await store.transition(item.id, 'extracting', 'failed', { error: EXTRACTION_TIMEOUT_MESSAGE })) {
+  if ((item.status === 'extracting' || item.status === 'validating' && item.format === 'xlsx') && item.extractionDeadline !== undefined && item.extractionDeadline < nowSeconds
+    && await store.transition(item.id, item.status, 'failed', { error: EXTRACTION_TIMEOUT_MESSAGE })) {
     return { ...item, status: 'failed', error: EXTRACTION_TIMEOUT_MESSAGE };
   }
   return item;
@@ -130,7 +132,7 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
         const pdf = item.format === 'pdf';
         if (pdf && !queue) throw new ApiError(503, 'PDF processing is not available in this environment.');
         const next = pdf ? 'extracting' : 'validating';
-        if (!await store.transition(id, 'pending_upload', next, pdf ? { extractionDeadline: Math.floor(now() / 1000) + EXTRACTION_DEADLINE_SECONDS } : {})) throw new ApiError(409, 'Upload is already being validated.');
+        if (!await store.transition(id, 'pending_upload', next, pdf ? { extractionDeadline: Math.floor(now() / 1000) + EXTRACTION_DEADLINE_SECONDS } : item.format === 'xlsx' ? { extractionDeadline: Math.floor(now() / 1000) + 120 } : {})) throw new ApiError(409, 'Upload is already being validated.');
         try {
           const bytes = await objects.size(item.key);
           if (bytes === null) throw new ApiError(422, 'Upload is incomplete or missing.');
@@ -146,6 +148,10 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
             return result(202, { dataset: publicMetadata({ ...item, status: 'extracting' }) });
           }
           const outcome = await ingestDocument({ name: item.name, bytes: await objects.read(item.key) });
+          if (outcome.kind === 'workbook') {
+            const ready = await commitWorkbook(item, outcome.workbook, store, objects);
+            return result(200, { dataset: publicMetadata(ready) });
+          }
           if (outcome.kind !== 'complete') throw new ApiError(422, 'This file cannot be processed synchronously.');
           const { records, ...rest } = outcome.canonical;
           await commitDataset(item, records, { ...rest, extractedAt: new Date(now()).toISOString() }, 'validating', store, objects);
@@ -160,8 +166,21 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
       }
       if (method === 'GET' && !match[2]) {
         const current = await expireIfStuck(store, item, Math.floor(now() / 1000));
-        if (current.status === 'failed' && item.status === 'extracting') return result(200, { dataset: publicMetadata(current), records: null });
+        if (current.status === 'failed' && (item.status === 'extracting' || item.status === 'validating')) return result(200, { dataset: publicMetadata(current), records: null });
         if (item.status !== 'ready') return result(200, { dataset: publicMetadata(item), records: null });
+        const sheetText = event.queryStringParameters?.sheet;
+        if (sheetText !== undefined) {
+          const origin = event.headers.origin ?? event.headers.Origin;
+          if (origin !== undefined && origin !== allowedOrigin) throw new ApiError(403, 'Invalid request origin.');
+          if (item.format !== 'xlsx' || !/^(0|[1-7])$/.test(sheetText)) throw new ApiError(404, 'Worksheet not found.');
+          const sheet = await readWorksheet(item, objects, Number(sheetText));
+          if (!sheet) throw new ApiError(404, 'Worksheet not found.');
+          const current = await store.get(id);
+          const active = await store.session(createHash('sha256').update(credential).digest('hex'));
+          if (!active || active.userId !== session.userId || active.expiresAt <= Math.floor(now() / 1000)) throw new ApiError(401, 'Authentication required.');
+          if (!current || current.status !== 'ready' || current.ownerId !== session.userId || current.key !== item.key) throw new ApiError(404, 'Worksheet not found.');
+          return result(200, { dataset: publicMetadata(item), worksheet: sheet });
+        }
         const cursorText = event.queryStringParameters?.cursor ?? '0';
         if (!/^(0|[1-9][0-9]{0,3})$/.test(cursorText)) throw new ApiError(400, 'Invalid record cursor.');
         const cursor = Number(cursorText);
@@ -175,9 +194,16 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
       }
       if (method === 'DELETE' && !match[2]) {
         const live = await expireIfStuck(store, item, Math.floor(now() / 1000));
+        if (live.status === 'validating' && live.format === 'xlsx') throw new ApiError(409, 'Workbook validation is in progress. Try again when it finishes.');
         if (live.status === 'extracting') throw new ApiError(409, 'Extraction is in progress. Try again when it finishes.');
+        // Lock XLSX deletion against concurrent pending -> validating finalization.
+        if (live.format === 'xlsx' && live.status !== 'failed' &&
+            !await store.transition(id, live.status, 'failed', { error: 'Workbook deletion in progress. Retry deletion if needed.' })) {
+          throw new ApiError(409, 'Workbook state changed. Retry deletion.');
+        }
         // Keep metadata until all private objects are removed; a failed delete remains retriable.
         if (item.recordCount > 0) await removeDatasetIndex(item.key, item.recordCount, objects);
+        if (item.format === 'xlsx') await removeWorkbook(item, objects);
         await objects.remove(provenanceKey(item.key));
         await objects.remove(item.key);
         await store.delete(id);
@@ -192,5 +218,5 @@ export function createDatasetHandler(store: DatasetStore, objects: PrivateObject
   };
 }
 export function publicMetadata(item: Metadata) {
-  return { id: item.id, name: item.name, format: item.format, status: item.status, createdAt: item.createdAt, bytes: item.bytes, recordCount: item.recordCount, error: item.error ?? null };
+  return { id: item.id, name: item.name, format: item.format, status: item.status, createdAt: item.createdAt, bytes: item.bytes, recordCount: item.recordCount, ...(item.sheets ? { sheets: item.sheets } : {}), error: item.error ?? null };
 }
