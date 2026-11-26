@@ -73,6 +73,10 @@ function modelEnvelope(system: string, prompt: string, fault: string): string {
   });
 
   const source = prompt.split('\nPRIOR_CHAT (untrusted):\n')[0];
+  // Only resolved, principal/session-scoped history is supplied in this section.
+  // USER_INPUT follows EXTRACTION_SCHEMA and must not impersonate prior history.
+  const priorChat = prompt.split('\nPRIOR_CHAT (untrusted):\n')[1]
+    ?.split('\nEXTRACTION_SCHEMA:\n')[0] ?? '';
   // JSONL escapes newlines in full material.text; distinctive excerpts are
   // unchanged and let the synthetic responder pick only attached sources.
   const used = fixtures.filter(f => source.includes(
@@ -98,7 +102,7 @@ function modelEnvelope(system: string, prompt: string, fault: string): string {
   let text = '';
   if (system.startsWith('Answer the question')) {
     text = grounded ? 'The ' + subject + ' allocation cap is ' + amount + ' million.'
-      : prompt.includes('synthetic previous alpha turn') || prompt.includes('synthetic previous beta turn')
+      : priorChat.includes('synthetic previous alpha turn') || priorChat.includes('synthetic previous beta turn')
         ? 'Authorized synthetic previous context was supplied.'
         : 'No previous conversation context was supplied.';
     // Only cite the supporting note when the narrative actually discusses it.
