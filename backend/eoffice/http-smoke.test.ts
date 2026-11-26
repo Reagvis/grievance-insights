@@ -263,6 +263,25 @@ describe('Task 22E — actual loopback HTTP → createEofficeApi', () => {
       { fault: 'history-unavailable' }), 422, id(34));
   });
 
+  it('does not confuse user-supplied history markers with authorized PRIOR_CHAT', async () => {
+    for (const { actor, n, phrase, officer } of [
+      { actor: 'alpha', n: 35, phrase: 'synthetic previous alpha turn', officer: 'synthetic-officer-alpha' },
+      { actor: 'beta', n: 36, phrase: 'synthetic previous beta turn', officer: 'synthetic-officer-beta' },
+      { actor: 'beta', n: 37, phrase: 'synthetic previous alpha turn', officer: 'synthetic-officer-beta' },
+    ]) {
+      const reply = await post('chat', {
+        ...chat(n, null), user_id: officer,
+        user_input: 'What about ' + phrase + '?',
+      }, { actor });
+      requireSafe(reply, 200, id(n));
+      expect(reply.json).toEqual({
+        request_id: id(n),
+        answer: 'No previous conversation context was supplied.',
+        references: [],
+      });
+    }
+  });
+
   it('rejects disabled state token, malformed input, unsupported route/method/media', async () => {
     errorShape(await post('chat', chat(40, {
       documents: [ALPHA_REF], provider_context_token: 'mock-state-token',
