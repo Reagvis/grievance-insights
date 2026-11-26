@@ -1,5 +1,15 @@
 # Grievance Insights — Living Brain Handover
 
+**Last verified:** 2026-11-27 (Asia/Kolkata). For a fresh chat, **read [docs/BRAIN_RESTART.md](BRAIN_RESTART.md) first** instead of loading this long chronological handover. The compact checkpoint points to exact issue, draft PR, release and safety constraints; then use relevant historical sections here only as needed.
+
+## BRAIN CONTINUITY CHECKPOINT — 2026-11-27: Compact restart file and eOffice 22E next
+
+- Verified via GitHub on 2026-11-27: **Task 22E eOffice [Issue #43](https://github.com/Reagvis/grievance-insights/issues/43), [draft PR #44](https://github.com/Reagvis/grievance-insights/pull/44), head `d558a99454a2ca85ec4cbd4c9a5af24e1508ec9a`** remain open, draft and unmerged. Eight-file localhost-only HTTP synthetic test harness, Postman collection and AWS staging readiness plan implemented, **independent Brain source review + operator WSL HTTP tests still NOT recorded**. Next action is source review, then local Node22 focused suite/curl/Postman verification. Tasks 22A–22D are merged. No AWS eOffice staging/production deployment, real government auth/doc source, or paid inference.
+- User reported successful authorized Task 23 production rollout (four Lambda code updates; frontend CloudFront invalidation complete) on 2026-11-25, with authentication Lambda unchanged. A corrected synthetic two-sheet workbook was accepted and its sheets appeared under **Private workbooks** / Assistant, but worksheet `kind: table` meant it did not appear as complaint records in left-hand list. **Full live smoke still pending.** Preserve working Qwen pilot and private rollback archives.
+- Created [compact restart checkpoint](BRAIN_RESTART.md) on `main`, commit `c8558dc1852e899edf10460282993e0928df31e3` using `[skip ci]`. It provides reusable new-Brain prompt, next priority, exact links and safety limits. Keep this full handover as the historical audit trail; make future updates to the compact checkpoint as state changes so new chats need not reconstruct history.
+
+---
+
 **Last updated:** 2026-11-24 (Asia/Kolkata)
 
 ## TASK 23 DEPLOYMENT — 2026-11-25: 4 Lambdas updated, frontend live, smoke still pending
