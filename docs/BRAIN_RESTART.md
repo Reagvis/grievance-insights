@@ -2,6 +2,12 @@
 
 **Verified:** 2026-11-27 (Asia/Kolkata). **Purpose:** concise current-state handoff to a new coordinating Brain chat. Read this first, then only the relevant issue/PR and detailed section of [BRAIN_HANDOVER.md](BRAIN_HANDOVER.md). This document is not a replacement for the full historical evidence.
 
+## Latest Brain correction review — 2026-11-27
+
+- Verified Issue #43 open; PR #44 open/draft/unmerged, eight changed files, current head `f598266da4287009785c6ebe2694c3923535ef14`. Connector reports mergeable=false; cause not established, investigate separately before any integration. Compared with prior reviewed `d558a99454a2ca85ec4cbd4c9a5af24e1508ec9a`: two commits, only local-fixtures.ts (+5/-1) and http-smoke.test.ts (+19).
+- **Focused source correction review PASSED**: dedicated PRIOR_CHAT parsing excludes USER_INPUT, three real HTTP spoof scenarios added within one test, existing authorized history and isolation retained. Core prompt ordering and fail-closed handler checked at exact head. [Review comment](https://github.com/Reagvis/grievance-insights/pull/44#issuecomment-7205936009). Historical review entries below are superseded for head/status.
+- **Next gate:** operator WSL tests at exact corrected SHA in detached separate worktree: 14 HTTP tests, six eOffice regression suites, backend:typecheck, manual localhost curl/Postman per smoke guide. No runtime evidence yet. No merge, Actions, deployment, paid inference or public exposure; separate approvals remain mandatory. External onboarding blockers unchanged.
+
 ## URGENT eOffice external API handoff — 2026-11-27
 
 - The user reports that the **external eOffice team now requests live provider endpoints and every integration item in the original eight-page *eOffice AI Service Integration Specification, Phase 1, v2.0* PDF (Oct 2026)**. Brain **reopened and inspected the original PDF** in the current conversation and produced [docs/EOFFICE_PROVIDER_HANDOFF.md](EOFFICE_PROVIDER_HANDOFF.md), a spec-grounded provisional interface pack, **clearly marked NON-LIVE** (docs-only `[skip ci]` commit `b1dd80437f6552faaf37ed0a61b4d0c9b28c416a`). A portable three-page technical handoff PDF was generated and linked in the user conversation for sending outside GitHub. [Urgent Issue #43 record](https://github.com/Reagvis/grievance-insights/issues/43#issuecomment-7205894311).
