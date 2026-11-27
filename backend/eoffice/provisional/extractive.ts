@@ -180,7 +180,7 @@ export const deterministicTaskModel: Model = async (system, prompt, _tokens, _ti
     const excerpt = raw.split('\n')[0]?.trim() ?? '';
     const text = excerpt.length > 0 && Buffer.byteLength(excerpt, 'utf8') <= 512
       ? excerpt : 'Unable to safely summarize the supplied source text.';
-    return envelope(text);
+    return JSON.stringify({ text });
   }
   // Drafts are proposals, not official communications or model-generated facts.
   if (source && system.startsWith('Write a proposed')) {
@@ -191,5 +191,7 @@ export const deterministicTaskModel: Model = async (system, prompt, _tokens, _ti
       evidence: [{ document_id: source.doc.document_id, quote: source.quote }],
     });
   }
-  return envelope('Draft for officer review: Please provide the requested details. Verify facts before issuing a reply.');
+  return JSON.stringify({
+    text: 'Draft for officer review: Please provide the requested details. Verify facts before issuing a reply.',
+  });
 };

@@ -235,7 +235,6 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
 
     const summary = await make({
       text: 'The source states the limit is 9.7 million.',
-      used_document_ids: [], evidence: [],
     }).api(event('summarize', {
       user_input: 'Source text:\nThe source states the limit is 9.7 million.',
     }));
@@ -347,7 +346,6 @@ describe('Task 22B: bounded evidence and provenance enforcement', () => {
   it('rejects an invented external link in a proposed official draft', async () => {
     const output = {
       text: 'Please visit https://fabricated.example.org/approval',
-      used_document_ids: [], evidence: [],
     };
     const response = await make(output).api(
       event('draft-reply', { user_input: 'Draft a short receipt acknowledgement.' }));

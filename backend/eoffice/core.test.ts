@@ -26,7 +26,8 @@ const narrative = (text = 'Valid answer', used_document_ids: string[] = []) =>
   JSON.stringify({ text, used_document_ids, evidence: sourceEvidence(used_document_ids) });
 const extracted = (extracted_data: unknown, used_document_ids: string[] = []) =>
   JSON.stringify({ extracted_data, used_document_ids, evidence: sourceEvidence(used_document_ids) });
-const defaultModel: Model = async () => narrative();
+const defaultModel: Model = async system => system.includes('exactly one key, "text"')
+  ? JSON.stringify({ text: 'Valid answer' }) : narrative();
 const routeCases: Array<{ task: string; request: Record<string, unknown> }> = [
   { task: 'chat', request: { request_id: id, session_id: 's1', user_input: 'Budget?' } },
   { task: 'summarize', request: { request_id: id, user_input: 'The policy establishes a budget cap of 1.2 million.' } },

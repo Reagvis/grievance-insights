@@ -21,8 +21,9 @@ const make = (output: unknown) => {
   const payload = output as { used_document_ids?: string[] };
   const evidence = payload.used_document_ids?.map(document_id => ({
     document_id, quote: 'Subject: Leave application. No file number or approval is recorded.',
-  })) ?? [];
-  const model = vi.fn(async () => JSON.stringify({ ...(output as object), evidence }));
+  }));
+  const model = vi.fn(async () => JSON.stringify({ ...(output as object),
+    ...(evidence === undefined ? {} : { evidence }) }));
   const documents = { fetch: vi.fn(async (ref: typeof file) =>
     ({ document_id: ref.document_id, title: 'Office note 17', text: 'Subject: Leave application. No file number or approval is recorded.' })) };
   const api = createEofficeApi({ authorize: async () => principal, model, documents });
@@ -41,7 +42,7 @@ describe('eOffice Phase 1 v2.0 mocked contract fixtures (Task 22A)', () => {
   });
 
   it('summarize: source-text-only request produces the exact public summary shape', async () => {
-    const { api, documents } = make({ text: 'The office note requests leave.', used_document_ids: [] });
+    const { api, documents } = make({ text: 'The office note requests leave.' });
     const response = await api(event('summarize', { user_input: 'The office note requests leave for two working days.' }));
     expect(response.statusCode).toBe(200);
     expect(body(response)).toEqual({ request_id, summary: 'The office note requests leave.' });
