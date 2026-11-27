@@ -14,15 +14,19 @@ export type Material = {
   pages?: readonly PageMaterial[];
 };
 /** The caller is a trusted authorization result, never the user_id from JSON. */
-export interface DocumentSource { fetch(document: DocumentRef, principal: Principal, deadline: number): Promise<Material>; }
+export interface DocumentSource { fetch(document: DocumentRef, principal: Principal, deadline: number, sessionId?: string): Promise<Material>; }
 export type DocumentAccess = {
   allowedHosts: ReadonlySet<string>;
   headers: Readonly<Record<string, string>>;
 };
 type Address = { address: string; family: number };
-type Resolver = (hostname: string) => Promise<readonly Address[]>;
-type Transport = (url: URL, ip: Address, headers: Readonly<Record<string, string>>, timeoutMs: number) =>
+export type Resolver = (hostname: string) => Promise<readonly Address[]>;
+export type Transport = (url: URL, ip: Address, headers: Readonly<Record<string, string>>, timeoutMs: number) =>
   Promise<{ bytes: Uint8Array; contentType: string; contentDisposition?: string }>;
+/** Scan the entire downloaded byte stream before any PDF/DOCX/text parser runs.
+ * A scanner failure/outage cannot be interpreted as a clean document.
+ */
+export type MalwareScanner = (bytes: Uint8Array, deadline: number) => Promise<'clean' | 'infected'>;
 const MAX_FILE = 2 * 1024 * 1024;
 const MAX_TEXT = 24000;
 /** Accept only a safe display filename asserted by the authenticated file response.
@@ -128,12 +132,13 @@ const defaultResolver: Resolver = hostname => lookup(hostname, { all: true, verb
  */
 export class HttpsDocuments implements DocumentSource {
   constructor(
-    private readonly accessFor: (principal: Principal) => Promise<DocumentAccess>,
+    private readonly accessFor: (principal: Principal, document: DocumentRef, deadline: number, sessionId?: string) => Promise<DocumentAccess>,
     private readonly resolveHost: Resolver = defaultResolver,
     private readonly download: Transport = pinnedHttpsGet,
+    private readonly scan?: MalwareScanner,
   ) {}
-  async fetch(document: DocumentRef, principal: Principal, deadline: number): Promise<Material> {
-    const access = await this.accessFor(principal);
+  async fetch(document: DocumentRef, principal: Principal, deadline: number, sessionId?: string): Promise<Material> {
+    const access = await this.accessFor(principal, document, deadline, sessionId);
     const url = safeUrl(document.download_url, access.allowedHosts);
     const timeoutMs = Math.min(8000, deadline - Date.now());
     if (timeoutMs < 1) throw new EofficeError(503, 'Document retrieval deadline expired.', 'Document retrieval timed out.');
@@ -152,6 +157,22 @@ export class HttpsDocuments implements DocumentSource {
     const remaining = Math.min(8000, deadline - Date.now());
     if (remaining < 1) throw new EofficeError(503, 'Document download deadline expired.', 'Document retrieval timed out.');
     const result = await this.download(url, addresses[0], safeHeaders(access.headers), remaining);
+    if (!result.bytes.length || result.bytes.length > MAX_FILE)
+      throw new EofficeError(422, 'Protected document byte limit exceeded.', 'The requested document is unsupported.');
+    if (this.scan) {
+      if (deadline <= Date.now())
+        throw new EofficeError(503, 'Malware scan deadline expired.', 'Document retrieval is unavailable.');
+      // Reject both detected malware and scanner exceptions. This check runs
+      // before any parser or model sees the document bytes.
+      let verdict: 'clean' | 'infected';
+      try { verdict = await this.scan(result.bytes, deadline); }
+      catch { throw new EofficeError(503, 'Malware scanner unavailable.', 'Document retrieval is unavailable.'); }
+      if (verdict !== 'clean')
+        throw new EofficeError(422, 'Protected document failed malware screening.', 'The requested document is unavailable.');
+    }
+    // A slow but eventually clean scanner must not start parsing after timeout.
+    if (deadline <= Date.now())
+      throw new EofficeError(503, 'Document parsing deadline expired.', 'Document retrieval is unavailable.');
     try { return await extractDocument(document, result.bytes, result.contentType, result.contentDisposition); }
     catch (error) {
       if (error instanceof EofficeError) throw error;
