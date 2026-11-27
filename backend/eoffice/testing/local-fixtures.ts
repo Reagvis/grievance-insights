@@ -1,4 +1,4 @@
-import { createEofficeApi, type Event, type Principal } from '../core';
+import { createEofficeApi, type Principal } from '../core';
 import { EofficeError } from '../schema';
 import type { DocumentRef, Material } from '../documents';
 
@@ -133,7 +133,7 @@ export function createLocalSyntheticApi(actorValue: string | undefined, faultVal
     permissions: ['chat', 'summarize', 'extract', 'draft-reply'],
   } : null;
   return createEofficeApi({
-    authorize: async (_event: Event) => {
+    authorize: async () => {
       if (fault === 'auth-denied') return null;
       if (fault === 'auth-unavailable')
         throw new EofficeError(503, 'PRIVATE_SYNTHETIC_AUTH_DIAGNOSTIC', 'PRIVATE_SYNTHETIC_AUTH_PUBLIC');
