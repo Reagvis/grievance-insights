@@ -60,4 +60,21 @@ echo 'stdin: OK'; exit 0`);
       .rejects.toMatchObject({ status: 503 });
     expect((await readdir(failed.root)).filter(name => name.startsWith('eoffice-clam-'))).toEqual([]);
   });
+  it('serializes overlapping scans without deleting active scratch', async () => {
+    const { root, scanner } = await fixture(`
+test -d "$TMPDIR" || exit 2
+echo private > "$TMPDIR/document"
+sleep 0.1
+test -f "$TMPDIR/document" || exit 2
+cat >/dev/null
+echo 'stdin: OK'
+exit 0`);
+    await expect(Promise.all([
+      scanner(Buffer.from('first'), Date.now() + 5000),
+      scanner(Buffer.from('second'), Date.now() + 5000),
+      scanner(Buffer.from('third'), Date.now() + 5000),
+      scanner(Buffer.from('fourth'), Date.now() + 5000),
+    ])).resolves.toEqual(['clean', 'clean', 'clean', 'clean']);
+    expect((await readdir(root)).filter(name => name.startsWith('eoffice-clam-'))).toEqual([]);
+  });
 });

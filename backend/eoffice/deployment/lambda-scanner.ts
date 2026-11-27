@@ -35,7 +35,8 @@ async function purgeScratch(root: string): Promise<void> {
  */
 export function lambdaClamScanner(overrides: Partial<ScannerConfig> = {}): MalwareScanner {
   const config = { ...defaultConfig, ...overrides };
-  return async (bytes, deadline) => {
+  let tail: Promise<void> = Promise.resolve();
+  const scan: MalwareScanner = async (bytes, deadline) => {
     if (!bytes.length || bytes.length > 2 * 1024 * 1024 || deadline <= Date.now()) throw unavailable();
     await purgeScratch(config.temporaryRoot);
     let scratch: string;
@@ -73,7 +74,12 @@ export function lambdaClamScanner(overrides: Partial<ScannerConfig> = {}): Malwa
         if (finishing) return;
         finishing = true;
         clearTimeout(timer);
-        child.kill('SIGKILL');
+        if (child.exitCode === null && child.signalCode === null) {
+          await new Promise<void>(done => {
+            child.once('close', () => done());
+            child.kill('SIGKILL');
+          });
+        }
         try { await rm(scratch, { recursive: true }); }
         catch { reject(unavailable()); return; }
         if (result) resolve(result);
@@ -96,5 +102,10 @@ export function lambdaClamScanner(overrides: Partial<ScannerConfig> = {}): Malwa
       stdin.once('error', () => { void finish(); });
       stdin.end(bytes);
     });
+  };
+  return (bytes, deadline) => {
+    const result = tail.then(() => scan(bytes, deadline));
+    tail = result.then(() => undefined, () => undefined);
+    return result;
   };
 }
