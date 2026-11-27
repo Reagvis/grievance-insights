@@ -8,10 +8,72 @@ import type { AuditRecord, AuditSink } from '../provisional/audit';
 import type { CredentialKind, CredentialStatus, VerificationConfig } from '../provisional/credentials';
 import { sha256Url } from '../provisional/credentials';
 import type { ProtectedPermit, TrustedResourceRegistry } from '../provisional/protected-documents';
+import { EofficeError, isObject } from '../schema';
+import type { Event, Principal, Task } from '../core';
+import type { IdentifiedOfficer, OfficerAuthorizer } from '../provisional/service';
 
 type DocumentClient = Pick<DynamoDBDocumentClient, 'send'>;
 const identifier = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const host = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const tasks = new Set<Task>(['chat', 'summarize', 'extract', 'draft-reply']);
+
+type ClientItem = Readonly<{
+  id: string; clientId: string; department: string; officer: string;
+  permissions: Task[]; enabled: boolean; tokensValidAfter: number; sessionId?: string;
+}>;
+
+/** API Gateway verifies Cognito JWT signature/issuer/audience/scopes first. This
+ * second, strongly consistent authorization lookup binds the machine client to
+ * an application principal and makes suspension/revocation effective even for
+ * an access token issued before the Cognito client was disabled.
+ */
+export class DynamoCognitoClientAuthorization {
+  constructor(private readonly client: DocumentClient, private readonly table: string,
+    private readonly issuer: string, private readonly scopePrefix: string) {
+    if (!table || !issuer || !identifier.test(scopePrefix))
+      throw new Error('Cognito client authorization configuration is required.');
+  }
+  readonly authorize: OfficerAuthorizer = async (event: Event): Promise<IdentifiedOfficer> => {
+    const jwt = event.requestContext?.authorizer?.jwt;
+    const claims = jwt?.claims;
+    const clientId = claims?.client_id;
+    const issuedAt = Number(claims?.iat);
+    const expiresAt = Number(claims?.exp);
+    const now = Math.floor(Date.now() / 1000);
+    const task = event.rawPath?.match(/^\/api\/v1\/ai\/(chat|summarize|extract|draft-reply)$/)?.[1] as Task | undefined;
+    if (!task || typeof clientId !== 'string' || !identifier.test(clientId) ||
+        claims?.iss !== this.issuer || claims?.token_use !== 'access' ||
+        !Number.isSafeInteger(issuedAt) || !Number.isSafeInteger(expiresAt) ||
+        issuedAt > now + 60 || expiresAt <= now ||
+        !jwt?.scopes?.includes(this.scopePrefix + '/' + task))
+      throw new EofficeError(403, 'Invalid Cognito access-token context.', 'Access denied.');
+    const result = await this.client.send(new GetCommand({
+      TableName: this.table, Key: { id: 'client#' + clientId }, ConsistentRead: true,
+    }));
+    const item = result.Item as ClientItem | undefined;
+    if (!item) throw new EofficeError(403, 'Unregistered Cognito client.', 'Access denied.');
+    if (item.id !== 'client#' + clientId || item.clientId !== clientId ||
+        !identifier.test(item.department) || !identifier.test(item.officer) ||
+        !Array.isArray(item.permissions) || !item.permissions.length ||
+        item.permissions.some(permission => !tasks.has(permission)) ||
+        typeof item.enabled !== 'boolean' || !Number.isSafeInteger(item.tokensValidAfter) ||
+        (item.sessionId !== undefined && !identifier.test(item.sessionId)))
+      throw new Error('Malformed Cognito client authorization record.');
+    if (!item.enabled || issuedAt <= item.tokensValidAfter || !item.permissions.includes(task))
+      throw new EofficeError(403, 'Cognito client is suspended or revoked.', 'Access denied.');
+    let body: unknown;
+    try { body = JSON.parse(event.body ?? ''); } catch { /* core reports malformed input */ }
+    if (isObject(body)) {
+      if (body.user_id !== undefined && body.user_id !== item.officer)
+        throw new EofficeError(403, 'Officer identity mismatch.', 'Access denied.');
+      if (task === 'chat' && (!item.sessionId || body.session_id !== item.sessionId))
+        throw new EofficeError(403, 'Session authorization mismatch.', 'Access denied.');
+    }
+    const principal: Principal = { department: item.department, officer: item.officer,
+      permissions: item.permissions };
+    return { principal, credentialId: clientId, sessionId: item.sessionId };
+  };
+}
 
 /** Strongly consistent, fail-closed credential revocation status. */
 export class DynamoCredentialStatus implements CredentialStatus {
@@ -120,18 +182,24 @@ export function createDeploymentAdapters(client = DynamoDBDocumentClient.from(
   }) }), { marshallOptions: { removeUndefinedValues: true } },
 )) {
   const statusTable = process.env.EOFFICE_CREDENTIALS_TABLE;
+  const clientsTable = process.env.EOFFICE_CLIENTS_TABLE;
   const registryTable = process.env.EOFFICE_REGISTRY_TABLE;
   const auditTable = process.env.EOFFICE_AUDIT_TABLE;
   const auditKey = process.env.EOFFICE_AUDIT_HMAC_KEY;
   const allowedHosts = new Set((process.env.EOFFICE_ALLOWED_DOCUMENT_HOSTS ?? '')
     .split(',').map(value => value.trim().toLowerCase()).filter(value => host.test(value)));
-  if (!statusTable || !registryTable || !auditTable || !auditKey || !allowedHosts.size)
+  const cognitoIssuer = process.env.EOFFICE_COGNITO_ISSUER;
+  const scopePrefix = process.env.EOFFICE_COGNITO_SCOPE_PREFIX;
+  if (!statusTable || !clientsTable || !registryTable || !auditTable || !auditKey ||
+      !cognitoIssuer || !scopePrefix || !allowedHosts.size)
     throw new Error('eOffice deployment configuration is incomplete.');
   const key = Buffer.from(auditKey, 'base64');
   if (key.byteLength < 32) throw new Error('Audit HMAC key is invalid.');
   const retention = Number(process.env.EOFFICE_AUDIT_RETENTION_SECONDS ?? 30 * 86400);
   const status = new DynamoCredentialStatus(client, statusTable);
+  const clients = new DynamoCognitoClientAuthorization(client, clientsTable, cognitoIssuer, scopePrefix);
   return {
+    authorizeOfficer: clients.authorize,
     jwt: verificationFromEnvironment(status),
     grants: new DynamoResourceRegistry(client, registryTable, allowedHosts),
     audit: new DynamoAuditSink(client, auditTable, retention),

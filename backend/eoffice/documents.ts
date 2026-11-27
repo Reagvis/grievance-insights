@@ -30,8 +30,8 @@ export type Transport = (url: URL, ip: Address, headers: Readonly<Record<string,
  * A scanner failure/outage cannot be interpreted as a clean document.
  */
 export type MalwareScanner = (bytes: Uint8Array, deadline: number) => Promise<'clean' | 'infected'>;
-const MAX_FILE = 2 * 1024 * 1024;
-const MAX_TEXT = 24000;
+const MAX_FILE = 10 * 1024 * 1024;
+const MAX_TEXT = 128 * 1024;
 /** Accept only a safe display filename asserted by the authenticated file response.
  * The filename is not a verified government document title; it is a display
  * label. The two-field §3.3 request itself supplies no document title.

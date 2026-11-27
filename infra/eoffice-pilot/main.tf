@@ -19,6 +19,56 @@ locals {
 
   }
   service_image = "${data.aws_ecr_repository.service.repository_url}@${var.service_image_digest}"
+  api_scopes = {
+    chat          = "Allow document-grounded chat"
+    summarize     = "Allow document summarization"
+    extract       = "Allow structured extraction"
+    "draft-reply" = "Allow draft-reply generation"
+  }
+  # Preserve the existing route instance keys so adding JWT authorization is
+  # an in-place update rather than endpoint replacement.
+  api_routes = { for name in keys(local.api_scopes) : "POST /api/v1/ai/${name}" => name }
+}
+
+resource "aws_cognito_user_pool" "eoffice" {
+  name                     = "${local.name}-m2m"
+  user_pool_tier           = "LITE"
+  deletion_protection      = "ACTIVE"
+  username_attributes      = ["email"]
+  auto_verified_attributes = []
+  admin_create_user_config { allow_admin_create_user_only = true }
+  lifecycle { prevent_destroy = true }
+}
+resource "aws_cognito_resource_server" "eoffice" {
+  identifier   = var.cognito_resource_server_identifier
+  name         = "${local.name}-api"
+  user_pool_id = aws_cognito_user_pool.eoffice.id
+  dynamic "scope" {
+    for_each = local.api_scopes
+    content {
+      scope_name        = scope.key
+      scope_description = scope.value
+    }
+  }
+}
+resource "aws_cognito_user_pool_client" "eoffice" {
+  name                                 = "${local.name}-initial-client"
+  user_pool_id                         = aws_cognito_user_pool.eoffice.id
+  generate_secret                      = true
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_flows                  = ["client_credentials"]
+  allowed_oauth_scopes = [for name in keys(local.api_scopes) :
+    "${aws_cognito_resource_server.eoffice.identifier}/${name}"
+  ]
+  access_token_validity = 15
+  token_validity_units { access_token = "minutes" }
+  enable_token_revocation       = true
+  prevent_user_existence_errors = "ENABLED"
+  lifecycle { prevent_destroy = true }
+}
+resource "aws_cognito_user_pool_domain" "eoffice" {
+  domain       = var.cognito_domain_prefix
+  user_pool_id = aws_cognito_user_pool.eoffice.id
 }
 
 resource "aws_dynamodb_table" "credentials" {
@@ -40,6 +90,22 @@ resource "aws_dynamodb_table" "credentials" {
   lifecycle {
     prevent_destroy = true
   }
+}
+resource "aws_dynamodb_table" "clients" {
+  name                        = "${local.name}-clients"
+  billing_mode                = "PAY_PER_REQUEST"
+  hash_key                    = "id"
+  deletion_protection_enabled = true
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  point_in_time_recovery { enabled = true }
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = data.aws_kms_key.data.arn
+  }
+  lifecycle { prevent_destroy = true }
 }
 resource "aws_dynamodb_table" "registry" {
   name                        = "${local.name}-registry"
@@ -127,7 +193,7 @@ data "aws_iam_policy_document" "runtime" {
   }
   statement {
     actions   = ["dynamodb:GetItem"]
-    resources = [aws_dynamodb_table.credentials.arn, aws_dynamodb_table.registry.arn]
+    resources = [aws_dynamodb_table.credentials.arn, aws_dynamodb_table.clients.arn, aws_dynamodb_table.registry.arn]
 
   }
   statement {
@@ -160,7 +226,7 @@ resource "aws_iam_role_policy" "runtime" {
 data "aws_iam_policy_document" "operator" {
   statement {
     actions   = ["dynamodb:GetItem", "dynamodb:PutItem"]
-    resources = [aws_dynamodb_table.credentials.arn, aws_dynamodb_table.registry.arn, aws_dynamodb_table.audit.arn]
+    resources = [aws_dynamodb_table.credentials.arn, aws_dynamodb_table.clients.arn, aws_dynamodb_table.registry.arn, aws_dynamodb_table.audit.arn]
 
   }
   statement {
@@ -196,11 +262,15 @@ resource "aws_lambda_function" "service" {
       EOFFICE_PUBLIC_KEYS_SECRET_ARN   = aws_secretsmanager_secret.public_keys.arn
       EOFFICE_AUDIT_HMAC_SECRET_ARN    = aws_secretsmanager_secret.audit_hmac.arn
       EOFFICE_CREDENTIALS_TABLE        = aws_dynamodb_table.credentials.name
+      EOFFICE_CLIENTS_TABLE            = aws_dynamodb_table.clients.name
       EOFFICE_REGISTRY_TABLE           = aws_dynamodb_table.registry.name
       EOFFICE_AUDIT_TABLE              = aws_dynamodb_table.audit.name
       EOFFICE_AUDIT_RETENTION_SECONDS  = tostring(var.audit_retention_days * 86400)
       EOFFICE_ALLOWED_DOCUMENT_HOSTS   = join(",", var.allowed_document_hosts)
       EOFFICE_DOCUMENT_ACCEPTANCE_MODE = var.document_acceptance_mode
+      EOFFICE_COGNITO_ISSUER           = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.eoffice.id}"
+      EOFFICE_COGNITO_SCOPE_PREFIX     = aws_cognito_resource_server.eoffice.identifier
+      EOFFICE_INFERENCE_MODE           = var.inference_mode
 
     }
 
@@ -220,12 +290,27 @@ resource "aws_apigatewayv2_integration" "service" {
   payload_format_version = "2.0"
   timeout_milliseconds   = 30000
 }
+resource "aws_apigatewayv2_authorizer" "cognito" {
+  api_id           = aws_apigatewayv2_api.service.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "eoffice-cognito-m2m"
+  jwt_configuration {
+    audience = concat(
+      [aws_cognito_user_pool_client.eoffice.id],
+      sort(tolist(var.cognito_additional_client_ids)),
+    )
+    issuer = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.eoffice.id}"
+  }
+}
 resource "aws_apigatewayv2_route" "service" {
-  for_each           = toset(["POST /api/v1/ai/chat", "POST /api/v1/ai/summarize", "POST /api/v1/ai/extract", "POST /api/v1/ai/draft-reply"])
-  api_id             = aws_apigatewayv2_api.service.id
-  route_key          = each.value
-  authorization_type = "NONE"
-  target             = "integrations/${aws_apigatewayv2_integration.service.id}"
+  for_each             = local.api_routes
+  api_id               = aws_apigatewayv2_api.service.id
+  route_key            = each.key
+  authorization_type   = "JWT"
+  authorizer_id        = aws_apigatewayv2_authorizer.cognito.id
+  authorization_scopes = ["${aws_cognito_resource_server.eoffice.identifier}/${each.value}"]
+  target               = "integrations/${aws_apigatewayv2_integration.service.id}"
 }
 resource "aws_apigatewayv2_stage" "service" {
   api_id      = aws_apigatewayv2_api.service.id
@@ -292,26 +377,6 @@ resource "aws_route53_record" "service" {
     name                   = aws_apigatewayv2_domain_name.service[0].domain_name_configuration[0].target_domain_name
     zone_id                = aws_apigatewayv2_domain_name.service[0].domain_name_configuration[0].hosted_zone_id
     evaluate_target_health = false
-
-  }
-}
-
-resource "aws_budgets_budget" "monthly" {
-  name         = "${local.name}-monthly"
-  budget_type  = "COST"
-  limit_amount = tostring(var.monthly_budget_usd)
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
-  cost_filter {
-    name   = "TagKeyValue"
-    values = ["user:Application$grievance-insights-eoffice"]
-  }
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 80
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "FORECASTED"
-    subscriber_email_addresses = [var.budget_alert_email]
 
   }
 }

@@ -1,6 +1,8 @@
 # Architecture
 
-> Task 22G adds a separate, not-yet-deployed eOffice pilot design under `infra/eoffice-pilot/`; see [EOFFICE_PILOT_DEPLOYMENT.md](EOFFICE_PILOT_DEPLOYMENT.md). Its explicitly selected restricted-UAT composition accepts only operator-pinned immutable synthetic fixture bytes and performs no malware scan or paid inference. Government documents remain blocked. It has no dependency on the live grievance pilot infrastructure or routes.
+> Task 22I adds a planned isolated eOffice Cognito M2M boundary and per-request application authorization registry; see [EOFFICE_INTEGRATION_READINESS.md](EOFFICE_INTEGRATION_READINESS.md). It is code-only, not live authentication state.
+
+> Tasks 22G–22H deployed a separate eOffice pilot under `infra/eoffice-pilot/` at `https://api.eoffice-pilot.reagvis.com`; see [EOFFICE_PILOT_DEPLOYMENT.md](EOFFICE_PILOT_DEPLOYMENT.md). Its restricted-UAT composition performs deterministic processing and can accept only operator-pinned immutable synthetic fixture bytes after an approved document host is configured. No document host currently exists; it performs no malware scan or paid inference, and government documents remain blocked. It has no dependency on the grievance pilot infrastructure or routes.
 
 ## Implemented today
 

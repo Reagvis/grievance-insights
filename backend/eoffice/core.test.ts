@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createEofficeApi, type Event, type Model, type Principal, type ResolveHistory } from './core';
-import type { DocumentSource } from './documents';
+import { createEofficeApi, eofficeLimits, type Event, type Model, type Principal, type ResolveHistory } from './core';
+import { documentLimits, type DocumentSource } from './documents';
 
 const id = 'b6d8f4a2-7c39-4d1a-8e2b-5f9c6d3e8f1a';
 const principal: Principal = { department: 'dept-A', officer: 'officer_4512', permissions: ['chat', 'summarize', 'extract', 'draft-reply'] };
 const docA = { document_id: 'doc_policy_2026', download_url: 'https://dept-a.example.gov/temp/abc' };
-const docB = { document_id: 'doc_budget_2026', download_url: 'https://dept-a.example.gov/temp/xyz' };
 const schema = { type: 'object', properties: { subject: { type: 'string' }, letter_date: { type: ['string', 'null'] } }, required: ['subject'] };
 const sourceText = (document_id: string) => 'Document ' + document_id + ': Budget cap is 1.2 million.';
 const docs: DocumentSource = { fetch: async d => ({
@@ -14,6 +13,15 @@ const docs: DocumentSource = { fetch: async d => ({
 const sourceEvidence = (ids: string[]) => ids.map(document_id => ({
   document_id, quote: sourceText(document_id),
 }));
+
+describe('Task 22I transport and document limits', () => {
+  it('fixes the approved byte and one-document boundaries', () => {
+    expect(eofficeLimits).toEqual({ maxRequestBytes: 256 * 1024,
+      maxSourceContextBytes: 128 * 1024, maxDocumentsPerRequest: 1 });
+    expect(documentLimits).toEqual({ maxFileBytes: 10 * 1024 * 1024,
+      maxTextBytes: 128 * 1024 });
+  });
+});
 const narrative = (text = 'Valid answer', used_document_ids: string[] = []) =>
   JSON.stringify({ text, used_document_ids, evidence: sourceEvidence(used_document_ids) });
 const extracted = (extracted_data: unknown, used_document_ids: string[] = []) =>
@@ -76,7 +84,7 @@ describe('eOffice HTTP contracts', () => {
     expect(result(r).request_id).toBe(id);
     const bad = await unauthorized(event('chat', { request_id: 'not-a-uuid', user_input: 'Hi' }));
     expect(result(bad)).not.toHaveProperty('request_id');
-    const oversized = await unauthorized(event('chat', { request_id: id, user_input: 'x'.repeat(65000) }));
+    const oversized = await unauthorized(event('chat', { request_id: id, user_input: 'x'.repeat(256 * 1024 + 1) }));
     expect(oversized.statusCode).toBe(400);
     expect(result(oversized)).not.toHaveProperty('request_id');
     const malformed = await api()(event('chat', {}, { body: '{invalid-json' }));
@@ -91,7 +99,7 @@ describe('eOffice HTTP contracts', () => {
 describe('eOffice Phase 1 response contracts', () => {
   it('returns chat answer with only an attributed eOffice reference and exact request ID', async () => {
     const r = await api({ model: async () => narrative('The cap is 1.2 million.', [docA.document_id]) })(
-      event('chat', { request_id: id, user_id: principal.officer, session_id: 'chat-4512', user_input: 'Budget?', context: { documents: [docA, docB] } }));
+      event('chat', { request_id: id, user_id: principal.officer, session_id: 'chat-4512', user_input: 'Budget?', context: { documents: [docA] } }));
     expect(r.statusCode).toBe(200);
     expect(result(r)).toEqual({
       request_id: id, answer: 'The cap is 1.2 million.',
@@ -101,13 +109,13 @@ describe('eOffice Phase 1 response contracts', () => {
   });
   it('returns empty references when no document was used, even when attached', async () => {
     const r = await api()(event('chat', {
-      request_id: id, session_id: 's', user_input: 'Hello', context: { documents: [docA, docB] },
+      request_id: id, session_id: 's', user_input: 'Hello', context: { documents: [docA] },
     }));
     expect(r.statusCode).toBe(200);
     expect(result(r).references).toEqual([]);
   });
   it('refuses unknown, duplicate, and fabricated model source IDs', async () => {
-    const req = { request_id: id, user_input: 'Draft a reply.', context: { documents: [docA, docB] } };
+    const req = { request_id: id, user_input: 'Draft a reply.', context: { documents: [docA] } };
     for (const ids of [['not-supplied'], [docA.document_id, docA.document_id]]) {
       const r = await api({ model: async () => narrative('Reply', ids) })(event('draft-reply', req));
       expect(r.statusCode).toBe(502);
@@ -213,9 +221,9 @@ describe('eOffice Phase 1 response contracts', () => {
   });
   it('bounds the combined prompt, history and model deadline without charging Bedrock', async () => {
     const model = vi.fn(defaultModel);
-    const bigDocs: DocumentSource = { fetch: async d => ({ document_id: d.document_id, title: 'Policy', text: 'Policy '.repeat(2300) }) };
+    const bigDocs: DocumentSource = { fetch: async d => ({ document_id: d.document_id, title: 'Policy', text: 'P'.repeat(128 * 1024) }) };
     const r = await api({ model, documents: bigDocs, history: async () => 'H'.repeat(7000) })(
-      event('chat', { request_id: id, session_id: 's', user_input: 'Q'.repeat(12000),
+      event('chat', { request_id: id, session_id: 's', user_input: 'Q'.repeat(128 * 1024),
         context: { documents: [docA], previous_context: 'https://eoffice.example.gov/history' } }));
     expect(r.statusCode).toBe(422);
     expect(model).not.toHaveBeenCalled();

@@ -26,6 +26,44 @@ variable "jwt_issuer" {
     error_message = "Invalid issuer."
   }
 }
+variable "cognito_resource_server_identifier" {
+  description = "Dedicated eOffice API scope prefix; not shared with the grievance pilot."
+  type        = string
+  default     = "eoffice-api"
+  validation {
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$", var.cognito_resource_server_identifier))
+    error_message = "Invalid Cognito resource-server identifier."
+  }
+}
+variable "cognito_domain_prefix" {
+  description = "Globally unique Cognito token-endpoint prefix for this isolated pilot."
+  type        = string
+  default     = "reagvis-eoffice-pilot-134857759074"
+  validation {
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$", var.cognito_domain_prefix))
+    error_message = "Invalid Cognito domain prefix."
+  }
+}
+variable "cognito_additional_client_ids" {
+  description = "Explicitly reviewed Cognito app-client IDs accepted by API Gateway in addition to the Terraform client. Update Terraform after Console onboarding."
+  type        = set(string)
+  default     = []
+  validation {
+    condition = alltrue([
+      for id in var.cognito_additional_client_ids : can(regex("^[A-Za-z0-9]{1,128}$", id))
+    ])
+    error_message = "Every additional Cognito app-client ID must be an explicit valid identifier."
+  }
+}
+variable "inference_mode" {
+  description = "Explicit operator selection. Bedrock requires separate retention and paid-synthetic acceptance approval."
+  type        = string
+  default     = "deterministic"
+  validation {
+    condition     = contains(["deterministic", "bedrock"], var.inference_mode)
+    error_message = "Use deterministic or bedrock."
+  }
+}
 variable "allowed_document_hosts" {
   description = "Mandatory runtime host allowlist; each registry row also binds the exact URL hash."
   type        = set(string)
@@ -42,18 +80,6 @@ variable "audit_retention_days" {
   validation {
     condition     = var.audit_retention_days >= 1 && var.audit_retention_days <= 90
     error_message = "Audit retention must be 1-90 days."
-  }
-}
-variable "monthly_budget_usd" {
-  type    = number
-  default = 100
-}
-variable "budget_alert_email" {
-  description = "Approved operator address for the forecasted 80% budget notification."
-  type        = string
-  validation {
-    condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.budget_alert_email))
-    error_message = "Provide a valid budget alert email address."
   }
 }
 variable "enable_public_endpoint" {

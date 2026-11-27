@@ -2,6 +2,25 @@
 
 **Verified:** 2026-11-27 (Asia/Kolkata). **Purpose:** concise current-state handoff to a new coordinating Brain chat. Read this first, then only the relevant issue/PR and detailed section of [BRAIN_HANDOVER.md](BRAIN_HANDOVER.md). This document is not a replacement for the full historical evidence.
 
+## LATEST checkpoint — Task 22I code-only readiness (2026-11-27)
+
+- Based exactly on deployed Task 22H commit `694a9ae2e12c123f5f51293914fe2a04e6bcdcdb`; branch `feature/eoffice-integration-readiness-22i`. No AWS resources, DNS, image pushes, paid inference, real documents, Actions, merge or deployment performed.
+- Prepared isolated eOffice Cognito Client Credentials authentication: dedicated pool/resource server/four scopes/confidential 15-minute client, API Gateway JWT authorizer, route scopes and reviewed additional-audience variable. It does not reuse grievance Cognito.
+- Added mandatory strongly consistent authorization for department/officer/session/permission and immediate suspension or `tokensValidAfter` invalidation of issued tokens. Exact document grants remain independent.
+- Prepared an explicit inference switch defaulting deterministic/offline; Bedrock for non-chat operations requires separately reviewed opt-in, while strict chat stays current-document-only. Enforced 256 KiB request, one document, 10 MiB download and 128 KiB context. Real documents remain prohibited pending malware screening and trusted access.
+- Read-only Mumbai evidence: Qwen3 32B active/on-demand; invocation logging returned no configuration. Effective retention needs owner Console confirmation before paid acceptance or future real data. Cognito M2M tier 1 is USD 0.00225/successful token request, with no app-client fee or free tier.
+- Exact plan: [EOFFICE_INTEGRATION_READINESS.md](EOFFICE_INTEGRATION_READINESS.md). Next gate is owner review of code SHA, image and Terraform plan. Do not deploy without explicit approval.
+
+## ACTIVE deployment checkpoint — 22H restricted HTTPS pilot live (2026-11-27)
+
+Task 22H deployed the isolated restricted-synthetic eOffice service in AWS account `134857759074`, Mumbai. Live base URL: **https://api.eoffice-pilot.reagvis.com** with four POST routes `/api/v1/ai/{chat,summarize,extract,draft-reply}`. ACM certificate is issued and eligible for renewal; TLS hostname verification passed. API Gateway's default execute endpoint remains disabled. The existing grievance pilot was not modified.
+
+- Bootstrap apply: 3 added (KMS key `f37c717c-c09e-4cfc-b9e7-49a479c52ee0`, alias, immutable scan-on-push ECR), 0 changed, 0 destroyed. Main applies: initial partial 11 resources then exact resume 7 added after owner supplied narrowly scoped `iam:PassRole`; public apply 6 added, all with 0 change/destroy. Separate remote-state keys and write locking retained.
+- Deployed image digest `sha256:82d750e4078e9747de72226c8ef0d01dab8e6ae41e87deaab4d61162b09393bf`. Initial base image scan exposed HIGH RPM parser findings; unused `rpm`, `rpm-libs` and `sqlite-libs` were removed. Final ECR scan completed with zero findings. No ClamAV or paid inference.
+- Secrets contain the RSA public verification key and independent audit HMAC. RSA-3072 private key and operator credentials exist only under owner-only `~/.config/reagvis/eoffice-pilot/`; never commit or paste them. Current operator key id `operator-2026-11-27-01`, issuer `eoffice-pilot`. The narrow operator policy is attached to the current approved IAM user.
+- Direct and HTTPS acceptance: unauthenticated chat 403/no-store; authenticated chat 200 scoped refusal without documents; summarize 200 deterministic source-text echo; draft-reply 200 deterministic review draft; extract 422 for an unregistered document before retrieval. TLS certificate CN/SAN match, Amazon chain verified. See [external integration handoff](EOFFICE_EXTERNAL_INTEGRATION_HANDOFF.md).
+- **Current limitation:** no fixture/document host or registry row was provisioned. Document-backed success, exact-byte hosted fixture acceptance, Bedrock inference, malware screening, government identity/ACL compatibility and real government documents remain unavailable. The configured inert allowlist hostname does not resolve. Never represent the deterministic pilot as AI inference, malware-screened, production-ready, or approved for real documents.
+
 ## ACTIVE deployment checkpoint — 22G merged, restricted UAT provisioning next (2026-11-27)
 
 Owner approved code-only merge of PR #58. Accepted implementation head `1fe946dd1072fd8f7c75a26db03af0f50b448e56`; merge `bf59268f53d7e20086a976ad9eac6cf4419c56c5` [skip ci]. [Brain acceptance](https://github.com/Reagvis/grievance-insights/pull/58#issuecomment-7208665951). 10 focused tests, typecheck, changed-file lint, packaging/import and both Terraform root validations reported passed. No further application changes or scanner work required for restricted UAT. Read `docs/EOFFICE_PILOT_DEPLOYMENT.md` on main. Earlier scanner instructions superseded.
