@@ -3,7 +3,7 @@ import { createHash, createHmac } from 'node:crypto';
 function sha(input: string | Uint8Array): string { return createHash('sha256').update(input).digest('hex'); }
 function hmac(key: Buffer | string, input: string): Buffer { return createHmac('sha256', key).update(input).digest(); }
 const uriEncode = (value: string) => encodeURIComponent(value).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
-export function canonicalAwsPath(path: string, service: 's3' | 'sqs' | 'bedrock'): string {
+export function canonicalAwsPath(path: string, service: 's3' | 'sqs' | 'bedrock' | 'secretsmanager'): string {
   // SigV4 double-encodes already escaped path labels for Bedrock/SQS. S3 is
   // the documented exception and signs its encoded object path as received.
   return service === 's3' ? path : path.split('/').map(uriEncode).join('/');
@@ -12,7 +12,7 @@ export class AwsServiceError extends Error {
   constructor(readonly status: number, name: string) { super('AWS service request failed'); this.name = name.replace(/^.*[#/]/, '') || 'ServiceError'; }
 }
 /** Small credential-free-in-source SigV4 transport, using Lambda's rotating role credentials. */
-export async function signedAwsRequest(service: 's3' | 'sqs' | 'bedrock', region: string, method: string, url: string,
+export async function signedAwsRequest(service: 's3' | 'sqs' | 'bedrock' | 'secretsmanager', region: string, method: string, url: string,
   body?: Uint8Array, extraHeaders: Record<string, string> = {}, timeoutMs?: number): Promise<Response> {
   const access = process.env.AWS_ACCESS_KEY_ID, secret = process.env.AWS_SECRET_ACCESS_KEY;
   const token = process.env.AWS_SESSION_TOKEN;

@@ -2,7 +2,7 @@
 
 ## Task 22G: isolate eOffice pilot deployment
 
-Use a dedicated Terraform state and Fargate task behind API Gateway/VPC Link/internal ALB. Co-locate a digest-pinned ClamAV sidecar through an ephemeral UNIX socket so scanning remains fail-closed without a public scanner or persistent document storage. Keep credential issuance out of HTTP, use strongly consistent encrypted DynamoDB registries, inject only public verification keys, and leave all existing grievance-pilot resources untouched. This is a readiness decision, not deployment approval.
+Use a dedicated Terraform state and usage-based Lambda container behind a dedicated HTTP API. Bake maintained ClamAV plus fresh signatures into the immutable image and scan only through stdin, with runtime signature-age enforcement. Avoid VPC, ECS, load balancers and always-on compute. Keep credential issuance out of HTTP, use strongly consistent encrypted DynamoDB registries, inject only public verification keys, and leave all existing grievance-pilot resources untouched. This is a readiness decision, not deployment approval.
 
 ## Initial decisions
 

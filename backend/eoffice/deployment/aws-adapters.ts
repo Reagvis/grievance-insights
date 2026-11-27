@@ -1,5 +1,6 @@
 import { createPublicKey, randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import {
   DynamoDBDocumentClient, GetCommand, PutCommand,
 } from '@aws-sdk/lib-dynamodb';
@@ -22,7 +23,11 @@ export class DynamoCredentialStatus implements CredentialStatus {
     const result = await this.client.send(new GetCommand({
       TableName: this.table, Key: { id: kind + '#' + jti }, ConsistentRead: true,
     }));
-    return result.Item?.revoked === true;
+    if (!result.Item) return false; // Explicit denylist semantics: absence means not revoked.
+    if (result.Item.id !== kind + '#' + jti || result.Item.revoked !== true ||
+        typeof result.Item.revokedAt !== 'string')
+      throw new Error('Malformed credential status record.');
+    return true;
   }
   async revoke(kind: CredentialKind, jti: string): Promise<void> {
     if (!identifier.test(jti)) throw new Error('Invalid credential identifier.');
@@ -43,8 +48,9 @@ type RegistryItem = Readonly<{
  * Caller request fields are selectors and must exactly match that trusted row.
  */
 export class DynamoResourceRegistry implements TrustedResourceRegistry {
-  constructor(private readonly client: DocumentClient, private readonly table: string) {
-    if (!table) throw new Error('Resource registry table is required.');
+  constructor(private readonly client: DocumentClient, private readonly table: string,
+    private readonly allowedHosts: ReadonlySet<string>) {
+    if (!table || !allowedHosts.size) throw new Error('Resource registry table and trusted hosts are required.');
   }
   async resolve(scope: Parameters<TrustedResourceRegistry['resolve']>[0], deadline: number): Promise<ProtectedPermit | null> {
     const id = [scope.principal.department, scope.principal.officer,
@@ -61,7 +67,8 @@ export class DynamoResourceRegistry implements TrustedResourceRegistry {
         (item.sessionId ?? undefined) !== scope.sessionId ||
         item.urlSha256 !== sha256Url(scope.ref.download_url) ||
         !Number.isSafeInteger(item.expiresAt) || item.expiresAt <= now ||
-        !host.test(item.allowedHost) || !item.signedGrant ||
+        !host.test(item.allowedHost) || !this.allowedHosts.has(item.allowedHost.toLowerCase()) ||
+        !item.signedGrant ||
         !/^[A-Za-z0-9._~+/-]{12,4096}$/.test(item.delegatedToken)) return null;
     return {
       signedGrant: item.signedGrant,
@@ -106,13 +113,17 @@ export function verificationFromEnvironment(status: CredentialStatus): Verificat
 }
 
 export function createDeploymentAdapters(client = DynamoDBDocumentClient.from(
-  new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } },
+  new DynamoDBClient({ maxAttempts: 2, requestHandler: new NodeHttpHandler({
+    connectionTimeout: 500, requestTimeout: 1500,
+  }) }), { marshallOptions: { removeUndefinedValues: true } },
 )) {
   const statusTable = process.env.EOFFICE_CREDENTIALS_TABLE;
   const registryTable = process.env.EOFFICE_REGISTRY_TABLE;
   const auditTable = process.env.EOFFICE_AUDIT_TABLE;
   const auditKey = process.env.EOFFICE_AUDIT_HMAC_KEY;
-  if (!statusTable || !registryTable || !auditTable || !auditKey)
+  const allowedHosts = new Set((process.env.EOFFICE_ALLOWED_DOCUMENT_HOSTS ?? '')
+    .split(',').map(value => value.trim().toLowerCase()).filter(value => host.test(value)));
+  if (!statusTable || !registryTable || !auditTable || !auditKey || !allowedHosts.size)
     throw new Error('eOffice deployment configuration is incomplete.');
   const key = Buffer.from(auditKey, 'base64');
   if (key.byteLength < 32) throw new Error('Audit HMAC key is invalid.');
@@ -120,7 +131,7 @@ export function createDeploymentAdapters(client = DynamoDBDocumentClient.from(
   const status = new DynamoCredentialStatus(client, statusTable);
   return {
     jwt: verificationFromEnvironment(status),
-    grants: new DynamoResourceRegistry(client, registryTable),
+    grants: new DynamoResourceRegistry(client, registryTable, allowedHosts),
     audit: new DynamoAuditSink(client, auditTable, retention),
     auditHmacKey: new Uint8Array(key),
   };

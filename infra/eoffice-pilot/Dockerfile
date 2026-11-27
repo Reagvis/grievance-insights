@@ -1,7 +1,8 @@
-FROM public.ecr.aws/docker/library/node:22.12.0-alpine3.21
-ENV NODE_ENV=production PORT=8080 EOFFICE_CLAMD_SOCKET=/run/clamav/clamd.sock
-WORKDIR /app
-COPY artifacts/eoffice/server.mjs /app/server.mjs
-USER node
-EXPOSE 8080
-CMD ["node", "/app/server.mjs"]
+FROM public.ecr.aws/lambda/nodejs:22
+
+# AL2023 supplies maintained ClamAV. Signatures are refreshed at image build,
+# then runtime age enforcement blocks stale images; requests never update them.
+RUN dnf install -y clamav clamav-update && freshclam && \
+    clamscan --version && dnf clean all && rm -rf /var/cache/dnf
+COPY artifacts/eoffice/handler.mjs ${LAMBDA_TASK_ROOT}/handler.mjs
+CMD ["handler.handler"]

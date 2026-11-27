@@ -1,6 +1,6 @@
 # Implementation status
 
-Task 22G source includes isolated deployment infrastructure, AWS-backed credential/resource/audit adapters, a real ClamAV-sidecar service package, and an operational plan. It is **not deployed**; DNS, ACM, secrets, images and AWS resources do not yet exist, and real government integration remains blocked. See [EOFFICE_PILOT_DEPLOYMENT.md](EOFFICE_PILOT_DEPLOYMENT.md).
+Task 22G source includes isolated serverless deployment infrastructure, AWS-backed credential/resource/audit adapters, a Lambda-container ClamAV package, and an operational plan. It is **not deployed**; DNS, ACM, secrets, images and AWS resources do not yet exist, hosted scanner timing is pending, and real government integration remains blocked. See [EOFFICE_PILOT_DEPLOYMENT.md](EOFFICE_PILOT_DEPLOYMENT.md).
 
 Last updated: 2026-11-11
 

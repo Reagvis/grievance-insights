@@ -31,6 +31,8 @@ describe('Task 22G AWS operational adapters', () => {
     expect((client.commands[1] as PutCommand).input.Item).toMatchObject({
       id: 'officer#token-1', revoked: true,
     });
+    client.item = { id: 'officer#token-1', revoked: false };
+    await expect(status.isRevoked('officer', 'token-1')).rejects.toThrow(/Malformed/);
   });
   it('returns only an exact unexpired trusted resource permit', async () => {
     const client = new FakeClient();
@@ -39,11 +41,14 @@ describe('Task 22G AWS operational adapters', () => {
       urlSha256: sha256Url(ref.download_url), signedGrant: 'signed.jwt.value',
       allowedHost: 'files.example.gov', delegatedToken: 'delegated.token.value',
       expiresAt: Math.floor(Date.now() / 1000) + 60 };
-    const registry = new DynamoResourceRegistry(client as never, 'registry');
+    const registry = new DynamoResourceRegistry(client as never, 'registry', new Set(['files.example.gov']));
     await expect(registry.resolve({ principal, ref, sessionId: 'session-1' }, Date.now() + 1000))
       .resolves.toEqual({ signedGrant: 'signed.jwt.value', allowedHost: 'files.example.gov',
         delegatedHeaders: { authorization: 'Bearer delegated.token.value' } });
     client.item = { ...client.item, urlSha256: '0'.repeat(64) };
+    await expect(registry.resolve({ principal, ref, sessionId: 'session-1' }, Date.now() + 1000))
+      .resolves.toBeNull();
+    client.item = { ...client.item, urlSha256: sha256Url(ref.download_url), allowedHost: 'other.example.gov' };
     await expect(registry.resolve({ principal, ref, sessionId: 'session-1' }, Date.now() + 1000))
       .resolves.toBeNull();
   });

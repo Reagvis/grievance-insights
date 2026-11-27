@@ -18,14 +18,6 @@ variable "service_image_digest" {
     error_message = "Use an immutable service image digest."
   }
 }
-variable "clamav_image" {
-  description = "Independently approved ClamAV image pinned by registry digest."
-  type        = string
-  validation {
-    condition     = can(regex("@sha256:[0-9a-f]{64}$", var.clamav_image))
-    error_message = "ClamAV must be pinned by digest."
-  }
-}
 variable "jwt_issuer" {
   type    = string
   default = "eoffice-pilot"
@@ -35,9 +27,14 @@ variable "jwt_issuer" {
   }
 }
 variable "allowed_document_hosts" {
-  description = "Documentation/preflight allowlist; runtime registry still binds each exact host and URL."
+  description = "Mandatory runtime host allowlist; each registry row also binds the exact URL hash."
   type        = set(string)
-  default     = []
+  validation {
+    condition = length(var.allowed_document_hosts) > 0 && alltrue([
+      for host in var.allowed_document_hosts : can(regex("^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$", host))
+    ])
+    error_message = "Provide at least one valid trusted document hostname."
+  }
 }
 variable "audit_retention_days" {
   type    = number
@@ -50,4 +47,12 @@ variable "audit_retention_days" {
 variable "monthly_budget_usd" {
   type    = number
   default = 100
+}
+variable "budget_alert_email" {
+  description = "Approved operator address for the forecasted 80% budget notification."
+  type        = string
+  validation {
+    condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.budget_alert_email))
+    error_message = "Provide a valid budget alert email address."
+  }
 }
