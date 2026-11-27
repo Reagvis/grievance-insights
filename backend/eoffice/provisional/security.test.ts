@@ -197,6 +197,187 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
     }
   });
 
+  it('keeps distinct evidence for two required fields in one document', async () => {
+    const t = fixture();
+    t.permitNonChat(actorA, docAlpha);
+    const jwt = t.officerToken(actorA);
+    t.downloads.mockResolvedValueOnce({
+      bytes: new TextEncoder().encode('Subject: Procurement.\nCount: 15.'),
+      contentType: 'text/plain', contentDisposition: 'attachment; filename="Synthetic Record.txt"',
+    });
+    const twoFields = {
+      type: 'object',
+      properties: {
+        subject: { type: 'string' },
+        count: { type: 'integer' },
+        optional_note: { type: ['string', 'null'] },
+      },
+      required: ['subject', 'count'],
+    };
+    const result = await t.handle(event('extract', 5, actorA, jwt, {
+      documents: [docAlpha],
+    }, { extraction_schema: twoFields }));
+    expect(result.statusCode).toBe(200);
+    expect(response(result).extracted_data).toEqual({
+      subject: 'Procurement', count: 15, optional_note: null,
+    });
+    expect(response(result).references).toEqual([
+      { document_id: docAlpha.document_id, title: 'Synthetic Record.txt' },
+    ]);
+  });
+
+  it('rejects noncanonical numbers rather than coercing source labels', async () => {
+    const t = fixture();
+    t.permitNonChat(actorA, docAlpha);
+    const jwt = t.officerToken(actorA);
+    const integerSchema = {
+      type: 'object', properties: { count: { type: 'integer' } }, required: ['count'],
+    };
+    for (const [index, numeric] of ['0x10', '01', '1e3', '+12', '1,200', '12.5'].entries()) {
+      t.downloads.mockResolvedValueOnce({
+        bytes: new TextEncoder().encode('Count: ' + numeric + '.'),
+        contentType: 'text/plain',
+      });
+      errorShape(await t.handle(event('extract', 6 + index, actorA, jwt, {
+        documents: [docAlpha],
+      }, { extraction_schema: integerSchema })), 422, requestId(6 + index));
+    }
+  });
+
+  it('fails explicitly when distinct extraction evidence exceeds the 16-quote budget', async () => {
+    const t = fixture();
+    t.permitNonChat(actorA, docAlpha);
+    const jwt = t.officerToken(actorA);
+    const properties: Record<string, { type: string }> = {};
+    const lines: string[] = [];
+    for (let i = 1; i <= 17; i++) {
+      properties['field' + i] = { type: 'string' };
+      lines.push('Field' + i + ': value' + i + ' confirmed.');
+    }
+    t.downloads.mockResolvedValueOnce({
+      bytes: new TextEncoder().encode(lines.join('\n')),
+      contentType: 'text/plain',
+    });
+    errorShape(await t.handle(event('extract', 12, actorA, jwt, {
+      documents: [docAlpha],
+    }, { extraction_schema: { type: 'object', properties,
+      required: Object.keys(properties) } })), 502, requestId(12));
+  });
+
+  it('injects mocked real-mode inference for three tasks but never for strict chat', async () => {
+    const t = fixture();
+    const docSupplement: DocumentRef = {
+      document_id: 'supplement-record', download_url: docBeta.download_url,
+    };
+    t.permitNonChat(actorA, docAlpha);
+    t.permitNonChat(actorA, docSupplement);
+    t.permit(actorA, docAlpha);
+    const jwt = t.officerToken(actorA);
+    const quoteAlpha = 'Allocation cap is 1.2 million.';
+    const quoteBeta = 'Allocation cap is 2.4 million.';
+    const model: Model = async (system, prompt, _maxTokens, _timeoutMs) => {
+      if (system.startsWith('Write a concise')) {
+        expect(prompt).toContain(docAlpha.document_id);
+        expect(prompt).toContain(docSupplement.document_id);
+        return JSON.stringify({
+          text: 'Document excerpts report caps of 1.2 million and 2.4 million.',
+          used_document_ids: [docAlpha.document_id, docSupplement.document_id],
+          evidence: [
+            { document_id: docAlpha.document_id, quote: quoteAlpha },
+            { document_id: docSupplement.document_id, quote: quoteBeta },
+          ],
+        });
+      }
+      if (system.startsWith('Extract only')) {
+        expect(prompt).toContain('EXTRACTION_SCHEMA:');
+        return JSON.stringify({
+          extracted_data: { subject: 'Procurement', letter_date: null, approved: null },
+          used_document_ids: [docAlpha.document_id],
+          evidence: [{ document_id: docAlpha.document_id, quote: 'Subject: Procurement.' }],
+        });
+      }
+      expect(system).toContain('proposed official response');
+      expect(prompt).toContain('Please draft a reply mentioning the 1.2 million allocation cap.');
+      return JSON.stringify({
+        text: 'Draft for officer review: the attached record states an allocation cap of 1.2 million.',
+        used_document_ids: [docAlpha.document_id],
+        evidence: [{ document_id: docAlpha.document_id, quote: quoteAlpha }],
+      });
+    };
+    const mock = vi.fn(model);
+    const handle = createProvisionalEofficeService({
+      ...t.config, inference: { mode: 'bedrock', model: mock },
+    });
+    const summary = await handle(event('summarize', 140, actorA, jwt, {
+      documents: [docAlpha, docSupplement],
+    }));
+    expect(summary.statusCode).toBe(200);
+    expect(Object.keys(response(summary)).sort()).toEqual(['request_id', 'summary']);
+    expect(response(summary).summary).toContain('2.4 million');
+
+    const extraction = await handle(event('extract', 141, actorA, jwt, {
+      documents: [docAlpha],
+    }));
+    expect(extraction.statusCode).toBe(200);
+    expect(response(extraction).extracted_data).toEqual({
+      subject: 'Procurement', letter_date: null, approved: null,
+    });
+    expect(response(extraction).references).toEqual([
+      { document_id: docAlpha.document_id, title: 'Synthetic Record.txt' },
+    ]);
+
+    const draft = await handle(event('draft-reply', 142, actorA, jwt, {
+      documents: [docAlpha],
+    }, { user_input: 'Please draft a reply mentioning the 1.2 million allocation cap.' }));
+    expect(draft.statusCode).toBe(200);
+    expect(response(draft).draft_text).toContain('Draft for officer review');
+    expect(response(draft).references).toHaveLength(1);
+    expect(mock).toHaveBeenCalledTimes(3);
+
+    const chat = await handle(event('chat', 143, actorA, jwt, {
+      documents: [docAlpha],
+    }));
+    expect(chat.statusCode).toBe(200);
+    expect(response(chat).answer).toBe('Document excerpt: ' + quoteAlpha);
+    expect(mock).toHaveBeenCalledTimes(3);
+    for (const result of [summary, extraction, draft, chat]) {
+      expect(result.body).not.toContain('secretAlpha123');
+      expect(result.body).not.toContain('secretBeta123');
+    }
+  });
+
+  it('fails closed on unsupported fabricated model outputs and never falls back to a synthetic model', async () => {
+    const t = fixture();
+    t.permitNonChat(actorA, docAlpha);
+    const jwt = t.officerToken(actorA);
+    for (const [i, result] of [
+      { text: 'The cap is 9.7 million.', used_document_ids: [docAlpha.document_id],
+        evidence: [{ document_id: docAlpha.document_id, quote: 'Allocation cap is 1.2 million.' }] },
+      { text: 'Unsupported.', used_document_ids: ['fabricated-id'],
+        evidence: [{ document_id: 'fabricated-id', quote: 'Never in the source.' }] },
+      { text: 'https://synthetic.example.gov/doc-alpha?ticket=secretAlpha123',
+        used_document_ids: [docAlpha.document_id],
+        evidence: [{ document_id: docAlpha.document_id, quote: 'Allocation cap is 1.2 million.' }] },
+    ].entries()) {
+      const model = vi.fn(async () => JSON.stringify(result));
+      const handle = createProvisionalEofficeService({
+        ...t.config, inference: { mode: 'bedrock', model },
+      });
+      errorShape(await handle(event('summarize', 150 + i, actorA, jwt, {
+        documents: [docAlpha],
+      })), 502, requestId(150 + i));
+      expect(model).toHaveBeenCalledOnce();
+    }
+    const failed = vi.fn(async () => { throw new Error('PRIVATE_DIAGNOSTIC provider unavailable'); });
+    const handle = createProvisionalEofficeService({
+      ...t.config, inference: { mode: 'bedrock', model: failed },
+    });
+    errorShape(await handle(event('summarize', 154, actorA, jwt, {
+      documents: [docAlpha],
+    })), 500, requestId(154));
+    expect(failed).toHaveBeenCalledOnce();
+  });
+
   it('denies unsigned, forged, absent, wrong-issuer/audience/kid/algorithm and expired credentials', async () => {
     const t = fixture();
     const valid = t.officerToken(actorA);
