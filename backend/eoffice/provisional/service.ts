@@ -1,4 +1,4 @@
-import { createEofficeApi, type Event, type Principal } from '../core';
+import { createEofficeApi, type Event, type Principal, type Model } from '../core';
 import type { Resolver, Transport, MalwareScanner } from '../documents';
 import {
   ProvisionalJwtVerifier, issueOfficerToken, issueDocumentGrant, revokeCredential,
@@ -11,7 +11,13 @@ import {
 } from './protected-documents';
 import { deterministicTaskModel, strictDocumentChat } from './extractive';
 
+export type InferenceSelection =
+  | Readonly<{ mode: 'deterministic' }>
+  | Readonly<{ mode: 'bedrock'; model: Model }>;
+
 export type ProvisionalConfig = Readonly<{
+  /** Explicit operator choice; no automatic real-inference fallback. */
+  inference: InferenceSelection;
   jwt: VerificationConfig;
   grants: TrustedResourceRegistry;
   scanner: MalwareScanner;
@@ -24,6 +30,30 @@ export type ProvisionalConfig = Readonly<{
 const responseHeaders = {
   'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store',
 };
+const INVOCATION_MS = 25_000;
+const COMPLETION_RESERVE_MS = 1_000;
+
+/** Bound mandatory security audit calls inside the SAME invocation deadline.
+ * A nonsettling sink never keeps the HTTP response pending indefinitely.
+ */
+async function withinAuditBudget(
+  action: () => Promise<void>, deadline: number,
+): Promise<void> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error('Security audit deadline exhausted');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.resolve().then(() => {
+        if (Date.now() >= deadline) throw new Error('Security audit deadline exhausted');
+        return action();
+      }),
+      new Promise<void>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Security audit deadline exceeded')), remaining);
+      }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
 function unavailable(requestId?: string) {
   return {
     statusCode: 503, headers: responseHeaders,
@@ -45,6 +75,12 @@ export function createProvisionalEofficeService(config: ProvisionalConfig) {
   if (!config.grants || typeof config.grants.resolve !== 'function' ||
       typeof config.scanner !== 'function')
     throw new Error('Provisional service refuses missing resource authorization or scanner.');
+  if (!config.inference ||
+      (config.inference.mode !== 'deterministic' && config.inference.mode !== 'bedrock') ||
+      (config.inference.mode === 'bedrock' && typeof config.inference.model !== 'function'))
+    throw new Error('A valid explicit inference mode and model adapter are required.');
+  const taskModel = config.inference.mode === 'bedrock'
+    ? config.inference.model : deterministicTaskModel;
   const verifier = new ProvisionalJwtVerifier(config.jwt);
   const audit = new SafeAudit(config.audit, config.auditHmacKey);
   const documents = createSecureDocumentSource({
@@ -54,36 +90,38 @@ export function createProvisionalEofficeService(config: ProvisionalConfig) {
 
   return async (event: Event) => {
     const started = Date.now();
+    const deadline = started + INVOCATION_MS;
+    const coreDeadline = deadline - COMPLETION_RESERVE_MS;
     const requestId = auditRequestId(event);
     const endpoint = auditEndpoint(event);
     let identified: VerifiedOfficer | undefined;
     try {
       // If the audit sink is down, do not authorize or retrieve anything.
-      await audit.emit({ action: 'request_attempt', outcome: 'pending', endpoint,
-        requestId });
+      await withinAuditBudget(() => audit.emit({
+        action: 'request_attempt', outcome: 'pending', endpoint, requestId,
+      }), coreDeadline);
     } catch { return unavailable(requestId); }
 
     const core = createEofficeApi({
       authorize: async rawEvent => {
         identified = await verifier.officer(rawEvent as Event);
-        await audit.emit({
+        await withinAuditBudget(() => audit.emit({
           action: 'authorization_success', outcome: 'allowed', endpoint,
-          requestId, department: identified.principal.department,
-          officer: identified.principal.officer,
-          credentialId: identified.credentialId,
-        });
+          requestId, department: identified!.principal.department,
+          officer: identified!.principal.officer,
+          credentialId: identified!.credentialId,
+        }), coreDeadline);
         return identified.principal;
       },
       documents,
-      // In strict UAT mode chat is extractive only; no external model or
-      // optional history resolver. Other tasks use deterministic bounded
-      // UAT output, not paid inference or unsupported narrative synthesis.
+      // Chat always uses current-document extractive mode, regardless of the
+      // explicitly selected model for the other three Phase 1 operations.
       strictChat: strictDocumentChat,
-      model: deterministicTaskModel,
+      model: taskModel,
     });
-    const result = await core(event);
+    const result = await core(event, coreDeadline);
     try {
-      await audit.emit({
+      await withinAuditBudget(() => audit.emit({
         action: 'request_complete',
         outcome: result.statusCode >= 400 ? (result.statusCode === 403 ? 'denied' : 'error') : 'success',
         endpoint, requestId,
@@ -92,7 +130,7 @@ export function createProvisionalEofficeService(config: ProvisionalConfig) {
         credentialId: identified?.credentialId,
         status: result.statusCode,
         latencyMs: Date.now() - started,
-      });
+      }), deadline);
     } catch { return unavailable(requestId); }
     return result;
   };
