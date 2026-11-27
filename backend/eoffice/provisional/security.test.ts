@@ -463,6 +463,75 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
     expect(t.downloads).not.toHaveBeenCalled();
   });
 
+  it('classifies malformed or absent chat session as 400, valid scope mismatch as 403', async () => {
+    const t = fixture();
+    const jwt = t.officerToken(actorA);
+    for (const [i, invalidSession] of [
+      undefined, null, 123, '', '   ', 'x'.repeat(257),
+    ].entries()) {
+      const result = await t.handle(event('chat', 160 + i, actorA, jwt, undefined, {
+        session_id: invalidSession,
+      }));
+      errorShape(result, 400, requestId(160 + i));
+    }
+    errorShape(await t.handle(event('chat', 167, actorA, jwt, undefined, {
+      session_id: 'valid-but-not-authorized',
+    })), 403, requestId(167));
+    expect(t.registry.resolve).not.toHaveBeenCalled();
+    expect(t.downloads).not.toHaveBeenCalled();
+  });
+
+  it('bounds each mandatory audit step under one 25s end-to-end deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      for (const step of [1, 2, 3]) {
+        const t = fixture();
+        const originalWrite = t.audit.record.bind(t.audit);
+        let count = 0;
+        t.audit.record = vi.fn(async record => {
+          count++;
+          if (count === step) return new Promise<void>(() => {});
+          return originalWrite(record);
+        });
+        t.permit(actorA, docAlpha);
+        const pending = t.handle(event('chat', 170 + step, actorA,
+          t.officerToken(actorA), { documents: [docAlpha] }));
+        await vi.advanceTimersByTimeAsync(25_100);
+        errorShape(await pending, 503, requestId(170 + step));
+        if (step <= 2) {
+          expect(t.registry.resolve).not.toHaveBeenCalled();
+          expect(t.downloads).not.toHaveBeenCalled();
+        } else {
+          expect(t.downloads).toHaveBeenCalledOnce();
+        }
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('does not parse documents if a clean scanner finishes after the deadline', async () => {
+    const t = fixture();
+    t.permit(actorA, docAlpha);
+    const source = createSecureDocumentSource({
+      verifier: new ProvisionalJwtVerifier(t.config.jwt),
+      registry: t.registry, scanner: t.scanner,
+      resolver: t.hosts, transport: t.downloads,
+    });
+    const principal: Principal = {
+      department: actorA.department, officer: actorA.officer, permissions: tasks,
+    };
+    let simulatedNow = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => simulatedNow);
+    try {
+      t.scanner.mockImplementationOnce(async () => {
+        simulatedNow += 26_000;
+        return 'clean';
+      });
+      await expect(source.fetch(docAlpha, principal, simulatedNow + 2000, actorA.sessionId))
+        .rejects.toMatchObject({ status: 503 });
+      expect(t.scanner).toHaveBeenCalledOnce();
+    } finally { clock.mockRestore(); }
+  });
+
   it('rejects revoked credentials and fails closed on revocation registry outage', async () => {
     const t = fixture();
     const token = t.officerToken(actorA);
@@ -668,6 +737,10 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
       scanner: undefined as unknown as MalwareScanner })).toThrow(/scanner/);
     expect(() => createProvisionalEofficeService({ ...t.config,
       grants: undefined as unknown as typeof t.registry })).toThrow(/authorization/);
+    expect(() => createProvisionalEofficeService({ ...t.config,
+      inference: undefined as unknown as typeof t.config.inference })).toThrow(/inference/);
+    expect(() => createProvisionalEofficeService({ ...t.config,
+      inference: { mode: 'bedrock', model: undefined as unknown as Model } })).toThrow(/inference/);
   });
 
   it('exercises ClamAV INSTREAM framing over an isolated local UNIX socket', async () => {
