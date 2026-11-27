@@ -44,11 +44,6 @@ export type DocumentGrantScope = Readonly<{
 }>;
 
 type Header = { alg: string; typ: string; kid: string };
-type Common = { iss: string; aud: string; sub: string; dept: string; officer: string;
-  jti: string; iat: number; nbf: number; exp: number; session_id?: string };
-type OfficerClaims = Common & { permissions: Task[] };
-type DocumentClaims = Common & { document_id: string; url_sha256: string };
-
 function rsaPublicKey(key: KeyObject): boolean {
   return key.type === 'public' && key.asymmetricKeyType === 'rsa' &&
     (key.asymmetricKeyDetails?.modulusLength ?? 0) >= 2048;
