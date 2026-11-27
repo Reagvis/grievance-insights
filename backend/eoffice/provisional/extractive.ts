@@ -67,7 +67,7 @@ function envelope(text: string, selection?: Choice): string {
  */
 export const strictDocumentChat: StrictDocumentChat = async (question, documents) => {
   const match = choose(question, documents);
-  return match ? envelope(match.excerpt.quote, match) : envelope(REFUSAL);
+  return match ? envelope('Document excerpt: ' + match.excerpt.quote, match) : envelope(REFUSAL);
 };
 
 type PromptDocument = { document_id: string; text: string };
@@ -120,9 +120,17 @@ function extractionValue(prop: unknown, property: string, docs: PromptDocument[]
       const literal = match[1].trim().replace(/[.!?]+$/, '');
       if (!literal) continue;
       if (types.includes('string')) return { value: literal, source: doc, quote: excerpt.quote };
+      // Number(...) accepts hex, exponents, infinity-like text, whitespace,
+      // leading zeros and plus prefixes that are NOT literal canonical values.
+      // Require an unambiguous base-10 representation, without coercion.
+      const canonicalNumber = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(literal) &&
+        literal !== '-0' && !/^(-?)0\d/.test(literal);
+      const canonicalInteger = /^-?(?:0|[1-9]\d*)$/.test(literal) && literal !== '-0';
+      if (!canonicalNumber) continue;
       const number = Number(literal);
       if (Number.isFinite(number) &&
-          (types.includes('number') || (types.includes('integer') && Number.isSafeInteger(number))))
+          ((types.includes('integer') && canonicalInteger && Number.isSafeInteger(number)) ||
+           (types.includes('number') && !Number.isNaN(number))))
         return { value: number, source: doc, quote: excerpt.quote };
     }
   }
@@ -136,17 +144,29 @@ export const deterministicTaskModel: Model = async (system, prompt, _tokens, _ti
   const { docs, user, schema } = parsePrompt(prompt);
   if (system.startsWith('Extract only')) {
     const fields: Record<string, unknown> = {};
-    const citations = new Map<string, string>();
+    const citations: Array<{ document_id: string; quote: string }> = [];
+    const seen = new Set<string>();
     const properties = schema && typeof schema === 'object' &&
       'properties' in schema ? (schema as { properties: Record<string, unknown> }).properties : {};
     for (const [property, definition] of Object.entries(properties)) {
       const found = extractionValue(definition, property, docs);
       fields[property] = found.value;
-      if (found.source && found.quote) citations.set(found.source.document_id, found.quote);
+      if (found.source && found.quote) {
+        const key = JSON.stringify([found.source.document_id, found.quote]);
+        if (!seen.has(key)) {
+          // The core accepts a maximum of 16 evidence items. Failing loudly
+          // is safer than silently dropping support for required fields.
+          if (citations.length >= 16)
+            throw new EofficeError(422, 'Extraction evidence exceeds supported limit.', 'The supplied document or schema could not be processed.');
+          citations.push({ document_id: found.source.document_id, quote: found.quote });
+          seen.add(key);
+        }
+      }
     }
     return JSON.stringify({
-      extracted_data: fields, used_document_ids: [...citations.keys()],
-      evidence: [...citations].map(([document_id, quote]) => ({ document_id, quote })),
+      extracted_data: fields,
+      used_document_ids: [...new Set(citations.map(citation => citation.document_id))],
+      evidence: citations,
     });
   }
   const source = firstSource(docs);
