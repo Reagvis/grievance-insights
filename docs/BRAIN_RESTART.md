@@ -2,6 +2,15 @@
 
 **Verified:** 2026-11-27 (Asia/Kolkata). **Purpose:** concise current-state handoff to a new coordinating Brain chat. Read this first, then only the relevant issue/PR and detailed section of [BRAIN_HANDOVER.md](BRAIN_HANDOVER.md). This document is not a replacement for the full historical evidence.
 
+## CURRENT checkpoint — 22E/22F accepted and merged; 22G next (2026-11-27)
+
+This checkpoint supersedes earlier pending-test/merge and unavailable-auth-spec blockers below. Owner reports eOffice instructed standard provisional authentication practices because separate spec unavailable; government identity/ACL/delegated-file compatibility remains unverified.
+
+- 22E PR #44: accepted code `cd53838bf97b9723b1f59ae3d24c94f10d9cbd17`; 104/104 prior tests + manual localhost acceptance, final typecheck and focused auth regression passed. Owner-approved merge `7f490badd2211e51cb527cf3ec31c42918859e23`.
+- 22F PR #56: accepted code `e83ed09d1a35129a5197ae9a7b1c9e5b115f151f`; 117/117 WSL focused tests and clean backend typecheck. Shared matrix append conflict resolved preserving both addenda; integration tree verified exact accepted file union. Owner-approved merge `3f5d196972c2118bb3eb4ba09067388c3b1882e6`. All merge/integration commits [skip ci].
+- Next: [Issue #57 / Task 22G](https://github.com/Reagvis/grievance-insights/issues/57), Codex WSL operational integration and read-only preflight. Owner-selected proposed base URL **https://api.eoffice-pilot.reagvis.com** (NOT deployed). Provisional JWT + document grants, actual scanner, registry/token issuance/renewal, audit, Bedrock privacy, isolated HTTPS/DNS/ACM and rollback. No real government data, paid inference, Actions, AWS writes or deployment until separately approved. Existing live grievance pilot unchanged; production legacy eOffice handler still default-deny.
+- P0 delivery first; defer Excel, generated exports, charts and portal. Development speed and Codex capacity priority: avoid repeated full-suite tests, use prior accepted evidence and focused changed behavior. Codex for WSL/AWS work, Brain for incremental review/coordination. 22H hosted acceptance and documentation after 22G.
+
 ## Latest Brain correction review — 2026-11-27
 
 - Verified Issue #43 open; PR #44 open/draft/unmerged, eight changed files, current head `f598266da4287009785c6ebe2694c3923535ef14`. Connector reports mergeable=false; cause not established, investigate separately before any integration. Compared with prior reviewed `d558a99454a2ca85ec4cbd4c9a5af24e1508ec9a`: two commits, only local-fixtures.ts (+5/-1) and http-smoke.test.ts (+19).
