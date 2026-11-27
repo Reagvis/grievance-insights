@@ -137,8 +137,14 @@ export class ProvisionalJwtVerifier {
       try { body = JSON.parse(event.body); } catch { /* core will validate */ }
       if (isRecord(body)) {
         if (body.user_id !== claims.officer) throw denial();
+        // Missing, blank, malformed or oversized session IDs are a request
+        // validation 400 in core, never an authorization 403. Only a valid
+        // but differently scoped session is an actual JWT authorization denial.
         if (event.rawPath === '/api/v1/ai/chat' &&
-            (!name(body.session_id) || claims.session_id !== body.session_id))
+            typeof body.session_id === 'string' &&
+            body.session_id.trim().length > 0 &&
+            Buffer.byteLength(body.session_id, 'utf8') <= 256 &&
+            claims.session_id !== body.session_id)
           throw denial();
       }
     }
