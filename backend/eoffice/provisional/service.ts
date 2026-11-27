@@ -1,4 +1,3 @@
-import { EofficeError } from '../schema';
 import { createEofficeApi, type Event, type Principal } from '../core';
 import type { Resolver, Transport, MalwareScanner } from '../documents';
 import {
