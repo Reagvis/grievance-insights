@@ -8,16 +8,21 @@ const event = (body: string) => ({
   requestContext: { accountId: '1', apiId: 'api', domainName: 'example.test',
     domainPrefix: 'api', http: { method: 'POST', path: '/api/v1/ai/chat',
       protocol: 'HTTP/1.1', sourceIp: '127.0.0.1', userAgent: 'test' },
-    requestId: 'request', routeKey: 'route', stage: '$default', time: '', timeEpoch: 0 },
+    requestId: 'request', routeKey: 'route', stage: '$default', time: '', timeEpoch: 0,
+    authorizer: { jwt: { claims: { client_id: 'client-1' } as Record<string, string | number | boolean | string[]>,
+      scopes: ['eoffice-api/chat'] } } },
   body, isBase64Encoded: false,
 });
 
 describe('Task 22G API Gateway v2 adapter', () => {
   it('preserves method, path, authorization, UTF-8 body and base64 rejection signal', () => {
-    const converted = toCoreEvent({ ...event('eyJyZXF1ZXN0X2lkIjoiYmFzZTY0In0='), isBase64Encoded: true });
+    const source = event('eyJyZXF1ZXN0X2lkIjoiYmFzZTY0In0=');
+    const converted = toCoreEvent({ ...source, isBase64Encoded: true });
     expect(converted).toMatchObject({ rawPath: '/api/v1/ai/chat', body: expect.any(String),
-      isBase64Encoded: true, requestContext: { http: { method: 'POST' } },
-      headers: { authorization: 'Bearer signed.token' } });
+      isBase64Encoded: true, headers: { authorization: 'Bearer signed.token' },
+      requestContext: { http: { method: 'POST' }, authorizer: { jwt: {
+        claims: { client_id: 'client-1' }, scopes: ['eoffice-api/chat'],
+      } } } });
   });
   it('returns a safe UUID/no-store 503 and retries after initialization failure', async () => {
     const id = '11111111-2222-4333-8444-000000000001';

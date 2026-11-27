@@ -1,5 +1,7 @@
 # Implementation status
 
+Task 22I Cognito M2M, application client revocation, Bedrock adapter selection and request/document/context limits are implemented on the feature branch but not deployed. Live endpoints remain at accepted Task 22H restricted synthetic state. See [EOFFICE_INTEGRATION_READINESS.md](EOFFICE_INTEGRATION_READINESS.md).
+
 Tasks 22G–22H deployed the isolated serverless eOffice pilot at `https://api.eoffice-pilot.reagvis.com`. Four authenticated POST routes are live with deterministic processing, isolated KMS/ECR/Lambda/API/DynamoDB/secrets/audit resources, payload-free audit and short-lived operator-issued JWTs. The deployed image has an empty ECR finding set. No hosted document source or registry row exists, so document-backed extraction remains a secured 422; no ClamAV, malware-screening claim, paid inference or real government data is enabled. See [EOFFICE_PILOT_DEPLOYMENT.md](EOFFICE_PILOT_DEPLOYMENT.md) and [EOFFICE_EXTERNAL_INTEGRATION_HANDOFF.md](EOFFICE_EXTERNAL_INTEGRATION_HANDOFF.md).
 
 Last updated: 2026-11-11

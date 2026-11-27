@@ -13,7 +13,15 @@ All methods are `POST` with `Content-Type: application/json`:
 
 TLS uses an Amazon-issued certificate for `api.eoffice-pilot.reagvis.com`; hostname/chain verification passed. API Gateway's default execute endpoint is disabled. Rate controls are one request/second with burst two.
 
-## Authentication
+## Authentication (Task 22I planned; not deployed)
+
+The next approved deployment replaces the provisional officer JWT with a dedicated Amazon Cognito OAuth 2.0 Client Credentials flow. Until applied, live authentication remains Task 22H behavior below.
+
+After deployment, each integration receives a confidential client ID/secret through the approved secure channel and requests a five-minute access token from the dedicated Mumbai Cognito token endpoint using HTTP Basic client authentication, `grant_type=client_credentials`, and only required `eoffice-api/<operation>` scopes. Send it as `Authorization: Bearer <access-token>`. Reagvis separately registers exact department, officer, permissions and chat session; Cognito alone never authorizes a document. Client onboarding, rotation and suspension use the AWS Console only.
+
+See [EOFFICE_INTEGRATION_READINESS.md](EOFFICE_INTEGRATION_READINESS.md) for the planned revocation procedure and deployment gate.
+
+### Current Task 22H authentication
 
 Every request requires `Authorization: Bearer <officer-jwt>`. Tokens are RS256 JWTs issued out of band by the Reagvis operator, expire in at most 15 minutes, and bind the exact issuer, officer, department, permissions and optional session. The JSON `user_id` must equal the signed officer. Chat credentials are bound to the exact `session_id`. There is no public login, key-discovery, credential-issuance or management endpoint.
 

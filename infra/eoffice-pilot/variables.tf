@@ -26,6 +26,24 @@ variable "jwt_issuer" {
     error_message = "Invalid issuer."
   }
 }
+variable "cognito_resource_server_identifier" {
+  description = "Dedicated eOffice API scope prefix; not shared with the grievance pilot."
+  type        = string
+  default     = "eoffice-api"
+  validation {
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$", var.cognito_resource_server_identifier))
+    error_message = "Invalid Cognito resource-server identifier."
+  }
+}
+variable "cognito_domain_prefix" {
+  description = "Globally unique Cognito token-endpoint prefix for this isolated pilot."
+  type        = string
+  default     = "reagvis-eoffice-pilot-134857759074"
+  validation {
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$", var.cognito_domain_prefix))
+    error_message = "Invalid Cognito domain prefix."
+  }
+}
 variable "allowed_document_hosts" {
   description = "Mandatory runtime host allowlist; each registry row also binds the exact URL hash."
   type        = set(string)

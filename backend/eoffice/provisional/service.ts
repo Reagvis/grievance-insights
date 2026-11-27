@@ -27,7 +27,14 @@ export type ProvisionalConfig = Readonly<{
   resolver?: Resolver;
   transport?: Transport;
 }>;
-export type RestrictedSyntheticConfig = Readonly<Omit<ProvisionalConfig, 'scanner'>>;
+export type IdentifiedOfficer = Readonly<{
+  principal: Principal; credentialId: string; sessionId: string | undefined;
+}>;
+export type OfficerAuthorizer = (event: Event) => Promise<IdentifiedOfficer>;
+export type RestrictedSyntheticConfig = Readonly<Omit<ProvisionalConfig, 'scanner'> & {
+  /** Cognito deployment supplies this; legacy compositions retain signed officer JWT verification. */
+  authorizeOfficer?: OfficerAuthorizer;
+}>;
 const responseHeaders = {
   'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store',
 };
@@ -80,7 +87,8 @@ export function createProvisionalEofficeService(config: ProvisionalConfig) {
     verifier: new ProvisionalJwtVerifier(config.jwt), registry: config.grants, scanner: config.scanner,
     resolver: config.resolver, transport: config.transport,
   });
-  return createConfiguredService(config, documents);
+  const verifier = new ProvisionalJwtVerifier(config.jwt);
+  return createConfiguredService(config, documents, event => verifier.officer(event));
 }
 
 /** Explicit deployment-only synthetic fixture mode. It cannot be selected by
@@ -93,17 +101,19 @@ export function createRestrictedSyntheticEofficeService(config: RestrictedSynthe
     verifier: new ProvisionalJwtVerifier(config.jwt), registry: config.grants,
     resolver: config.resolver, transport: config.transport,
   });
-  return createConfiguredService(config, documents);
+  const verifier = new ProvisionalJwtVerifier(config.jwt);
+  return createConfiguredService(config, documents,
+    config.authorizeOfficer ?? (event => verifier.officer(event)));
 }
 
-function createConfiguredService(config: RestrictedSyntheticConfig, documents: ReturnType<typeof createSecureDocumentSource>) {
+function createConfiguredService(config: RestrictedSyntheticConfig & { authorizeOfficer?: OfficerAuthorizer },
+  documents: ReturnType<typeof createSecureDocumentSource>, authorizeOfficer: OfficerAuthorizer) {
   if (!config.inference ||
       (config.inference.mode !== 'deterministic' && config.inference.mode !== 'bedrock') ||
       (config.inference.mode === 'bedrock' && typeof config.inference.model !== 'function'))
     throw new Error('A valid explicit inference mode and model adapter are required.');
   const taskModel = config.inference.mode === 'bedrock'
     ? config.inference.model : deterministicTaskModel;
-  const verifier = new ProvisionalJwtVerifier(config.jwt);
   const audit = new SafeAudit(config.audit, config.auditHmacKey);
 
   return async (event: Event, invocationDeadline?: number) => {
@@ -122,14 +132,15 @@ function createConfiguredService(config: RestrictedSyntheticConfig, documents: R
 
     const core = createEofficeApi({
       authorize: async rawEvent => {
-        identified = await verifier.officer(rawEvent as Event);
+        const authorized = await authorizeOfficer(rawEvent as Event);
+        identified = authorized;
         await withinAuditBudget(() => audit.emit({
           action: 'authorization_success', outcome: 'allowed', endpoint,
-          requestId, department: identified!.principal.department,
-          officer: identified!.principal.officer,
-          credentialId: identified!.credentialId,
+          requestId, department: authorized.principal.department,
+          officer: authorized.principal.officer,
+          credentialId: authorized.credentialId,
         }), coreDeadline);
-        return identified.principal;
+        return authorized.principal;
       },
       documents,
       // Chat always uses current-document extractive mode, regardless of the

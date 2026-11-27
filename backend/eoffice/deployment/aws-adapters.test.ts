@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import {
   DynamoAuditSink, DynamoCredentialStatus, DynamoResourceRegistry,
-  verificationFromEnvironment,
+  DynamoCognitoClientAuthorization, verificationFromEnvironment,
 } from './aws-adapters';
 import { sha256Url } from '../provisional/credentials';
 
@@ -74,5 +74,54 @@ describe('Task 22G AWS operational adapters', () => {
     const config = verificationFromEnvironment({ isRevoked: async () => false,
       revoke: async () => undefined });
     expect(config.publicKeys.has('key-1')).toBe(true);
+  });
+});
+
+describe('Task 22I Cognito application authorization', () => {
+  const issuer = 'https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_pool';
+  const accessEvent = (overrides: Record<string, unknown> = {}) => ({
+    rawPath: '/api/v1/ai/chat', body: JSON.stringify({ user_id: 'officer-1', session_id: 'session-1' }),
+    requestContext: { authorizer: { jwt: { claims: {
+      iss: issuer, token_use: 'access', client_id: 'client-1',
+      iat: Math.floor(Date.now() / 1000) - 1, exp: Math.floor(Date.now() / 1000) + 300,
+      ...overrides,
+    }, scopes: ['eoffice-api/chat'] } } },
+  });
+  it('binds a valid Cognito client to its officer, department and session', async () => {
+    const client = new FakeClient();
+    client.item = { id: 'client#client-1', clientId: 'client-1', department: 'finance',
+      officer: 'officer-1', sessionId: 'session-1', permissions: ['chat'], enabled: true,
+      tokensValidAfter: Math.floor(Date.now() / 1000) - 60 };
+    const auth = new DynamoCognitoClientAuthorization(client as never, 'clients', issuer, 'eoffice-api');
+    await expect(auth.authorize(accessEvent())).resolves.toEqual({ credentialId: 'client-1', sessionId: 'session-1',
+      principal: { department: 'finance', officer: 'officer-1', permissions: ['chat'] } });
+    expect((client.commands[0] as GetCommand).input).toMatchObject({ TableName: 'clients',
+      Key: { id: 'client#client-1' }, ConsistentRead: true });
+  });
+  it('rejects suspended clients and every token issued before tokensValidAfter', async () => {
+    const client = new FakeClient();
+    client.item = { id: 'client#client-1', clientId: 'client-1', department: 'finance',
+      officer: 'officer-1', sessionId: 'session-1', permissions: ['chat'], enabled: false,
+      tokensValidAfter: 0 };
+    const auth = new DynamoCognitoClientAuthorization(client as never, 'clients', issuer, 'eoffice-api');
+    await expect(auth.authorize(accessEvent())).rejects.toMatchObject({ status: 403 });
+    client.item = { ...client.item, enabled: true, tokensValidAfter: Math.floor(Date.now() / 1000) + 1 };
+    await expect(auth.authorize(accessEvent())).rejects.toMatchObject({ status: 403 });
+  });
+  it('rejects a wrong scope, officer or session independently of Cognito authentication', async () => {
+    const client = new FakeClient();
+    client.item = { id: 'client#client-1', clientId: 'client-1', department: 'finance',
+      officer: 'officer-1', sessionId: 'session-1', permissions: ['chat'], enabled: true,
+      tokensValidAfter: 0 };
+    const auth = new DynamoCognitoClientAuthorization(client as never, 'clients', issuer, 'eoffice-api');
+    const wrongSession = accessEvent();
+    wrongSession.body = JSON.stringify({ user_id: 'officer-1', session_id: 'other' });
+    await expect(auth.authorize(wrongSession)).rejects.toMatchObject({ status: 403 });
+    const wrongOfficer = accessEvent();
+    wrongOfficer.body = JSON.stringify({ user_id: 'other', session_id: 'session-1' });
+    await expect(auth.authorize(wrongOfficer)).rejects.toMatchObject({ status: 403 });
+    const wrongScope = accessEvent();
+    wrongScope.requestContext.authorizer.jwt.scopes = ['eoffice-api/summarize'];
+    await expect(auth.authorize(wrongScope)).rejects.toMatchObject({ status: 403 });
   });
 });

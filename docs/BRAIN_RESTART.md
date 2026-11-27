@@ -2,6 +2,15 @@
 
 **Verified:** 2026-11-27 (Asia/Kolkata). **Purpose:** concise current-state handoff to a new coordinating Brain chat. Read this first, then only the relevant issue/PR and detailed section of [BRAIN_HANDOVER.md](BRAIN_HANDOVER.md). This document is not a replacement for the full historical evidence.
 
+## LATEST checkpoint — Task 22I code-only readiness (2026-11-27)
+
+- Based exactly on deployed Task 22H commit `694a9ae2e12c123f5f51293914fe2a04e6bcdcdb`; branch `feature/eoffice-integration-readiness-22i`. No AWS resources, DNS, image pushes, paid inference, real documents, Actions, merge or deployment performed.
+- Prepared isolated eOffice Cognito Client Credentials authentication: dedicated pool/resource server/four scopes/confidential five-minute client, API Gateway JWT authorizer and route scopes. It does not reuse grievance Cognito.
+- Added mandatory strongly consistent authorization for department/officer/session/permission and immediate suspension or `tokensValidAfter` invalidation of issued tokens. Exact document grants remain independent.
+- Prepared Bedrock for non-chat operations; strict chat stays current-document-only. Enforced 256 KiB request, one document, 10 MiB download and 128 KiB context. Real documents remain prohibited pending malware screening and trusted access.
+- Read-only Mumbai evidence: Qwen3 32B active/on-demand; invocation logging returned no configuration. Effective retention needs owner Console confirmation before paid acceptance or future real data. Cognito M2M tier 1 is USD 0.00225/successful token request, with no app-client fee or free tier.
+- Exact plan: [EOFFICE_INTEGRATION_READINESS.md](EOFFICE_INTEGRATION_READINESS.md). Next gate is owner review of code SHA, image and Terraform plan. Do not deploy without explicit approval.
+
 ## ACTIVE deployment checkpoint — 22H restricted HTTPS pilot live (2026-11-27)
 
 Task 22H deployed the isolated restricted-synthetic eOffice service in AWS account `134857759074`, Mumbai. Live base URL: **https://api.eoffice-pilot.reagvis.com** with four POST routes `/api/v1/ai/{chat,summarize,extract,draft-reply}`. ACM certificate is issued and eligible for renewal; TLS hostname verification passed. API Gateway's default execute endpoint remains disabled. The existing grievance pilot was not modified.

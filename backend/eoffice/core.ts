@@ -5,7 +5,7 @@ import {
   type SourceReference,
 } from './grounding';
 
-type Task = 'chat' | 'summarize' | 'extract' | 'draft-reply';
+export type Task = 'chat' | 'summarize' | 'extract' | 'draft-reply';
 export type Principal = Readonly<{ department: string; officer: string; permissions: readonly Task[] }>;
 export type Authorize = (event: unknown) => Promise<Principal | null>;
 /** An optional, caller-injected and authorization-scoped history lookup.
@@ -31,7 +31,9 @@ type Request = { request_id: string; user_id?: string; session_id?: string; user
 }; extraction_schema?: unknown };
 export type Event = {
   rawPath?: string; body?: string | null; isBase64Encoded?: boolean;
-  requestContext?: { http?: { method?: string } }; httpMethod?: string;
+  requestContext?: { http?: { method?: string }; authorizer?: { jwt?: {
+    claims?: Record<string, string | number | boolean | string[] | undefined>; scopes?: string[];
+  } } }; httpMethod?: string;
   headers?: Record<string, string | undefined>;
 };
 type Response = { statusCode: number; headers: Record<string, string>; body: string };
@@ -39,7 +41,14 @@ const responseHeaders = { 'content-type': 'application/json; charset=utf-8', 'ca
 const encode = (statusCode: number, payload: unknown): Response => ({
   statusCode, headers: { ...responseHeaders, ...(statusCode === 405 ? { allow: 'POST' } : {}) }, body: JSON.stringify(payload),
 });
-const MAX_BODY = 64000, MAX_INPUT = 24000, MAX_OUTPUT = 24000, MAX_PROMPT = 32000;
+export const eofficeLimits = {
+  maxRequestBytes: 256 * 1024,
+  maxSourceContextBytes: 128 * 1024,
+  maxDocumentsPerRequest: 1,
+} as const;
+const MAX_BODY = eofficeLimits.maxRequestBytes;
+const MAX_INPUT = eofficeLimits.maxSourceContextBytes, MAX_OUTPUT = 24000;
+const MAX_PROMPT = MAX_BODY;
 const BUDGET_MS = 25000, MODEL_MAX_MS = 18000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function identity(value: unknown): value is string { return bounded(value, 256); }
@@ -71,7 +80,8 @@ function request(value: unknown, task: Task): Request {
   if (task === 'chat' && !identity(value.session_id)) throw invalid('session_id is required.');
   if (value.context !== undefined && !isObject(value.context)) throw invalid('Invalid context.');
   const ctx = value.context as Record<string, unknown> | undefined;
-  if (ctx?.documents !== undefined && (!Array.isArray(ctx.documents) || ctx.documents.length > 4 || !ctx.documents.every(d =>
+  if (ctx?.documents !== undefined && (!Array.isArray(ctx.documents) ||
+      ctx.documents.length > eofficeLimits.maxDocumentsPerRequest || !ctx.documents.every(d =>
     isObject(d) && Object.keys(d).length === 2 && identity(d.document_id) && bounded(d.download_url, 4096))))
     throw invalid('Invalid document references.');
   const refs = (ctx?.documents ?? []) as DocumentRef[];

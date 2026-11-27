@@ -1,7 +1,8 @@
-import type { APIGatewayProxyEventV2 } from 'aws-lambda';
+import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import type { Event } from '../core';
 import { createRestrictedSyntheticEofficeService } from '../provisional/service';
 import { createDeploymentAdapters } from './aws-adapters';
+import { bedrockModel } from '../aws';
 import { signedAwsRequest } from '../../analysis/aws-http';
 import { auditRequestId } from '../provisional/audit';
 
@@ -28,8 +29,10 @@ function configuredService() {
     ]);
     process.env.EOFFICE_PUBLIC_KEYS_JSON = publicKeys;
     process.env.EOFFICE_AUDIT_HMAC_KEY = auditKey;
+    const adapters = createDeploymentAdapters();
     return createRestrictedSyntheticEofficeService({
-      ...createDeploymentAdapters(), inference: { mode: 'deterministic' },
+      ...adapters, authorizeOfficer: adapters.authorizeOfficer,
+      inference: { mode: 'bedrock', model: bedrockModel },
     });
   })().catch(error => {
     service = undefined;
@@ -42,7 +45,7 @@ function configuredService() {
  * so the core rejects it as non-UTF8 JSON. No fixture headers or identity are
  * synthesized by this deployment handler.
  */
-export async function handler(event: APIGatewayProxyEventV2) {
+export async function handler(event: APIGatewayProxyEventV2WithJWTAuthorizer) {
   const coreEvent = toCoreEvent(event);
   const deadline = Date.now() + 25_000;
   try {
@@ -57,14 +60,22 @@ export async function handler(event: APIGatewayProxyEventV2) {
   }
 }
 
-export function toCoreEvent(event: APIGatewayProxyEventV2): Event {
+export function toCoreEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer): Event {
   const headers: Record<string, string | undefined> = {};
   for (const [name, value] of Object.entries(event.headers ?? {})) headers[name] = value;
   return {
     rawPath: event.rawPath,
     body: event.body ?? null,
     isBase64Encoded: event.isBase64Encoded === true,
-    requestContext: { http: { method: event.requestContext?.http?.method } },
+    requestContext: {
+      http: { method: event.requestContext?.http?.method },
+      authorizer: event.requestContext?.authorizer?.jwt ? {
+        jwt: {
+          claims: event.requestContext.authorizer.jwt.claims,
+          scopes: event.requestContext.authorizer.jwt.scopes ?? undefined,
+        },
+      } : undefined,
+    },
     headers,
   };
 }

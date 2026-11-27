@@ -1,5 +1,9 @@
 # Architectural decisions
 
+## 2026-11-27 — eOffice machine authentication uses isolated Cognito
+
+Use a dedicated Cognito user pool and OAuth 2.0 Client Credentials scopes at API Gateway. Retain a strongly consistent application client registry because JWT signature/expiry checks alone cannot immediately invalidate issued tokens or express department/officer/session/document authorization. Keep document grants independent, use Console-only client onboarding, and do not reuse grievance identity resources.
+
 ## Task 22G: isolate eOffice pilot deployment
 
 Use a dedicated Terraform state and usage-based on-demand Lambda container behind a dedicated HTTP API. For owner-approved restricted synthetic UAT only, remove ClamAV from the image and require an explicit default-off composition that accepts only exact immutable synthetic fixture bytes independently pinned by SHA-256 in the operator registry after all existing scope/URL/host checks. Never call this malware screening or allow automatic/caller-controlled fallback. The normal government-document composition retains its mandatory scanner requirement. Avoid provisioned concurrency, VPC, ECS, load balancers and always-on compute. Keep credential issuance out of HTTP, use strongly consistent encrypted DynamoDB registries, select deterministic processing, inject only public verification keys, and leave all existing grievance-pilot resources untouched. This is a readiness decision, not deployment approval.
