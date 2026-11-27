@@ -57,7 +57,16 @@ variable "budget_alert_email" {
   }
 }
 variable "enable_public_endpoint" {
-  description = "Create certificate/custom-domain/DNS only after isolated Lambda scanner acceptance."
+  description = "Create certificate/custom-domain/DNS only after restricted synthetic Lambda acceptance."
   type        = bool
   default     = false
+}
+variable "document_acceptance_mode" {
+  description = "Explicit operator selection. Disabled is fail-closed; restricted mode accepts only registry-pinned synthetic fixture bytes."
+  type        = string
+  default     = "disabled"
+  validation {
+    condition     = contains(["disabled", "restricted-synthetic-pinned-v1"], var.document_acceptance_mode)
+    error_message = "Use disabled or restricted-synthetic-pinned-v1."
+  }
 }

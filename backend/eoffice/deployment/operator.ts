@@ -12,6 +12,11 @@ const text = (value: unknown, name: string) => {
   if (typeof value !== 'string' || !value || value.length > 4096) throw new Error('Invalid ' + name);
   return value;
 };
+const sha256 = (value: unknown) => {
+  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value))
+    throw new Error('Invalid syntheticContentSha256');
+  return value;
+};
 const input = JSON.parse(await new Promise<string>((resolve, reject) => {
   const chunks: Buffer[] = [];
   process.stdin.on('data', chunk => chunks.push(Buffer.from(chunk)));
@@ -57,12 +62,14 @@ if (action === 'issue-officer' || action === 'rotate-officer') {
   const sessionId = input.sessionId ? text(input.sessionId, 'sessionId') : undefined;
   const allowedHost = text(input.allowedHost, 'allowedHost').toLowerCase();
   const delegatedToken = text(input.delegatedToken, 'delegatedToken');
+  const syntheticContentSha256 = sha256(input.syntheticContentSha256);
   const signedGrant = issueDocumentGrant(signer, { department, officer, document, sessionId, ttlSeconds: 300 });
   const credentialId = (JSON.parse(Buffer.from(signedGrant.split('.')[1], 'base64url').toString('utf8')) as { jti: string }).jti;
   const id = [department, officer, document.document_id, sessionId ?? '-'].join('#');
   await client.send(new PutCommand({ TableName: registryTable,
     Item: { id, department, officer, documentId: document.document_id, sessionId,
       urlSha256: sha256Url(document.download_url), signedGrant, allowedHost, delegatedToken,
+      syntheticContentSha256,
       expiresAt: Math.floor(Date.now() / 1000) + 300 },
     ConditionExpression: 'attribute_not_exists(id) OR expiresAt < :now',
     ExpressionAttributeValues: { ':now': Math.floor(Date.now() / 1000) } }));

@@ -2,7 +2,7 @@
 
 ## Task 22G: isolate eOffice pilot deployment
 
-Use a dedicated Terraform state and usage-based Lambda container behind a dedicated HTTP API. Bake maintained ClamAV plus fresh signatures into the immutable image and scan only through stdin, with runtime signature-age enforcement. Avoid VPC, ECS, load balancers and always-on compute. Keep credential issuance out of HTTP, use strongly consistent encrypted DynamoDB registries, inject only public verification keys, and leave all existing grievance-pilot resources untouched. This is a readiness decision, not deployment approval.
+Use a dedicated Terraform state and usage-based on-demand Lambda container behind a dedicated HTTP API. For owner-approved restricted synthetic UAT only, remove ClamAV from the image and require an explicit default-off composition that accepts only exact immutable synthetic fixture bytes independently pinned by SHA-256 in the operator registry after all existing scope/URL/host checks. Never call this malware screening or allow automatic/caller-controlled fallback. The normal government-document composition retains its mandatory scanner requirement. Avoid provisioned concurrency, VPC, ECS, load balancers and always-on compute. Keep credential issuance out of HTTP, use strongly consistent encrypted DynamoDB registries, select deterministic processing, inject only public verification keys, and leave all existing grievance-pilot resources untouched. This is a readiness decision, not deployment approval.
 
 ## Initial decisions
 

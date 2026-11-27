@@ -41,7 +41,7 @@ export class DynamoCredentialStatus implements CredentialStatus {
 type RegistryItem = Readonly<{
   id: string; department: string; officer: string; documentId: string;
   sessionId?: string; urlSha256: string; signedGrant: string;
-  allowedHost: string; delegatedToken: string; expiresAt: number;
+  allowedHost: string; delegatedToken: string; syntheticContentSha256: string; expiresAt: number;
 }>;
 
 /** Registry rows are written only after an operator verifies the upstream ACL.
@@ -68,12 +68,14 @@ export class DynamoResourceRegistry implements TrustedResourceRegistry {
         item.urlSha256 !== sha256Url(scope.ref.download_url) ||
         !Number.isSafeInteger(item.expiresAt) || item.expiresAt <= now ||
         !host.test(item.allowedHost) || !this.allowedHosts.has(item.allowedHost.toLowerCase()) ||
+        !/^[0-9a-f]{64}$/.test(item.syntheticContentSha256) ||
         !item.signedGrant ||
         !/^[A-Za-z0-9._~+/-]{12,4096}$/.test(item.delegatedToken)) return null;
     return {
       signedGrant: item.signedGrant,
       allowedHost: item.allowedHost.toLowerCase(),
       delegatedHeaders: { authorization: 'Bearer ' + item.delegatedToken },
+      syntheticContentSha256: item.syntheticContentSha256,
     };
   }
 }

@@ -1,8 +1,7 @@
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import type { Event } from '../core';
-import { createProvisionalBedrockEofficeService } from '../provisional/bedrock';
+import { createRestrictedSyntheticEofficeService } from '../provisional/service';
 import { createDeploymentAdapters } from './aws-adapters';
-import { lambdaClamScanner } from './lambda-scanner';
 import { signedAwsRequest } from '../../analysis/aws-http';
 import { auditRequestId } from '../provisional/audit';
 
@@ -18,19 +17,19 @@ async function secret(arn: string | undefined): Promise<string> {
   if (typeof body.SecretString !== 'string' || !body.SecretString) throw new Error('Secret unavailable.');
   return body.SecretString;
 }
-let service: Promise<ReturnType<typeof createProvisionalBedrockEofficeService>> | undefined;
+let service: Promise<ReturnType<typeof createRestrictedSyntheticEofficeService>> | undefined;
 function configuredService() {
   if (!service) service = (async () => {
+    if (process.env.EOFFICE_DOCUMENT_ACCEPTANCE_MODE !== 'restricted-synthetic-pinned-v1')
+      throw new Error('Restricted synthetic fixture mode is not explicitly enabled.');
     const [publicKeys, auditKey] = await Promise.all([
       secret(process.env.EOFFICE_PUBLIC_KEYS_SECRET_ARN),
       secret(process.env.EOFFICE_AUDIT_HMAC_SECRET_ARN),
     ]);
     process.env.EOFFICE_PUBLIC_KEYS_JSON = publicKeys;
     process.env.EOFFICE_AUDIT_HMAC_KEY = auditKey;
-    return createProvisionalBedrockEofficeService({
-      ...createDeploymentAdapters(), scanner: lambdaClamScanner({
-        maximumSignatureAgeMs: Number(process.env.EOFFICE_CLAMAV_MAX_AGE_HOURS ?? '48') * 3600000,
-      }),
+    return createRestrictedSyntheticEofficeService({
+      ...createDeploymentAdapters(), inference: { mode: 'deterministic' },
     });
   })().catch(error => {
     service = undefined;

@@ -40,15 +40,20 @@ describe('Task 22G AWS operational adapters', () => {
       officer: 'officer-1', documentId: 'doc-1', sessionId: 'session-1',
       urlSha256: sha256Url(ref.download_url), signedGrant: 'signed.jwt.value',
       allowedHost: 'files.example.gov', delegatedToken: 'delegated.token.value',
+      syntheticContentSha256: 'a'.repeat(64),
       expiresAt: Math.floor(Date.now() / 1000) + 60 };
     const registry = new DynamoResourceRegistry(client as never, 'registry', new Set(['files.example.gov']));
     await expect(registry.resolve({ principal, ref, sessionId: 'session-1' }, Date.now() + 1000))
       .resolves.toEqual({ signedGrant: 'signed.jwt.value', allowedHost: 'files.example.gov',
-        delegatedHeaders: { authorization: 'Bearer delegated.token.value' } });
+        delegatedHeaders: { authorization: 'Bearer delegated.token.value' },
+        syntheticContentSha256: 'a'.repeat(64) });
     client.item = { ...client.item, urlSha256: '0'.repeat(64) };
     await expect(registry.resolve({ principal, ref, sessionId: 'session-1' }, Date.now() + 1000))
       .resolves.toBeNull();
     client.item = { ...client.item, urlSha256: sha256Url(ref.download_url), allowedHost: 'other.example.gov' };
+    await expect(registry.resolve({ principal, ref, sessionId: 'session-1' }, Date.now() + 1000))
+      .resolves.toBeNull();
+    client.item = { ...client.item, allowedHost: 'files.example.gov', syntheticContentSha256: '0'.repeat(63) };
     await expect(registry.resolve({ principal, ref, sessionId: 'session-1' }, Date.now() + 1000))
       .resolves.toBeNull();
   });

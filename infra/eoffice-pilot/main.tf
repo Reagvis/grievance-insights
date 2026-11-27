@@ -176,12 +176,12 @@ resource "aws_iam_policy" "operator" {
 
 resource "aws_lambda_function" "service" {
   function_name                  = local.name
-  description                    = "Isolated authenticated eOffice pilot with embedded ClamAV"
+  description                    = "Restricted synthetic-only eOffice acceptance pilot"
   role                           = aws_iam_role.runtime.arn
   package_type                   = "Image"
   image_uri                      = local.service_image
   architectures                  = ["x86_64"]
-  memory_size                    = 4096
+  memory_size                    = 1024
   timeout                        = 29
   reserved_concurrent_executions = 1
   image_config {
@@ -192,15 +192,15 @@ resource "aws_lambda_function" "service" {
   }
   environment {
     variables = {
-      EOFFICE_JWT_ISSUER              = var.jwt_issuer
-      EOFFICE_PUBLIC_KEYS_SECRET_ARN  = aws_secretsmanager_secret.public_keys.arn
-      EOFFICE_AUDIT_HMAC_SECRET_ARN   = aws_secretsmanager_secret.audit_hmac.arn
-      EOFFICE_CREDENTIALS_TABLE       = aws_dynamodb_table.credentials.name
-      EOFFICE_REGISTRY_TABLE          = aws_dynamodb_table.registry.name
-      EOFFICE_AUDIT_TABLE             = aws_dynamodb_table.audit.name
-      EOFFICE_AUDIT_RETENTION_SECONDS = tostring(var.audit_retention_days * 86400)
-      EOFFICE_ALLOWED_DOCUMENT_HOSTS  = join(",", var.allowed_document_hosts)
-      EOFFICE_CLAMAV_MAX_AGE_HOURS    = "48"
+      EOFFICE_JWT_ISSUER               = var.jwt_issuer
+      EOFFICE_PUBLIC_KEYS_SECRET_ARN   = aws_secretsmanager_secret.public_keys.arn
+      EOFFICE_AUDIT_HMAC_SECRET_ARN    = aws_secretsmanager_secret.audit_hmac.arn
+      EOFFICE_CREDENTIALS_TABLE        = aws_dynamodb_table.credentials.name
+      EOFFICE_REGISTRY_TABLE           = aws_dynamodb_table.registry.name
+      EOFFICE_AUDIT_TABLE              = aws_dynamodb_table.audit.name
+      EOFFICE_AUDIT_RETENTION_SECONDS  = tostring(var.audit_retention_days * 86400)
+      EOFFICE_ALLOWED_DOCUMENT_HOSTS   = join(",", var.allowed_document_hosts)
+      EOFFICE_DOCUMENT_ACCEPTANCE_MODE = var.document_acceptance_mode
 
     }
 

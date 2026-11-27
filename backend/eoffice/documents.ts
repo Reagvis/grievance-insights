@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { get as httpsGet } from 'node:https';
 import { isIP } from 'node:net';
@@ -18,6 +19,8 @@ export interface DocumentSource { fetch(document: DocumentRef, principal: Princi
 export type DocumentAccess = {
   allowedHosts: ReadonlySet<string>;
   headers: Readonly<Record<string, string>>;
+  /** Restricted synthetic UAT only: independently operator-pinned bytes. */
+  expectedContentSha256?: string;
 };
 type Address = { address: string; family: number };
 export type Resolver = (hostname: string) => Promise<readonly Address[]>;
@@ -159,6 +162,11 @@ export class HttpsDocuments implements DocumentSource {
     const result = await this.download(url, addresses[0], safeHeaders(access.headers), remaining);
     if (!result.bytes.length || result.bytes.length > MAX_FILE)
       throw new EofficeError(422, 'Protected document byte limit exceeded.', 'The requested document is unsupported.');
+    if (access.expectedContentSha256 !== undefined) {
+      const actual = createHash('sha256').update(result.bytes).digest('hex');
+      if (!/^[0-9a-f]{64}$/.test(access.expectedContentSha256) || actual !== access.expectedContentSha256)
+        throw new EofficeError(422, 'Synthetic document digest mismatch.', 'The requested document is unavailable.');
+    }
     if (this.scan) {
       if (deadline <= Date.now())
         throw new EofficeError(503, 'Malware scan deadline expired.', 'Document retrieval is unavailable.');
