@@ -56,3 +56,8 @@ variable "budget_alert_email" {
     error_message = "Provide a valid budget alert email address."
   }
 }
+variable "enable_public_endpoint" {
+  description = "Create certificate/custom-domain/DNS only after isolated Lambda scanner acceptance."
+  type        = bool
+  default     = false
+}

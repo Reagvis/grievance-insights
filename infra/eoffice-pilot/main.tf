@@ -3,6 +3,9 @@ data "aws_route53_zone" "reagvis" {
   name         = "${trimsuffix(var.hosted_zone_name, ".")}."
   private_zone = false
 }
+data "aws_kms_alias" "data" { name = "alias/grievance-insights-eoffice-pilot" }
+data "aws_kms_key" "data" { key_id = data.aws_kms_alias.data.target_key_id }
+data "aws_ecr_repository" "service" { name = "grievance-insights-eoffice-pilot" }
 
 locals {
   name = "grievance-insights-eoffice-pilot"
@@ -15,17 +18,7 @@ locals {
     IsolationBoundary = "eoffice-pilot"
 
   }
-  service_image = "${aws_ecr_repository.service.repository_url}@${var.service_image_digest}"
-}
-
-resource "aws_kms_key" "data" {
-  description             = "Isolated eOffice pilot registry, audit and secret encryption"
-  enable_key_rotation     = true
-  deletion_window_in_days = 30
-}
-resource "aws_kms_alias" "data" {
-  name          = "alias/${local.name}"
-  target_key_id = aws_kms_key.data.key_id
+  service_image = "${data.aws_ecr_repository.service.repository_url}@${var.service_image_digest}"
 }
 
 resource "aws_dynamodb_table" "credentials" {
@@ -42,7 +35,7 @@ resource "aws_dynamodb_table" "credentials" {
   }
   server_side_encryption {
     enabled     = true
-    kms_key_arn = aws_kms_key.data.arn
+    kms_key_arn = data.aws_kms_key.data.arn
   }
   lifecycle {
     prevent_destroy = true
@@ -67,7 +60,7 @@ resource "aws_dynamodb_table" "registry" {
   }
   server_side_encryption {
     enabled     = true
-    kms_key_arn = aws_kms_key.data.arn
+    kms_key_arn = data.aws_kms_key.data.arn
   }
   lifecycle {
     prevent_destroy = true
@@ -91,7 +84,7 @@ resource "aws_dynamodb_table" "audit" {
   }
   server_side_encryption {
     enabled     = true
-    kms_key_arn = aws_kms_key.data.arn
+    kms_key_arn = data.aws_kms_key.data.arn
   }
   lifecycle {
     prevent_destroy = true
@@ -100,27 +93,14 @@ resource "aws_dynamodb_table" "audit" {
 
 resource "aws_secretsmanager_secret" "public_keys" {
   name                    = "${local.name}/jwt-public-keys"
-  kms_key_id              = aws_kms_key.data.arn
+  kms_key_id              = data.aws_kms_key.data.arn
   recovery_window_in_days = 30
 }
 resource "aws_secretsmanager_secret" "audit_hmac" {
   name                    = "${local.name}/audit-hmac"
-  kms_key_id              = aws_kms_key.data.arn
+  kms_key_id              = data.aws_kms_key.data.arn
   recovery_window_in_days = 30
 }
-resource "aws_ecr_repository" "service" {
-  name                 = local.name
-  image_tag_mutability = "IMMUTABLE"
-  force_delete         = false
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-  encryption_configuration {
-    encryption_type = "KMS"
-    kms_key         = aws_kms_key.data.arn
-  }
-}
-
 data "aws_iam_policy_document" "lambda_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -162,7 +142,7 @@ data "aws_iam_policy_document" "runtime" {
   }
   statement {
     actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
-    resources = [aws_kms_key.data.arn]
+    resources = [data.aws_kms_key.data.arn]
 
   }
   statement {
@@ -185,7 +165,7 @@ data "aws_iam_policy_document" "operator" {
   }
   statement {
     actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
-    resources = [aws_kms_key.data.arn]
+    resources = [data.aws_kms_key.data.arn]
 
   }
 }
@@ -265,6 +245,7 @@ resource "aws_lambda_permission" "gateway" {
 }
 
 resource "aws_acm_certificate" "service" {
+  count             = var.enable_public_endpoint ? 1 : 0
   domain_name       = var.hostname
   validation_method = "DNS"
   lifecycle {
@@ -272,9 +253,9 @@ resource "aws_acm_certificate" "service" {
   }
 }
 resource "aws_route53_record" "validation" {
-  for_each = {
-    for option in aws_acm_certificate.service.domain_validation_options : option.domain_name => option
-  }
+  for_each = var.enable_public_endpoint ? {
+    for option in aws_acm_certificate.service[0].domain_validation_options : option.domain_name => option
+  } : {}
   zone_id = data.aws_route53_zone.reagvis.zone_id
   name    = each.value.resource_record_name
   type    = each.value.resource_record_type
@@ -282,30 +263,34 @@ resource "aws_route53_record" "validation" {
   ttl     = 300
 }
 resource "aws_acm_certificate_validation" "service" {
-  certificate_arn         = aws_acm_certificate.service.arn
+  count                   = var.enable_public_endpoint ? 1 : 0
+  certificate_arn         = aws_acm_certificate.service[0].arn
   validation_record_fqdns = [for record in aws_route53_record.validation : record.fqdn]
 }
 resource "aws_apigatewayv2_domain_name" "service" {
+  count       = var.enable_public_endpoint ? 1 : 0
   domain_name = var.hostname
   domain_name_configuration {
-    certificate_arn = aws_acm_certificate_validation.service.certificate_arn
+    certificate_arn = aws_acm_certificate_validation.service[0].certificate_arn
     endpoint_type   = "REGIONAL"
     security_policy = "TLS_1_2"
 
   }
 }
 resource "aws_apigatewayv2_api_mapping" "service" {
+  count       = var.enable_public_endpoint ? 1 : 0
   api_id      = aws_apigatewayv2_api.service.id
-  domain_name = aws_apigatewayv2_domain_name.service.id
+  domain_name = aws_apigatewayv2_domain_name.service[0].id
   stage       = aws_apigatewayv2_stage.service.id
 }
 resource "aws_route53_record" "service" {
+  count   = var.enable_public_endpoint ? 1 : 0
   zone_id = data.aws_route53_zone.reagvis.zone_id
   name    = var.hostname
   type    = "A"
   alias {
-    name                   = aws_apigatewayv2_domain_name.service.domain_name_configuration[0].target_domain_name
-    zone_id                = aws_apigatewayv2_domain_name.service.domain_name_configuration[0].hosted_zone_id
+    name                   = aws_apigatewayv2_domain_name.service[0].domain_name_configuration[0].target_domain_name
+    zone_id                = aws_apigatewayv2_domain_name.service[0].domain_name_configuration[0].hosted_zone_id
     evaluate_target_health = false
 
   }

@@ -4,6 +4,7 @@ import { createProvisionalBedrockEofficeService } from '../provisional/bedrock';
 import { createDeploymentAdapters } from './aws-adapters';
 import { lambdaClamScanner } from './lambda-scanner';
 import { signedAwsRequest } from '../../analysis/aws-http';
+import { auditRequestId } from '../provisional/audit';
 
 async function secret(arn: string | undefined): Promise<string> {
   const region = process.env.AWS_REGION;
@@ -19,7 +20,7 @@ async function secret(arn: string | undefined): Promise<string> {
 }
 let service: Promise<ReturnType<typeof createProvisionalBedrockEofficeService>> | undefined;
 function configuredService() {
-  return service ??= (async () => {
+  if (!service) service = (async () => {
     const [publicKeys, auditKey] = await Promise.all([
       secret(process.env.EOFFICE_PUBLIC_KEYS_SECRET_ARN),
       secret(process.env.EOFFICE_AUDIT_HMAC_SECRET_ARN),
@@ -31,7 +32,11 @@ function configuredService() {
         maximumSignatureAgeMs: Number(process.env.EOFFICE_CLAMAV_MAX_AGE_HOURS ?? '48') * 3600000,
       }),
     });
-  })();
+  })().catch(error => {
+    service = undefined;
+    throw error;
+  });
+  return service;
 }
 
 /** API Gateway HTTP API payload v2 adapter. Base64 is deliberately preserved
@@ -39,7 +44,18 @@ function configuredService() {
  * synthesized by this deployment handler.
  */
 export async function handler(event: APIGatewayProxyEventV2) {
-  return (await configuredService())(toCoreEvent(event));
+  const coreEvent = toCoreEvent(event);
+  const deadline = Date.now() + 25_000;
+  try {
+    return (await configuredService())(coreEvent, deadline);
+  } catch {
+    const requestId = auditRequestId(coreEvent);
+    return { statusCode: 503,
+      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+      body: JSON.stringify({ ...(requestId ? { request_id: requestId } : {}),
+        system_error_message: 'Service initialization unavailable.',
+        user_error_message: 'AI service could not complete the request.' }) };
+  }
 }
 
 export function toCoreEvent(event: APIGatewayProxyEventV2): Event {

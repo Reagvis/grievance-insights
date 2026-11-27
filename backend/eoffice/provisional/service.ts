@@ -88,9 +88,9 @@ export function createProvisionalEofficeService(config: ProvisionalConfig) {
     resolver: config.resolver, transport: config.transport,
   });
 
-  return async (event: Event) => {
+  return async (event: Event, invocationDeadline?: number) => {
     const started = Date.now();
-    const deadline = started + INVOCATION_MS;
+    const deadline = Math.min(started + INVOCATION_MS, invocationDeadline ?? Number.POSITIVE_INFINITY);
     const coreDeadline = deadline - COMPLETION_RESERVE_MS;
     const requestId = auditRequestId(event);
     const endpoint = auditEndpoint(event);
