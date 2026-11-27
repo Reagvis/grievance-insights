@@ -25,6 +25,7 @@ await build({
   entryPoints: [fileURLToPath(new URL('../backend/eoffice/deployment/operator.ts', import.meta.url))],
   bundle: true, platform: 'node', format: 'esm', target: 'node22',
   outfile: fileURLToPath(new URL('operator.mjs', directory)),
+  banner: { js: "import { createRequire as __operatorCreateRequire } from 'node:module'; const require = __operatorCreateRequire(import.meta.url);" },
   sourcemap: false, legalComments: 'none', minify: false, logLevel: 'info',
 });
 console.log('Packaged isolated eOffice operator tool');

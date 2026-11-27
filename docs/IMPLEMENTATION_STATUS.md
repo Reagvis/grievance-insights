@@ -1,6 +1,6 @@
 # Implementation status
 
-Task 22G source includes isolated serverless deployment infrastructure, AWS-backed credential/resource/audit adapters, and an explicit default-deny restricted-synthetic acceptance composition. That composition verifies independently operator-pinned SHA-256 fixture bytes before parsing and uses deterministic processing; it does not contain ClamAV, claim malware screening or invoke paid inference. It is **not deployed**; DNS, ACM, secrets, images and AWS resources do not yet exist, and real government integration remains blocked pending approved malware screening and external compatibility. See [EOFFICE_PILOT_DEPLOYMENT.md](EOFFICE_PILOT_DEPLOYMENT.md).
+Tasks 22G–22H deployed the isolated serverless eOffice pilot at `https://api.eoffice-pilot.reagvis.com`. Four authenticated POST routes are live with deterministic processing, isolated KMS/ECR/Lambda/API/DynamoDB/secrets/audit resources, payload-free audit and short-lived operator-issued JWTs. The deployed image has an empty ECR finding set. No hosted document source or registry row exists, so document-backed extraction remains a secured 422; no ClamAV, malware-screening claim, paid inference or real government data is enabled. See [EOFFICE_PILOT_DEPLOYMENT.md](EOFFICE_PILOT_DEPLOYMENT.md) and [EOFFICE_EXTERNAL_INTEGRATION_HANDOFF.md](EOFFICE_EXTERNAL_INTEGRATION_HANDOFF.md).
 
 Last updated: 2026-11-11
 

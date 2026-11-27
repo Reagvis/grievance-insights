@@ -4,6 +4,10 @@
 
 Use a dedicated Terraform state and usage-based on-demand Lambda container behind a dedicated HTTP API. For owner-approved restricted synthetic UAT only, remove ClamAV from the image and require an explicit default-off composition that accepts only exact immutable synthetic fixture bytes independently pinned by SHA-256 in the operator registry after all existing scope/URL/host checks. Never call this malware screening or allow automatic/caller-controlled fallback. The normal government-document composition retains its mandatory scanner requirement. Avoid provisioned concurrency, VPC, ECS, load balancers and always-on compute. Keep credential issuance out of HTTP, use strongly consistent encrypted DynamoDB registries, select deterministic processing, inject only public verification keys, and leave all existing grievance-pilot resources untouched. This is a readiness decision, not deployment approval.
 
+## Task 22H: deploy restricted HTTPS pilot
+
+Deploy the accepted isolated stack through three reviewed applies: KMS/ECR bootstrap, private/direct-Lambda main service, then regional ACM/API mapping/Route 53 activation. Do not provision a fixture host, AWS Budget or notification. Keep the document registry empty and use an inert non-resolving allowlist until eOffice supplies an approved protected host. Remove unused vulnerable RPM/SQLite parsers from the Lambda base image and require a zero-finding ECR scan before deployment. Store the RSA private key only in the owner-only local credential directory; Lambda receives public verification material only. This is a live restricted-synthetic interface, not approval for government documents, malware-screening compliance or paid inference.
+
 ## Initial decisions
 
 | Decision | Rationale and status |

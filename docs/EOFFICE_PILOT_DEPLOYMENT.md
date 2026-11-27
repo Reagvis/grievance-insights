@@ -1,6 +1,14 @@
-# Task 22G — isolated serverless eOffice pilot readiness
+# Tasks 22G–22H — isolated restricted-synthetic eOffice pilot
 
-**NOT DEPLOYED.** The target `https://api.eoffice-pilot.reagvis.com` does not exist. This root uses separate state, names, roles, tables, secrets, image and rollback boundaries; it does not reference the grievance pilot.
+**DEPLOYED 2026-11-27.** The restricted pilot is live at `https://api.eoffice-pilot.reagvis.com`. It uses separate state, names, roles, tables, secrets, image and rollback boundaries and does not reference the grievance pilot. See [EOFFICE_EXTERNAL_INTEGRATION_HANDOFF.md](EOFFICE_EXTERNAL_INTEGRATION_HANDOFF.md).
+
+## Task 22H deployment evidence
+
+- Bootstrap apply: `3 added, 0 changed, 0 destroyed`. KMS key ARN `arn:aws:kms:ap-south-1:134857759074:key/f37c717c-c09e-4cfc-b9e7-49a479c52ee0`; ECR `134857759074.dkr.ecr.ap-south-1.amazonaws.com/grievance-insights-eoffice-pilot`.
+- Deployed image: `sha256:82d750e4078e9747de72226c8ef0d01dab8e6ae41e87deaab4d61162b09393bf`. Final ECR basic scan completed with no findings after removing unused vulnerable package parsers from the Lambda runtime image.
+- Main state contains only isolated eOffice resources. An initial apply stopped on exact-role `iam:PassRole`; after the owner added the narrow Lambda-service condition, the saved resume plan applied `7 added, 0 changed, 0 destroyed`.
+- Public plan applied `6 added, 0 changed, 0 destroyed`: regional ACM certificate `5261e230-e345-4996-9e8c-31deb455d3bc`, validation record, regional API custom domain/mapping and Route 53 alias. Certificate status `ISSUED`, TLS 1.2 policy, renewal eligible.
+- Live synthetic acceptance passed authentication and route connectivity. Hosted document processing was deliberately deferred: no document host or registry entry exists, and the configured inert hostname `documents-disabled.eoffice-pilot.reagvis.com` is not provisioned.
 
 ## Minimal runtime
 
@@ -21,11 +29,11 @@ The normal provisional service composition still requires an actual malware scan
 - A nonempty trusted-host allowlist is mandatory Terraform/runtime configuration and is checked independently of each exact registry row.
 - AWS SDK DynamoDB connections use 500 ms connect, 1.5-second request and two-attempt limits. Secret reads use a two-second signed transport timeout. Mandatory audit calls remain within the shared invocation budget.
 - Audit is payload-free, pseudonymous and TTL-bounded. Public keys and audit HMAC are read from separate Secrets Manager secrets during cold initialization. Private signing keys never enter Lambda.
-- The bundled operator tool supports officer issue/rotation/revocation and exact synthetic document registration/renewal from JSON stdin. Registration requires `syntheticContentSha256`, calculated and reviewed independently from the immutable curated fixture. It requires an out-of-band private key and an MFA-controlled identity using the deliberately unattached operator policy. It cannot establish government identity or ACL authority; real records remain blocked pending external agreement.
+- The bundled operator tool supports officer issue/rotation/revocation and exact synthetic document registration/renewal from JSON stdin. Registration requires `syntheticContentSha256`, calculated and reviewed independently from the immutable curated fixture. It requires an out-of-band private key and the narrow operator policy attached to the approved current IAM identity. It cannot establish government identity or ACL authority; real records remain blocked pending external agreement.
 
 ## Resources and safe sequence
 
-Provisioning is deliberately two-stage. The separate `infra/eoffice-pilot-bootstrap` state creates only the KMS key and immutable/scanned ECR repository. After separate approval, build and push the reviewed lightweight image and record its digest. The main `infra/eoffice-pilot` state then reads those existing resources and creates three DynamoDB tables, two empty secrets, Lambda role/function/log group, HTTP API/integration/routes/stage, an unattached operator policy and an AWS Budget with a required alert email. `enable_public_endpoint` defaults false, so ACM/custom-domain/DNS resources require a later approval after isolated Lambda acceptance; no fake digest or premature public endpoint is needed.
+Provisioning is deliberately two-stage. The separate `infra/eoffice-pilot-bootstrap` state owns only the KMS key and immutable/scanned ECR repository. The main `infra/eoffice-pilot` state reads those resources and owns three DynamoDB tables, two secrets, Lambda role/function/log group, HTTP API/integration/routes/stage, an operator policy, ACM/custom-domain/DNS resources. No AWS Budget or notification resource is configured. `enable_public_endpoint` still defaults false for future rebuilds.
 
 Build with `npm run eoffice:package`. After bootstrap approval, build, vulnerability-review and push the Lambda image from repository root, record its immutable digest, then run the main reviewed plan with the real digest and `document_acceptance_mode=restricted-synthetic-pinned-v1`. Only after review may secret values and synthetic registry rows be provisioned. Additional formats are denied operationally until each fixture's exact bytes, content type, URL and SHA-256 are separately curated and pinned.
 
@@ -50,12 +58,12 @@ There is no steady compute/load-balancer charge. At low pilot volume:
 - KMS key about $1/month; two Secrets Manager secrets about $0.80/month.
 - DynamoDB, ECR storage, CloudWatch logs, DNS queries and certificate: normally $1–5/month at synthetic pilot volume.
 
-Expected idle recurring cost is roughly **$2–5/month** and light acceptance usage roughly **$3–10/month**, excluding Bedrock, image-build transfer and abnormal logs. The required budget subscriber receives a forecast alert at 80%.
+Expected idle recurring cost is roughly **$2–5/month** and light acceptance usage roughly **$3–10/month**, excluding Bedrock, image-build transfer and abnormal logs. No AWS Budget or notification was provisioned.
 
 ## Rollback and blockers
 
 Rollback disables the API mapping or sets Lambda reserved concurrency to zero, revokes all JTIs/delegated credentials, and preserves audit evidence. Code rollback selects the prior approved immutable image digest. Destruction is not first-line; tables, KMS and secrets retain deletion protection/recovery safeguards.
 
-Provisioning prerequisites are: explicit infrastructure and later public-endpoint approvals; Terraform 1.14.x backend configuration for both separate roots; approved AWS account/region and `reagvis.com` zone access; bootstrap KMS/ECR creation; reviewed immutable image digest; approved controlled HTTPS fixture host plus delegated-token behavior; budget alert email; JWT issuer, operator RSA key/kid and public-key secret value; 32-byte audit HMAC secret value; curated UTF-8 fixture bytes with independently recorded lowercase SHA-256; approved department/officer/session/document/URL/host scope; and a reviewed plan selecting `restricted-synthetic-pinned-v1`. Public DNS additionally requires `enable_public_endpoint=true` in a separately approved plan.
+The deployed authentication prerequisites are satisfied: JWT issuer, RSA public key secret, owner-held private key/kid and 32-byte audit HMAC. Document-backed requests still require an approved controlled HTTPS document host, delegated-token behavior, curated immutable synthetic bytes with independent SHA-256, and approved department/officer/session/document/URL/host scope before an operator may create a five-minute registry grant.
 
-Current blockers: none of those AWS resources, secrets, fixtures, DNS records or certificates have been provisioned; no image digest or approved fixture host/budget email/operator key exists. Current Bedrock availability reports `NOT_AUTHORIZED`, account retention is `inherit`, and government identity/ACL/delegated-download compatibility, malware screening and model retention eligibility remain unverified. No AWS write, inference or real document processing occurred.
+Current blockers affect functionality, not HTTPS reachability: no approved document host or registry row, no malware screening for government documents, no government identity/ACL/delegated-download agreement, and no approved Bedrock inference/retention posture. No real document processing or paid inference occurred.

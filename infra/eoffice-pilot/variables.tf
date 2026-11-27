@@ -44,18 +44,6 @@ variable "audit_retention_days" {
     error_message = "Audit retention must be 1-90 days."
   }
 }
-variable "monthly_budget_usd" {
-  type    = number
-  default = 100
-}
-variable "budget_alert_email" {
-  description = "Approved operator address for the forecasted 80% budget notification."
-  type        = string
-  validation {
-    condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.budget_alert_email))
-    error_message = "Provide a valid budget alert email address."
-  }
-}
 variable "enable_public_endpoint" {
   description = "Create certificate/custom-domain/DNS only after restricted synthetic Lambda acceptance."
   type        = bool
