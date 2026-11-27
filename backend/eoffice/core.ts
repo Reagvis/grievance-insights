@@ -174,9 +174,11 @@ export function createEofficeApi(deps: {
   history?: ResolveHistory;
   strictChat?: StrictDocumentChat;
 }) {
-  return async (event: Event): Promise<Response> => {
+  return async (event: Event, externalDeadline?: number): Promise<Response> => {
     let id: string | undefined;
-    const deadline = Date.now() + BUDGET_MS;
+    // A secure outer composition may spend part of the 25s invocation budget
+    // on mandatory auditing. Never grant a fresh 25s after that work.
+    const deadline = Math.min(Date.now() + BUDGET_MS, externalDeadline ?? Infinity);
     try {
       // Parse only a bounded UTF-8 JSON body before authorization, solely to echo a genuine UUID on errors.
       let parsed: unknown;
