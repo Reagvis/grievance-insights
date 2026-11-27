@@ -21,6 +21,11 @@ export type HistoryLookup = Readonly<{
 export type ResolveHistory = (lookup: HistoryLookup) => Promise<string>;
 /** Last argument is the remaining per-invocation model deadline, in milliseconds. */
 export type Model = (system: string, prompt: string, maxTokens: number, timeoutMs: number) => Promise<string>;
+/** Optional approved strict-UAT chat path: deterministic, current-documents-only
+ * extractive envelope, never a network/LLM invocation or a history lookup.
+ * It MUST return the normal internal evidence envelope for revalidation.
+ */
+export type StrictDocumentChat = (question: string, documents: readonly Material[]) => Promise<string>;
 type Request = { request_id: string; user_id?: string; session_id?: string; user_input?: string; context?: {
   documents?: DocumentRef[]; previous_context?: string; provider_context_token?: string
 }; extraction_schema?: unknown };
@@ -167,6 +172,7 @@ async function guardedDependency<T>(
 export function createEofficeApi(deps: {
   authorize: Authorize; model: Model; documents: DocumentSource;
   history?: ResolveHistory;
+  strictChat?: StrictDocumentChat;
 }) {
   return async (event: Event): Promise<Response> => {
     let id: string | undefined;
@@ -202,7 +208,8 @@ export function createEofficeApi(deps: {
       if (task === 'chat' && input.context?.previous_context && !deps.history)
         throw new EofficeError(422, 'History retrieval is not configured.', 'Previous context is unavailable.');
       const supplied = input.context?.documents ?? [];
-      const documents = await guardedDependency(() => Promise.all(supplied.map(d => deps.documents.fetch(d, principal, deadline))), deadline, 'document');
+      const documents = await guardedDependency(() => Promise.all(supplied.map(d =>
+        deps.documents.fetch(d, principal, deadline, task === 'chat' ? input.session_id : undefined))), deadline, 'document');
       for (let i = 0; i < documents.length; i++) {
         const material = documents[i];
         if (material.document_id !== supplied[i].document_id || !bounded(material.text, MAX_INPUT) ||
@@ -233,6 +240,16 @@ export function createEofficeApi(deps: {
       }
       const source = documents.map(d => JSON.stringify({ document_id: d.document_id, text: d.text })).join('\n');
       if (Buffer.byteLength(source, 'utf8') > MAX_INPUT) throw unprocessable('Combined documents exceed AI context limit.');
+      if (task === 'chat' && deps.strictChat) {
+        // No external inference or history retrieval for strict document-only
+        // chat. Even an empty/unrelated question is decided locally.
+        const raw = await guardedDependency(() => deps.strictChat!(input.user_input!, documents), deadline, 'model');
+        if (!bounded(raw, MAX_OUTPUT)) throw new EofficeError(502, 'Invalid strict chat envelope.', 'AI processing failed.');
+        const output = decodeModel(raw, documents, 'chat');
+        verifyNarrativeNumbers(output.text ?? '', output.quotes, input.user_input ?? '');
+        verifyNoProtectedLinks(output.text ?? '', supplied, input.user_input ?? '');
+        return encode(200, { request_id: id, answer: output.text, references: output.references });
+      }
       let history = '';
       if (task === 'chat' && input.context?.previous_context) {
         history = await guardedDependency(() => deps.history!({
