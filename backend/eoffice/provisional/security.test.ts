@@ -4,13 +4,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { Event, Principal } from '../core';
+import type { Event, Principal, Model } from '../core';
 import type { DocumentRef, MalwareScanner, Transport } from '../documents';
 import { ProvisionalJwtVerifier, issueOfficerToken, issueDocumentGrant,
   type CredentialStatus, type SigningKey } from './credentials';
 import { SafeAudit, type AuditRecord, type AuditSink } from './audit';
 import { createProvisionalEofficeService, OperatorCredentialManager } from './service';
-import { unixClamdScanner } from './protected-documents';
+import { createSecureDocumentSource, unixClamdScanner } from './protected-documents';
 
 const issuer = 'synthetic-eoffice-uat';
 const requestId = (n: number) => '22222222-3333-4444-8555-' + String(n).padStart(12, '0');
@@ -107,6 +107,7 @@ function fixture() {
   const config = {
     jwt: { issuer, publicKeys: new Map<string, KeyObject>([[signer.kid, publicKey]]), status },
     grants: registry, scanner: scanner as MalwareScanner,
+    inference: { mode: 'deterministic' as const },
     audit, auditHmacKey: Buffer.alloc(32, 42),
     resolver: hosts, transport: downloads as Transport,
   };
@@ -135,9 +136,19 @@ function fixture() {
     });
     return issued;
   }
+  function permitNonChat(actor: Actor, ref: DocumentRef) {
+    const grant = issueDocumentGrant(signer, {
+      department: actor.department, officer: actor.officer, document: ref,
+    });
+    grants.set(scopeKey(actor, ref), {
+      signedGrant: grant, allowedHost: 'synthetic.example.gov',
+      delegatedHeaders: { Authorization: 'Bearer delegatedSyntheticCredential0001' },
+    });
+    return grant;
+  }
   return {
     status, revoked, audit, auditRecords, registry, scanner, downloads, hosts,
-    handle, config, grants, permit, officerToken, scopeKey,
+    handle, config, grants, permit, permitNonChat, officerToken, scopeKey,
     setAuditOffline: (value: boolean) => { auditOffline = value; },
     setStatusOffline: (value: boolean) => { registryUnavailable = value; },
   };
@@ -172,7 +183,7 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
       expect(body.request_id).toBe(requestId(testCase.id));
       expect(outcome.body).not.toContain('secretAlpha123');
       if (testCase.task === 'chat') {
-        expect(body.answer).toBe('Allocation cap is 1.2 million.');
+        expect(body.answer).toBe('Document excerpt: Allocation cap is 1.2 million.');
         expect(body.references).toEqual([
           { document_id: docAlpha.document_id, title: 'Synthetic Record.txt' },
         ]);
