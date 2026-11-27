@@ -490,14 +490,22 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
         const t = fixture();
         const originalWrite = t.audit.record.bind(t.audit);
         let count = 0;
+        let reached!: () => void;
+        const stalled = new Promise<void>(resolve => { reached = resolve; });
         t.audit.record = vi.fn(async (record: AuditRecord) => {
           count++;
-          if (count === step) return new Promise<void>(() => {});
+          if (count === step) {
+            reached();
+            return new Promise<void>(() => {});
+          }
           return originalWrite(record);
         });
         t.permit(actorA, docAlpha);
         const pending = t.handle(event('chat', 170 + step, actorA,
           t.officerToken(actorA), { documents: [docAlpha] }));
+        // Await the *actual* stalled callback before moving virtual time.
+        // Crypto/JWT verification may otherwise be mid-flight when timers jump.
+        await stalled;
         await vi.advanceTimersByTimeAsync(25_100);
         errorShape(await pending, 503, requestId(170 + step));
         expect(count).toBe(step);
