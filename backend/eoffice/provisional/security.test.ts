@@ -202,7 +202,7 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
     t.permitNonChat(actorA, docAlpha);
     const jwt = t.officerToken(actorA);
     t.downloads.mockResolvedValueOnce({
-      bytes: new TextEncoder().encode('Subject: Procurement.\nCount: 15.'),
+      bytes: new TextEncoder().encode('Subject: Procurement.\nCount: 15; verified against entry.'),
       contentType: 'text/plain', contentDisposition: 'attachment; filename="Synthetic Record.txt"',
     });
     const twoFields = {
@@ -235,7 +235,7 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
     };
     for (const [index, numeric] of ['0x10', '01', '1e3', '+12', '1,200', '12.5'].entries()) {
       t.downloads.mockResolvedValueOnce({
-        bytes: new TextEncoder().encode('Count: ' + numeric + '.'),
+        bytes: new TextEncoder().encode('Count: ' + numeric + '; verified against entry.'),
         contentType: 'text/plain',
         contentDisposition: 'attachment; filename="Synthetic Record.txt"',
       });
