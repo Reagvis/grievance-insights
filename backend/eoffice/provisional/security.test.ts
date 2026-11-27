@@ -1,5 +1,5 @@
 import { generateKeyPairSync, type KeyObject } from 'node:crypto';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Event, Principal } from '../core';
 import type { DocumentRef, MalwareScanner, Transport } from '../documents';
 import { ProvisionalJwtVerifier, issueOfficerToken, issueDocumentGrant,
@@ -72,11 +72,11 @@ function fixture() {
   const revoked = new Set<string>();
   let registryUnavailable = false;
   const status: CredentialStatus = {
-    isRevoked: vi.fn(async (kind, jti) => {
+    isRevoked: vi.fn(async (kind: 'officer' | 'document', jti: string) => {
       if (registryUnavailable) throw new Error('PRIVATE_DIAGNOSTIC status offline');
       return revoked.has(kind + ':' + jti);
     }),
-    revoke: vi.fn(async (kind, jti) => { revoked.add(kind + ':' + jti); }),
+    revoke: vi.fn(async (kind: 'officer' | 'document', jti: string) => { revoked.add(kind + ':' + jti); }),
   };
   const grants = new Map<string, { signedGrant: string; allowedHost: string;
     delegatedHeaders: Record<string, string> }>();
@@ -94,7 +94,7 @@ function fixture() {
   }, _deadline: number) => grants.get(scopeKey(scope.principal, scope.ref, scope.sessionId)) ?? null) };
   const hosts = vi.fn(async () => [{ address: '8.8.8.8', family: 4 }]);
   const downloads = vi.fn(async (url: URL, _ip: { address: string; family: number },
-    headers: Readonly<Record<string, string>>) => ({
+    _headers: Readonly<Record<string, string>>) => ({
     bytes: new TextEncoder().encode(url.pathname.includes('doc-beta') ? textB : textA),
     contentType: 'text/plain; charset=utf-8',
     contentDisposition: 'attachment; filename="Synthetic Record.txt"',
