@@ -1,5 +1,7 @@
 # Implementation status
 
+Task 22G source includes isolated serverless deployment infrastructure, AWS-backed credential/resource/audit adapters, and an explicit default-deny restricted-synthetic acceptance composition. That composition verifies independently operator-pinned SHA-256 fixture bytes before parsing and uses deterministic processing; it does not contain ClamAV, claim malware screening or invoke paid inference. It is **not deployed**; DNS, ACM, secrets, images and AWS resources do not yet exist, and real government integration remains blocked pending approved malware screening and external compatibility. See [EOFFICE_PILOT_DEPLOYMENT.md](EOFFICE_PILOT_DEPLOYMENT.md).
+
 Last updated: 2026-11-11
 
 ## Current state

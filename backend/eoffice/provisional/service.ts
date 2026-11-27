@@ -7,7 +7,7 @@ import {
 } from './credentials';
 import { SafeAudit, auditEndpoint, auditRequestId, type AuditSink } from './audit';
 import {
-  createSecureDocumentSource, type TrustedResourceRegistry,
+  createRestrictedSyntheticDocumentSource, createSecureDocumentSource, type TrustedResourceRegistry,
 } from './protected-documents';
 import { deterministicTaskModel, strictDocumentChat } from './extractive';
 
@@ -27,6 +27,7 @@ export type ProvisionalConfig = Readonly<{
   resolver?: Resolver;
   transport?: Transport;
 }>;
+export type RestrictedSyntheticConfig = Readonly<Omit<ProvisionalConfig, 'scanner'>>;
 const responseHeaders = {
   'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store',
 };
@@ -75,6 +76,27 @@ export function createProvisionalEofficeService(config: ProvisionalConfig) {
   if (!config.grants || typeof config.grants.resolve !== 'function' ||
       typeof config.scanner !== 'function')
     throw new Error('Provisional service refuses missing resource authorization or scanner.');
+  const documents = createSecureDocumentSource({
+    verifier: new ProvisionalJwtVerifier(config.jwt), registry: config.grants, scanner: config.scanner,
+    resolver: config.resolver, transport: config.transport,
+  });
+  return createConfiguredService(config, documents);
+}
+
+/** Explicit deployment-only synthetic fixture mode. It cannot be selected by
+ * a request and never represents a malware scan or a government-document path.
+ */
+export function createRestrictedSyntheticEofficeService(config: RestrictedSyntheticConfig) {
+  if (!config.grants || typeof config.grants.resolve !== 'function')
+    throw new Error('Restricted synthetic service refuses missing resource authorization.');
+  const documents = createRestrictedSyntheticDocumentSource({
+    verifier: new ProvisionalJwtVerifier(config.jwt), registry: config.grants,
+    resolver: config.resolver, transport: config.transport,
+  });
+  return createConfiguredService(config, documents);
+}
+
+function createConfiguredService(config: RestrictedSyntheticConfig, documents: ReturnType<typeof createSecureDocumentSource>) {
   if (!config.inference ||
       (config.inference.mode !== 'deterministic' && config.inference.mode !== 'bedrock') ||
       (config.inference.mode === 'bedrock' && typeof config.inference.model !== 'function'))
@@ -83,14 +105,10 @@ export function createProvisionalEofficeService(config: ProvisionalConfig) {
     ? config.inference.model : deterministicTaskModel;
   const verifier = new ProvisionalJwtVerifier(config.jwt);
   const audit = new SafeAudit(config.audit, config.auditHmacKey);
-  const documents = createSecureDocumentSource({
-    verifier, registry: config.grants, scanner: config.scanner,
-    resolver: config.resolver, transport: config.transport,
-  });
 
-  return async (event: Event) => {
+  return async (event: Event, invocationDeadline?: number) => {
     const started = Date.now();
-    const deadline = started + INVOCATION_MS;
+    const deadline = Math.min(started + INVOCATION_MS, invocationDeadline ?? Number.POSITIVE_INFINITY);
     const coreDeadline = deadline - COMPLETION_RESERVE_MS;
     const requestId = auditRequestId(event);
     const endpoint = auditEndpoint(event);

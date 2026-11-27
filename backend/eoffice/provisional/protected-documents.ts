@@ -15,6 +15,8 @@ export type ProtectedPermit = Readonly<{
   signedGrant: string;
   allowedHost: string;
   delegatedHeaders: Readonly<Record<string, string>>;
+  /** Present only in the explicit restricted-synthetic composition. */
+  syntheticContentSha256?: string;
 }>;
 export interface TrustedResourceRegistry {
   resolve(scope: DocumentGrantScope, deadline: number): Promise<ProtectedPermit | null>;
@@ -61,6 +63,54 @@ export function createSecureDocumentSource(deps: SecureDocumentDependencies): Do
     return { allowedHosts, headers: permit.delegatedHeaders };
   };
   const base = new HttpsDocuments(accessFor, deps.resolver, deps.transport, deps.scanner);
+  return { fetch: (ref, principal, deadline, sessionId) => base.fetch(ref, principal, deadline, sessionId) };
+}
+
+export type RestrictedSyntheticDocumentDependencies = Readonly<{
+  verifier: ProvisionalJwtVerifier;
+  registry: TrustedResourceRegistry;
+  resolver?: Resolver;
+  transport?: Transport;
+}>;
+
+/** Restricted synthetic UAT composition. This is not malware screening: the
+ * independently operated registry must pin the exact fixture digest as well
+ * as the existing officer/session/document/URL/host grant. Any missing or
+ * mismatched digest is rejected before parsing. There is deliberately no
+ * caller-controlled switch and no fallback to this path.
+ */
+export function createRestrictedSyntheticDocumentSource(
+  deps: RestrictedSyntheticDocumentDependencies,
+): DocumentSource {
+  if (!deps.verifier || !deps.registry || typeof deps.registry.resolve !== 'function')
+    throw new Error('Restricted synthetic document authorization is mandatory.');
+  const accessFor = async (
+    principal: Principal, ref: DocumentRef, deadline: number, sessionId?: string,
+  ): Promise<DocumentAccess> => {
+    const scope = { principal, ref, sessionId };
+    if (deadline <= Date.now())
+      throw new EofficeError(503, 'Resource grant deadline expired.', 'Document retrieval is unavailable.');
+    let permit: ProtectedPermit | null;
+    try { permit = await deps.registry.resolve(scope, deadline); }
+    catch { throw new EofficeError(503, 'Resource authorization service unavailable.', 'Document retrieval is unavailable.'); }
+    if (!permit) throw new EofficeError(422, 'Protected document grant missing.', 'The requested document is unavailable.');
+    await deps.verifier.documentGrant(permit.signedGrant, scope);
+    if (deadline <= Date.now())
+      throw new EofficeError(503, 'Resource grant deadline expired.', 'Document retrieval is unavailable.');
+    if (!permit.allowedHost || typeof permit.allowedHost !== 'string' ||
+        !permit.delegatedHeaders || typeof permit.delegatedHeaders !== 'object' ||
+        !Object.entries(permit.delegatedHeaders).some(([name, value]) =>
+          name.toLowerCase() === 'authorization' && typeof value === 'string' &&
+          /^Bearer [A-Za-z0-9._~+/-]{12,4096}$/.test(value)) ||
+        typeof permit.syntheticContentSha256 !== 'string' ||
+        !/^[0-9a-f]{64}$/.test(permit.syntheticContentSha256))
+      throw new EofficeError(503, 'Restricted synthetic fixture configuration missing.', 'Document retrieval is unavailable.');
+    const allowedHosts = new Set([permit.allowedHost.toLowerCase()]);
+    safeUrl(ref.download_url, allowedHosts);
+    return { allowedHosts, headers: permit.delegatedHeaders,
+      expectedContentSha256: permit.syntheticContentSha256 };
+  };
+  const base = new HttpsDocuments(accessFor, deps.resolver, deps.transport);
   return { fetch: (ref, principal, deadline, sessionId) => base.fetch(ref, principal, deadline, sessionId) };
 }
 
