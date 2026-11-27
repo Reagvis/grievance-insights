@@ -1,4 +1,8 @@
 import { generateKeyPairSync, type KeyObject } from 'node:crypto';
+import { createServer as createUnixServer } from 'node:net';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { Event, Principal } from '../core';
 import type { DocumentRef, MalwareScanner, Transport } from '../documents';
@@ -472,6 +476,38 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
       scanner: undefined as unknown as MalwareScanner })).toThrow(/scanner/);
     expect(() => createProvisionalEofficeService({ ...t.config,
       grants: undefined as unknown as typeof t.registry })).toThrow(/authorization/);
+  });
+
+  it('exercises ClamAV INSTREAM framing over an isolated local UNIX socket', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'eoffice-22f-clamd-test-'));
+    const path = join(directory, 'clamd.sock');
+    let infected = false;
+    const server = createUnixServer(socket => {
+      let received = Buffer.alloc(0);
+      socket.on('data', chunk => {
+        received = Buffer.concat([received, Buffer.from(chunk)]);
+        const start = Buffer.from('zINSTREAM\0');
+        if (received.length < start.length + 4 + 5 + 4 ||
+            !received.subarray(0, start.length).equals(start) ||
+            !received.subarray(-4).equals(Buffer.alloc(4))) return;
+        socket.end(infected ? 'stream: Synthetic-Canary FOUND\0' : 'stream: OK\0');
+      });
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(path, () => { server.removeListener('error', reject); resolve(); });
+      });
+      const scan = unixClamdScanner(path);
+      expect(await scan(new TextEncoder().encode('synthetic clean bytes'), Date.now() + 5000))
+        .toBe('clean');
+      infected = true;
+      expect(await scan(new TextEncoder().encode('synthetic infected bytes'), Date.now() + 5000))
+        .toBe('infected');
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()));
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('exposes a scanner integration seam but never claims mock clean verdict is malware detection', () => {
