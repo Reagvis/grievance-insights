@@ -170,6 +170,9 @@ export class HttpsDocuments implements DocumentSource {
       if (verdict !== 'clean')
         throw new EofficeError(422, 'Protected document failed malware screening.', 'The requested document is unavailable.');
     }
+    // A slow but eventually clean scanner must not start parsing after timeout.
+    if (deadline <= Date.now())
+      throw new EofficeError(503, 'Document parsing deadline expired.', 'Document retrieval is unavailable.');
     try { return await extractDocument(document, result.bytes, result.contentType, result.contentDisposition); }
     catch (error) {
       if (error instanceof EofficeError) throw error;
