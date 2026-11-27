@@ -160,6 +160,8 @@ export class HttpsDocuments implements DocumentSource {
     if (!result.bytes.length || result.bytes.length > MAX_FILE)
       throw new EofficeError(422, 'Protected document byte limit exceeded.', 'The requested document is unsupported.');
     if (this.scan) {
+      if (deadline <= Date.now())
+        throw new EofficeError(503, 'Malware scan deadline expired.', 'Document retrieval is unavailable.');
       // Reject both detected malware and scanner exceptions. This check runs
       // before any parser or model sees the document bytes.
       let verdict: 'clean' | 'infected';
