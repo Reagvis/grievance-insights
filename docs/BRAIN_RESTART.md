@@ -2,6 +2,13 @@
 
 **Verified:** 2026-11-27 (Asia/Kolkata). **Purpose:** concise current-state handoff to a new coordinating Brain chat. Read this first, then only the relevant issue/PR and detailed section of [BRAIN_HANDOVER.md](BRAIN_HANDOVER.md). This document is not a replacement for the full historical evidence.
 
+## ACTIVE scope decision — defer ClamAV for synthetic-only UAT (2026-11-27)
+
+**Owner approved this scope revision. It supersedes the resident-daemon/provisioned-concurrency task immediately below.** Read [the new PR #58 scope instruction](https://github.com/Reagvis/grievance-insights/pull/58#issuecomment-7208233941) before any implementation. Baseline head `2d8c8d5f095a9dc561cd64a61a1ac0649179babf` (draft/unmerged). No further ClamAV runtime experiments now; preserve earlier scanner code/history and normal-mode mandatory screening. Spec §6.1 p7 requires appropriate malware scanning; no real government document processing or compliance claim without an agreed verifiable screening arrangement.
+
+- Deliver restricted synthetic HTTPS UAT first using on-demand dedicated Lambda and HTTP API, target `https://api.eoffice-pilot.reagvis.com`; public endpoint still disabled until separately approved acceptance. No provisioned concurrency, ECS, ALB or ClamAV in synthetic deployment package. Retain strict security/isolation/limits/audit and exact scoped protected grants; synthetic-only mode explicitly selected by operator, independently pinned SHA-256 fixture bytes checked before parsing, fail closed for any other document, never label as malware-scanned. No generic scanner bypass, no arbitrary real files. Future trusted upstream scanning must be bound to exact bytes and agreed with eOffice.
+- Fresh Codex account: focused implementation on existing PR58; changed-component tests/build/validation only. Keep current pilot unchanged; do not repeat accepted evidence. Bedrock authorization and effective retention still unresolved; no real data or paid inference. Expected lightweight cost ~$3–10/month excluding inference, not approved expenditure. Return exact SHA and restricted UAT provisioning prerequisites. Scope approval is NOT merge, AWS writes, image push, DNS, deployment, or Actions approval. P0 only.
+
 ## LATEST checkpoint — 22G runtime decision and fresh Codex handoff (2026-11-27)
 
 Read this section first; older 22G instructions below are historical. Owner is switching to a fresh Codex session/account due to limits. **Do not restart or repeat accepted work.** Task 22E/22F merged, P0 only. Existing grievance pilot must remain unchanged.
