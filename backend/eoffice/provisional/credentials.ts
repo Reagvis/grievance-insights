@@ -1,7 +1,7 @@
 import {
-  constants, createHash, randomUUID, sign as signBytes, verify as verifyBytes,
-  type KeyObject,
+  constants, createHash, randomUUID, sign as signBytes, type KeyObject,
 } from 'node:crypto';
+import { decodeProtectedHeader, jwtVerify } from 'jose';
 import { EofficeError } from '../schema';
 import type { Event, Principal } from '../core';
 import type { DocumentRef } from '../documents';
@@ -55,20 +55,13 @@ function rsaPrivateKey(key: KeyObject): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
-function decodePart(encoded: string): unknown {
-  if (!/^[A-Za-z0-9_-]+$/.test(encoded) || encoded.length > 4096)
-    throw denial();
-  const raw = Buffer.from(encoded, 'base64url');
-  if (raw.toString('base64url') !== encoded) throw denial();
-  try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw)); }
-  catch { throw denial(); }
-}
 function nowSeconds(): number { return Math.floor(Date.now() / 1000); }
 export const sha256Url = (url: string): string => createHash('sha256').update(url, 'utf8').digest('hex');
 
-/** Verified by maintained Node.js/OpenSSL RSA-SHA256 primitives, with explicit
- * JWT framing, algorithm, key, claim, time, revocation and audience validation.
- * There is intentionally no dynamic JWKS, "none", HMAC, or header-supplied key.
+/** JWT syntax, signature and registered claims are verified by maintained
+ * jose 6.x, backed by Node crypto; additionally enforce exact key/alg,
+ * bounded lifetime, signed scope, and mandatory revocation checks.
+ * Never fetch remote JWKS or trust a token-supplied key URL.
  */
 export class ProvisionalJwtVerifier {
   constructor(private readonly config: VerificationConfig) {
@@ -80,25 +73,28 @@ export class ProvisionalJwtVerifier {
 
   private async parse(token: string, kind: CredentialKind): Promise<Record<string, unknown>> {
     if (!token || token.length > 8192) throw denial();
-    const parts = token.split('.');
-    if (parts.length !== 3 || parts.some(p => !p)) throw denial();
-    const header = decodePart(parts[0]);
-    const claims = decodePart(parts[1]);
-    if (!isRecord(header) || !isRecord(claims) ||
-        Object.keys(header).some(k => !['alg', 'kid', 'typ'].includes(k)) ||
+    let header: ReturnType<typeof decodeProtectedHeader>;
+    try { header = decodeProtectedHeader(token); } catch { throw denial(); }
+    if (Object.keys(header).some(k => !['alg', 'kid', 'typ'].includes(k)) ||
         header.alg !== 'RS256' || header.typ !== 'JWT' || !name(header.kid))
       throw denial();
     const key = this.config.publicKeys.get(header.kid);
     if (!key || !rsaPublicKey(key)) throw denial();
-    let verified = false;
-    try {
-      verified = verifyBytes('RSA-SHA256', Buffer.from(parts[0] + '.' + parts[1]),
-        { key, padding: constants.RSA_PKCS1_PADDING }, Buffer.from(parts[2], 'base64url'));
-    } catch { /* Treat even malformed signature bytes as denial. */ }
-    if (!verified) throw denial();
-
-    const seconds = nowSeconds();
     const maxAge = kind === 'officer' ? MAX_OFFICER_SECONDS : MAX_GRANT_SECONDS;
+    let claims: Record<string, unknown>;
+    try {
+      const verified = await jwtVerify(token, key, {
+        issuer: this.config.issuer,
+        audience: kind === 'officer' ? OFFICER_AUDIENCE : DOCUMENT_AUDIENCE,
+        algorithms: ['RS256'],
+        typ: 'JWT',
+        clockTolerance: CLOCK_SKEW,
+        maxTokenAge: maxAge,
+        requiredClaims: ['exp', 'nbf', 'iat', 'jti', 'sub'],
+      });
+      claims = verified.payload as Record<string, unknown>;
+    } catch { throw denial(); }
+    const seconds = nowSeconds();
     if (claims.iss !== this.config.issuer ||
         claims.aud !== (kind === 'officer' ? OFFICER_AUDIENCE : DOCUMENT_AUDIENCE) ||
         !name(claims.sub) || !name(claims.dept) || !name(claims.officer) ||
