@@ -210,6 +210,48 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
     expect(t.scanner).not.toHaveBeenCalled();
   });
 
+  it('enforces expiry, not-before time, maximum lifetime and key rotation allowlists', async () => {
+    const t = fixture();
+    const baseline = Date.now();
+    const clock = vi.spyOn(Date, 'now');
+    let expired: string, future: string;
+    try {
+      clock.mockReturnValue(baseline - 20 * 60_000);
+      expired = t.officerToken(actorA);
+      clock.mockReturnValue(baseline + 2 * 60_000);
+      future = t.officerToken(actorA);
+    } finally { clock.mockRestore(); }
+    errorShape(await t.handle(event('chat', 17, actorA, expired!)), 403, requestId(17));
+    errorShape(await t.handle(event('chat', 18, actorA, future!)), 403, requestId(18));
+    expect(() => issueOfficerToken(signer, {
+      ...actorA, permissions: tasks, ttlSeconds: 901,
+    })).toThrow(/signing configuration/);
+
+    const nextSigner: SigningKey = {
+      issuer, kid: 'operator-key-2', privateKey: otherKeys.privateKey,
+    };
+    const next = issueOfficerToken(nextSigner, { ...actorA, permissions: tasks });
+    const ring = new Map<string, KeyObject>([
+      [signer.kid, publicKey], [nextSigner.kid, otherKeys.publicKey],
+    ]);
+    const verifier = new ProvisionalJwtVerifier({ ...t.config.jwt, publicKeys: ring });
+    expect((await verifier.officer(event('chat', 19, actorA, next))).principal.officer)
+      .toBe(actorA.officer);
+    ring.delete(nextSigner.kid); // Operator retires the key.
+    await expect(verifier.officer(event('chat', 19, actorA, next)))
+      .rejects.toMatchObject({ status: 403 });
+    expect(t.downloads).not.toHaveBeenCalled();
+  });
+
+  it('ignores synthetic fixture headers and never uses department API keys as officer identity', async () => {
+    const t = fixture();
+    const forged = event('chat', 19, actorA, '', { documents: [docAlpha] });
+    forged.headers = { 'content-type': 'application/json',
+      'x-eoffice-smoke-actor': 'alpha', 'x-api-key': 'department-wide-secret' };
+    errorShape(await t.handle(forged), 403, requestId(19));
+    expect(t.downloads).not.toHaveBeenCalled();
+  });
+
   it('rejects user identity mismatch, missing user_id, unauthorized task and mismatched session', async () => {
     const t = fixture();
     const jwt = t.officerToken(actorA, ['chat']);
@@ -274,6 +316,18 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
     errorShape(await t.handle(event('chat', 53, actorA, jwt, { documents: [docAlpha] })),
       422, requestId(53));
     expect(t.downloads).not.toHaveBeenCalled();
+  });
+
+  it('rejects revoked document grants before DNS, download or model processing', async () => {
+    const t = fixture();
+    const token = t.officerToken(actorA);
+    const grant = t.permit(actorA, docAlpha);
+    await t.status.revoke('document', jtiOf(grant));
+    errorShape(await t.handle(event('chat', 54, actorA, token,
+      { documents: [docAlpha] })), 422, requestId(54));
+    expect(t.hosts).not.toHaveBeenCalled();
+    expect(t.downloads).not.toHaveBeenCalled();
+    expect(t.scanner).not.toHaveBeenCalled();
   });
 
   it('enforces real scanner verdict before parsing and rejects unavailable scanner', async () => {
