@@ -47,7 +47,9 @@ export function createSecureDocumentSource(deps: SecureDocumentDependencies): Do
     try { permit = await deps.registry.resolve(scope, deadline); }
     catch { throw new EofficeError(503, 'Resource authorization service unavailable.', 'Document retrieval is unavailable.'); }
     if (!permit) throw new EofficeError(422, 'Protected document grant missing.', 'The requested document is unavailable.');
+    if (deadline <= Date.now()) throw new EofficeError(503, 'Resource grant deadline expired.', 'Document retrieval is unavailable.');
     await deps.verifier.documentGrant(permit.signedGrant, scope);
+    if (deadline <= Date.now()) throw new EofficeError(503, 'Resource grant deadline expired.', 'Document retrieval is unavailable.');
     if (!permit.allowedHost || typeof permit.allowedHost !== 'string' ||
         !permit.delegatedHeaders || typeof permit.delegatedHeaders !== 'object' ||
         !Object.entries(permit.delegatedHeaders).some(([name, value]) =>
