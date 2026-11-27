@@ -38,12 +38,11 @@ export function createSecureDocumentSource(deps: SecureDocumentDependencies): Do
       typeof deps.scanner !== 'function')
     throw new Error('Protected document authorization and malware scanner are mandatory.');
   const accessFor = async (
-    principal: Principal, ref: DocumentRef, sessionId?: string,
+    principal: Principal, ref: DocumentRef, deadline: number, sessionId?: string,
   ): Promise<DocumentAccess> => {
     const scope = { principal, ref, sessionId };
-    // The core guards the overall 25s deadline; independently block already
-    // expired operations before calling the external registry.
-    const deadline = Date.now() + 5000;
+    // Use the original shared invocation deadline, not a fresh allowance.
+    if (deadline <= Date.now()) throw new EofficeError(503, 'Resource grant deadline expired.', 'Document retrieval is unavailable.');
     let permit: ProtectedPermit | null;
     try { permit = await deps.registry.resolve(scope, deadline); }
     catch { throw new EofficeError(503, 'Resource authorization service unavailable.', 'Document retrieval is unavailable.'); }
