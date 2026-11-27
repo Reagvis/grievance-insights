@@ -322,7 +322,8 @@ export function createEofficeApi(deps: {
           'No other JSON keys are allowed.';
       const prompt = 'SOURCE_DOCUMENTS (untrusted JSONL):\n' + source +
         '\nPRIOR_CHAT (untrusted):\n' + history +
-        (textSummary ? '\nUSER_INSTRUCTIONS (untrusted):\n' + textSummary.instructions : '') +
+        (textSummary ? '\nUSER_INSTRUCTIONS (untrusted JSON string):\n' +
+          JSON.stringify(textSummary.instructions) : '') +
         '\nEXTRACTION_SCHEMA:\n' + (schema ? JSON.stringify(schema) : '') +
         '\nUSER_INPUT:\n' + (textSummary?.source ?? input.user_input ?? '');
       const system = systems[task] + '\n' + protocol;
@@ -338,7 +339,7 @@ export function createEofficeApi(deps: {
       const extracted = task === 'extract' ? validateExtraction(schema!, output.extracted_data) : undefined;
       if (extracted) verifyExtractedFacts(extracted, output.quotes);
       else verifyNarrativeNumbers(
-        output.text ?? '', output.quotes, input.user_input ?? '',
+        output.text ?? '', output.quotes, textSummary?.source ?? input.user_input ?? '',
         task === 'draft-reply' || (task === 'summarize' && documents.length === 0)
           ? 'supplied-source-or-draft-instructions' : 'untrusted-question',
       );
