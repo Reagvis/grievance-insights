@@ -132,13 +132,13 @@ const defaultResolver: Resolver = hostname => lookup(hostname, { all: true, verb
  */
 export class HttpsDocuments implements DocumentSource {
   constructor(
-    private readonly accessFor: (principal: Principal, document: DocumentRef, sessionId?: string) => Promise<DocumentAccess>,
+    private readonly accessFor: (principal: Principal, document: DocumentRef, deadline: number, sessionId?: string) => Promise<DocumentAccess>,
     private readonly resolveHost: Resolver = defaultResolver,
     private readonly download: Transport = pinnedHttpsGet,
     private readonly scan?: MalwareScanner,
   ) {}
   async fetch(document: DocumentRef, principal: Principal, deadline: number, sessionId?: string): Promise<Material> {
-    const access = await this.accessFor(principal, document, sessionId);
+    const access = await this.accessFor(principal, document, deadline, sessionId);
     const url = safeUrl(document.download_url, access.allowedHosts);
     const timeoutMs = Math.min(8000, deadline - Date.now());
     if (timeoutMs < 1) throw new EofficeError(503, 'Document retrieval deadline expired.', 'Document retrieval timed out.');
