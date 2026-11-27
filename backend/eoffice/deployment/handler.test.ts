@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { handler, toCoreEvent } from './handler';
+import { deploymentInference, handler, toCoreEvent } from './handler';
 
 const event = (body: string) => ({
   version: '2.0' as const, routeKey: 'POST /api/v1/ai/chat', rawPath: '/api/v1/ai/chat',
@@ -15,6 +15,12 @@ const event = (body: string) => ({
 });
 
 describe('Task 22G API Gateway v2 adapter', () => {
+  it('defaults offline and enables Bedrock only by explicit operator selection', () => {
+    expect(deploymentInference(undefined)).toEqual({ mode: 'deterministic' });
+    expect(deploymentInference('deterministic')).toEqual({ mode: 'deterministic' });
+    expect(deploymentInference('bedrock')).toMatchObject({ mode: 'bedrock', model: expect.any(Function) });
+    expect(() => deploymentInference('automatic')).toThrow(/Unsupported/);
+  });
   it('preserves method, path, authorization, UTF-8 body and base64 rejection signal', () => {
     const source = event('eyJyZXF1ZXN0X2lkIjoiYmFzZTY0In0=');
     const converted = toCoreEvent({ ...source, isBase64Encoded: true });
@@ -36,5 +42,13 @@ describe('Task 22G API Gateway v2 adapter', () => {
         system_error_message: 'Service initialization unavailable.',
         user_error_message: 'AI service could not complete the request.' });
     }
+  });
+  it('preserves a valid UUID in audit-safe failures above the former 64KB cap', async () => {
+    const id = '11111111-2222-4333-8444-000000000002';
+    const request = event(JSON.stringify({ request_id: id, session_id: 'session',
+      user_id: 'officer', user_input: 'S'.repeat(70_000) }));
+    const response = await handler(request);
+    expect(response.statusCode).toBe(503);
+    expect(JSON.parse(response.body).request_id).toBe(id);
   });
 });

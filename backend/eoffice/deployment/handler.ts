@@ -1,6 +1,6 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import type { Event } from '../core';
-import { createRestrictedSyntheticEofficeService } from '../provisional/service';
+import { createRestrictedSyntheticEofficeService, type InferenceSelection } from '../provisional/service';
 import { createDeploymentAdapters } from './aws-adapters';
 import { bedrockModel } from '../aws';
 import { signedAwsRequest } from '../../analysis/aws-http';
@@ -19,6 +19,14 @@ async function secret(arn: string | undefined): Promise<string> {
   return body.SecretString;
 }
 let service: Promise<ReturnType<typeof createRestrictedSyntheticEofficeService>> | undefined;
+/** Real inference is a reviewed operator opt-in. Missing configuration is
+ * deliberately offline/deterministic; an invalid value fails initialization.
+ */
+export function deploymentInference(mode = process.env.EOFFICE_INFERENCE_MODE): InferenceSelection {
+  if (mode === undefined || mode === '' || mode === 'deterministic') return { mode: 'deterministic' };
+  if (mode === 'bedrock') return { mode: 'bedrock', model: bedrockModel };
+  throw new Error('Unsupported eOffice inference mode.');
+}
 function configuredService() {
   if (!service) service = (async () => {
     if (process.env.EOFFICE_DOCUMENT_ACCEPTANCE_MODE !== 'restricted-synthetic-pinned-v1')
@@ -32,7 +40,7 @@ function configuredService() {
     const adapters = createDeploymentAdapters();
     return createRestrictedSyntheticEofficeService({
       ...adapters, authorizeOfficer: adapters.authorizeOfficer,
-      inference: { mode: 'bedrock', model: bedrockModel },
+      inference: deploymentInference(),
     });
   })().catch(error => {
     service = undefined;

@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import type { Event } from '../core';
+import { eofficeLimits, type Event } from '../core';
 
 export type AuditAction =
   'request_attempt' | 'authorization_success' | 'request_complete' |
@@ -25,7 +25,8 @@ export interface AuditSink { record(event: AuditRecord): Promise<void>; }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const id = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 export function auditRequestId(event: Event): string | undefined {
-  if (typeof event.body !== 'string' || Buffer.byteLength(event.body) > 64_000) return undefined;
+  if (typeof event.body !== 'string' ||
+      Buffer.byteLength(event.body, 'utf8') > eofficeLimits.maxRequestBytes) return undefined;
   try {
     const obj: unknown = JSON.parse(event.body);
     if (obj && typeof obj === 'object' && !Array.isArray(obj) &&

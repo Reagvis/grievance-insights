@@ -17,7 +17,7 @@ TLS uses an Amazon-issued certificate for `api.eoffice-pilot.reagvis.com`; hostn
 
 The next approved deployment replaces the provisional officer JWT with a dedicated Amazon Cognito OAuth 2.0 Client Credentials flow. Until applied, live authentication remains Task 22H behavior below.
 
-After deployment, each integration receives a confidential client ID/secret through the approved secure channel and requests a five-minute access token from the dedicated Mumbai Cognito token endpoint using HTTP Basic client authentication, `grant_type=client_credentials`, and only required `eoffice-api/<operation>` scopes. Send it as `Authorization: Bearer <access-token>`. Reagvis separately registers exact department, officer, permissions and chat session; Cognito alone never authorizes a document. Client onboarding, rotation and suspension use the AWS Console only.
+After deployment, each integration receives a confidential client ID/secret through the approved secure channel and requests a 15-minute access token from the dedicated Mumbai Cognito token endpoint using HTTP Basic client authentication, `grant_type=client_credentials`, and only required `eoffice-api/<operation>` scopes. Send it as `Authorization: Bearer <access-token>`. Reagvis separately registers one fixed synthetic UAT department, officer, permission set and chat session per client; this is not an institution-wide identity protocol, and Cognito alone never authorizes a document. Client onboarding, rotation and suspension use the AWS Console only; each client ID must also be in the reviewed Terraform authorizer audience list.
 
 See [EOFFICE_INTEGRATION_READINESS.md](EOFFICE_INTEGRATION_READINESS.md) for the planned revocation procedure and deployment gate.
 
@@ -64,9 +64,11 @@ Extraction requires `context.documents` and `extraction_schema` as defined in [E
 
 Successful responses echo `request_id`. Chat returns `answer` and `references`; summarize returns `summary`; extraction returns `extracted_data` and `references`; draft reply returns `draft_text` and `references`. Responses are JSON UTF-8 with `cache-control: no-store`. Errors use `system_error_message` and `user_error_message` and echo a valid request UUID when available.
 
+API Gateway can reject a request before Lambda runs: missing/invalid tokens can produce gateway `401`, insufficient scopes `403`, and throttling `429`. Those gateway-origin responses do not use the application error envelope and cannot echo the body `request_id`. UUID echo applies only to requests that reach Lambda.
+
 ## Current verified behavior
 
-- Missing bearer token: `403` authorization denied.
+- Current Task 22H missing bearer token: `403` authorization denied. After the Cognito plan is deployed, the gateway normally returns `401` before Lambda.
 - Authenticated chat without documents: `200` scoped refusal with empty references.
 - Authenticated synthetic text summary: `200` deterministic summary.
 - Authenticated synthetic draft: `200` deterministic officer-review draft.
@@ -76,4 +78,4 @@ Successful responses echo `request_id`. Chat returns `answer` and `references`; 
 
 Before any document-backed UAT, the parties must agree an HTTPS host and delegated Bearer-token protocol. Reagvis must independently verify the exact department/officer/session/document/URL/host scope and pin the immutable synthetic fixture SHA-256 in a five-minute registry grant. The host must use public IPv4, valid TLS, no redirects, bounded content and exact immutable bytes. Caller assertions cannot bypass these controls.
 
-Real government documents remain prohibited. Provider-side malware screening is deferred only for preapproved immutable synthetic fixtures. Bedrock/model inference, government identity compatibility, document-host compatibility and retention eligibility are not accepted capabilities of this deployment.
+Real government documents remain prohibited. Restricted credentials permit synthetic test content only, including instructions and filenames; no content classifier is an authorization boundary. Provider-side malware screening is deferred only for preapproved immutable synthetic fixtures. Bedrock defaults off/deterministic and requires separate approval. Government identity compatibility, document-host compatibility and retention eligibility are not accepted capabilities of this deployment. The 10 MiB/128 KiB values are ceilings, not verified format, parsing or latency capability.

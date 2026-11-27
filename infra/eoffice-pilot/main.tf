@@ -60,7 +60,7 @@ resource "aws_cognito_user_pool_client" "eoffice" {
   allowed_oauth_scopes = [for name in keys(local.api_scopes) :
     "${aws_cognito_resource_server.eoffice.identifier}/${name}"
   ]
-  access_token_validity = 5
+  access_token_validity = 15
   token_validity_units { access_token = "minutes" }
   enable_token_revocation       = true
   prevent_user_existence_errors = "ENABLED"
@@ -270,6 +270,7 @@ resource "aws_lambda_function" "service" {
       EOFFICE_DOCUMENT_ACCEPTANCE_MODE = var.document_acceptance_mode
       EOFFICE_COGNITO_ISSUER           = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.eoffice.id}"
       EOFFICE_COGNITO_SCOPE_PREFIX     = aws_cognito_resource_server.eoffice.identifier
+      EOFFICE_INFERENCE_MODE           = var.inference_mode
 
     }
 
@@ -295,8 +296,11 @@ resource "aws_apigatewayv2_authorizer" "cognito" {
   identity_sources = ["$request.header.Authorization"]
   name             = "eoffice-cognito-m2m"
   jwt_configuration {
-    audience = [aws_cognito_user_pool_client.eoffice.id]
-    issuer   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.eoffice.id}"
+    audience = concat(
+      [aws_cognito_user_pool_client.eoffice.id],
+      sort(tolist(var.cognito_additional_client_ids)),
+    )
+    issuer = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.eoffice.id}"
   }
 }
 resource "aws_apigatewayv2_route" "service" {

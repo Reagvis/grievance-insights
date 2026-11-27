@@ -44,6 +44,26 @@ variable "cognito_domain_prefix" {
     error_message = "Invalid Cognito domain prefix."
   }
 }
+variable "cognito_additional_client_ids" {
+  description = "Explicitly reviewed Cognito app-client IDs accepted by API Gateway in addition to the Terraform client. Update Terraform after Console onboarding."
+  type        = set(string)
+  default     = []
+  validation {
+    condition = alltrue([
+      for id in var.cognito_additional_client_ids : can(regex("^[A-Za-z0-9]{1,128}$", id))
+    ])
+    error_message = "Every additional Cognito app-client ID must be an explicit valid identifier."
+  }
+}
+variable "inference_mode" {
+  description = "Explicit operator selection. Bedrock requires separate retention and paid-synthetic acceptance approval."
+  type        = string
+  default     = "deterministic"
+  validation {
+    condition     = contains(["deterministic", "bedrock"], var.inference_mode)
+    error_message = "Use deterministic or bedrock."
+  }
+}
 variable "allowed_document_hosts" {
   description = "Mandatory runtime host allowlist; each registry row also binds the exact URL hash."
   type        = set(string)
