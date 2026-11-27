@@ -1,5 +1,7 @@
 # Architecture
 
+> Task 22G adds a separate, not-yet-deployed eOffice pilot design under `infra/eoffice-pilot/`; see [EOFFICE_PILOT_DEPLOYMENT.md](EOFFICE_PILOT_DEPLOYMENT.md). It has no dependency on the live grievance pilot infrastructure or routes.
+
 ## Implemented today
 
 Grievance Insights is currently a React 19 and TypeScript single-page application built with Vite. The browser supports grievance browsing, Unicode-safe search and filtering, UTF-8 CSV/JSON import, deterministic summaries, deterministic record lookup, and text/Markdown/ZIP/print exports. Imported data remains in browser memory.

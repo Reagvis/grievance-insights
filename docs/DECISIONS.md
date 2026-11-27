@@ -1,5 +1,9 @@
 # Architectural decisions
 
+## Task 22G: isolate eOffice pilot deployment
+
+Use a dedicated Terraform state and Fargate task behind API Gateway/VPC Link/internal ALB. Co-locate a digest-pinned ClamAV sidecar through an ephemeral UNIX socket so scanning remains fail-closed without a public scanner or persistent document storage. Keep credential issuance out of HTTP, use strongly consistent encrypted DynamoDB registries, inject only public verification keys, and leave all existing grievance-pilot resources untouched. This is a readiness decision, not deployment approval.
+
 ## Initial decisions
 
 | Decision | Rationale and status |

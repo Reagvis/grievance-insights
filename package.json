@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "backend:package": "node scripts/package-auth-lambda.mjs && node scripts/package-extractor-lambda.mjs",
+    "eoffice:package": "node scripts/package-eoffice-service.mjs",
     "backend:test": "vitest run backend",
     "backend:typecheck": "tsc -p backend/tsconfig.json",
     "dev": "vite",
