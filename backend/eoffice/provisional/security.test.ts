@@ -237,6 +237,7 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
       t.downloads.mockResolvedValueOnce({
         bytes: new TextEncoder().encode('Count: ' + numeric + '.'),
         contentType: 'text/plain',
+        contentDisposition: 'attachment; filename="Synthetic Record.txt"',
       });
       errorShape(await t.handle(event('extract', 6 + index, actorA, jwt, {
         documents: [docAlpha],
@@ -257,6 +258,7 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
     t.downloads.mockResolvedValueOnce({
       bytes: new TextEncoder().encode(lines.join('\n')),
       contentType: 'text/plain',
+      contentDisposition: 'attachment; filename="Synthetic Record.txt"',
     });
     errorShape(await t.handle(event('extract', 12, actorA, jwt, {
       documents: [docAlpha],
@@ -488,7 +490,7 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
         const t = fixture();
         const originalWrite = t.audit.record.bind(t.audit);
         let count = 0;
-        t.audit.record = vi.fn(async record => {
+        t.audit.record = vi.fn(async (record: AuditRecord) => {
           count++;
           if (count === step) return new Promise<void>(() => {});
           return originalWrite(record);
@@ -498,6 +500,7 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
           t.officerToken(actorA), { documents: [docAlpha] }));
         await vi.advanceTimersByTimeAsync(25_100);
         errorShape(await pending, 503, requestId(170 + step));
+        expect(count).toBe(step);
         if (step <= 2) {
           expect(t.registry.resolve).not.toHaveBeenCalled();
           expect(t.downloads).not.toHaveBeenCalled();
@@ -524,7 +527,7 @@ describe('Task 22F — provisional authenticated, document-only eOffice', () => 
     try {
       t.scanner.mockImplementationOnce(async () => {
         simulatedNow += 26_000;
-        return 'clean';
+        return 'clean' as const;
       });
       await expect(source.fetch(docAlpha, principal, simulatedNow + 2000, actorA.sessionId))
         .rejects.toMatchObject({ status: 503 });
