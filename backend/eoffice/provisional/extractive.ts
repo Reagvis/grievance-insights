@@ -157,7 +157,7 @@ export const deterministicTaskModel: Model = async (system, prompt, _tokens, _ti
           // The core accepts a maximum of 16 evidence items. Failing loudly
           // is safer than silently dropping support for required fields.
           if (citations.length >= 16)
-            throw new EofficeError(422, 'Extraction evidence exceeds supported limit.', 'The supplied document or schema could not be processed.');
+            throw new EofficeError(502, 'Extraction evidence exceeds supported limit.', 'AI processing failed.');
           citations.push({ document_id: found.source.document_id, quote: found.quote });
           seen.add(key);
         }
